@@ -1,76 +1,111 @@
 import os
-import re
+import telebot
 import ast
 import operator as op
-import telebot
+import time
 
-# ---------------------------------------------------
-# Load BOT TOKEN
-# ---------------------------------------------------
-BOT_TOKEN = os.getenv("BOT_TOKEN")
-if not BOT_TOKEN:
-    raise RuntimeError("BOT_TOKEN is not set in Railway Variables")
+# -----------------------------
+# Load BOT TOKEN from Railway
+# -----------------------------
+TOKEN = os.getenv("BOT_TOKEN")
+if not TOKEN:
+    raise RuntimeError("BOT_TOKEN variable is missing in Railway!")
 
-bot = telebot.TeleBot(BOT_TOKEN, parse_mode="HTML")
+bot = telebot.TeleBot(TOKEN)
 
-
-# ---------------------------------------------------
-# Safe Math Evaluator (No eval – fully secure)
-# ---------------------------------------------------
-_ALLOWED_OPERATORS = {
+# -----------------------------
+# Safe Math Evaluator (No eval)
+# -----------------------------
+ALLOWED_OPERATORS = {
     ast.Add: op.add,
     ast.Sub: op.sub,
     ast.Mult: op.mul,
     ast.Div: op.truediv,
     ast.Pow: op.pow,
-    ast.Mod: op.mod,
+    ast.USub: op.neg
 }
 
-def _eval_ast(node):
-    if isinstance(node, ast.Num):
-        return node.n
-
-    if isinstance(node, ast.UnaryOp) and isinstance(node.op, ast.USub):
-        return -_eval_ast(node.operand)
-
-    if isinstance(node, ast.BinOp) and type(node.op) in _ALLOWED_OPERATORS:
-        left = _eval_ast(node.left)
-        right = _eval_ast(node.right)
-        return _ALLOWED_OPERATORS[type(node.op)](left, right)
-
-    raise ValueError("Unsupported expression")
-
-def evaluate_expression(expr: str):
+def eval_expr(expr: str):
+    """Evaluate math expression securely"""
     try:
-        tree = ast.parse(expr, mode="eval")
-        return _eval_ast(tree.body)
+        node = ast.parse(expr, mode="eval").body
+        return eval_node(node)
     except Exception:
         return None
 
+def eval_node(node):
+    if isinstance(node, ast.Num):
+        return node.n
+    elif isinstance(node, ast.BinOp):
+        return ALLOWED_OPERATORS[type(node.op)](
+            eval_node(node.left), eval_node(node.right)
+        )
+    elif isinstance(node, ast.UnaryOp):
+        return ALLOWED_OPERATORS[type(node.op)](eval_node(node.operand))
+    else:
+        raise TypeError("Invalid expression")
 
-# ---------------------------------------------------
-# Smart AI-style answer (simple NLP)
-# ---------------------------------------------------
-def ai_answer(text: str) -> str:
-    normalized = text.lower().strip()
+# -----------------------------
+# Command Handlers
+# -----------------------------
+@bot.message_handler(commands=["start", "help"])
+def send_welcome(message):
+    bot.reply_to(
+        message,
+        (
+            "سلام! 👋 من «OstadBot» هستم.\n"
+            "یک ربات دستیار هوشمند برای کمک در درس‌ها، آزمون‌ها و اطلاعات عمومی.\n"
+            "می‌تونی از من سوالت رو بپرسی مثل:\n"
+            "🔹 سوال ریاضی: 5*(3+2)\n"
+            "🔹 سوال درسی: شب امتحان چه بخونم؟\n"
+            "🔹 سوال عمومی: چرا آسمان آبیه؟"
+        )
+    )
 
-    # Greetings
-    if any(word in normalized for word in ["hi", "hello", "سلام", "درود"]):
-        return "سلام فرهاد عزیز! چه کمکی ازم برمیاد؟ 😊"
+# -----------------------------
+# Main message handler
+# -----------------------------
+@bot.message_handler(func=lambda message: True)
+def handle_message(message):
+    text = message.text.strip().lower()
 
-    # Who are you?
-    if "کی هستی" in normali or "who are you" in normalized:
-        return "من OstadBot هستم! دستیار باهوش و همیشه آنلاین فرهاد 🤖🔥"
+    # Math evaluation
+    if any(c.isdigit() for c in text) and any(opr in text for opr in "+-*/^"):
+        result = eval_expr(text)
+        if result is not None:
+            bot.reply_to(message, f"✅ حاصل عبارت: {result}")
+            return
 
-    # Study Help
-  if "درس" in normalized or "مشقی" in normalized:
-        return "اگه سوال درسی داری، بفرست فرهاد! با بهترین توضیح جواب می‌دم 📘✨"
+    # General educational responses
+    if "امتحان" in text or "درس" in text:
+        bot.reply_to(
+            message,
+            "برای موفقیت در درس‌ها تمرکز، خلاصه‌نویسی و تمرین مکرر مهمه 💪 "
+            "می‌خوای راهنمای هر درس رو برات بفرستم؟"
+        )
+    elif "آزمون" in text:
+        bot.reply_to(
+            message,
+            "قبل از آزمون حتماً نمونه‌سوال‌ تمرین کن و مفاهیم پایه رو مرور کن 📘"
+        )
+    elif "اطلاعات" in text or "عمومی" in text:
+        bot.reply_to(
+            message,
+            "من می‌تونم برات سوالات عمومی رو پاسخ بدم؛ فقط بپرس 🤖"
+        )
+    else:
+        bot.reply_to(
+            message,
+            "سوالت رو بپرس! من برای ریاضی، آزمون، اطلاعات عمومی یا هر موضوع درسی آماده‌ام 📚"
+        )
 
-    # Math phrases
-    if any(word i normalized for word in ["محاسبه", "چند میشه", "جواب"]):
-        ex = extract_expression(text)
-        if ex:
-            value = evaluate_expression(ex)
-            if value is not None:
-                return f"نتیجه محاسبه: <b>{value}</b>"
-        return "ا
+# -----------------------------
+# Stable polling loop for Railway
+# -----------------------------
+print("✅ OstadBot is running...", flush=True)
+while True:
+    try:
+        bot.infinity_polling(timeout=60, long_polling_timeout=60, skip_pending=True)
+    except Exception as e:
+        print(f"❌ Polling error: {e}", flush=True)
+        time.sleep(5)
