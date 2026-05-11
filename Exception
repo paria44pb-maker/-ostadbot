@@ -1,0 +1,9 @@
+import requests
+
+try:
+    answer = ai_generate(text)
+except requests.exceptions.ReadTimeout:
+    answer = "⏳ سرور هوش مصنوعی دیر پاسخ داد. لطفاً دوباره تلاش کن یا پیام کوتاه‌تر بفرست."
+except Exception as e:
+    answer = "❌ خطای داخلی رخ داد. لطفاً چند دقیقه دیگر دوباره امتحان کن."
+    # اینجا بهتره e رو لاگ کنی
