@@ -26,7 +26,6 @@ ALLOWED_OPERATORS = {
 }
 
 def eval_expr(expr: str):
-    """Evaluate math expression securely"""
     try:
         node = ast.parse(expr, mode="eval").body
         return eval_node(node)
@@ -55,10 +54,7 @@ def send_welcome(message):
         (
             "سلام! 👋 من «OstadBot» هستم.\n"
             "یک ربات دستیار هوشمند برای کمک در درس‌ها، آزمون‌ها و اطلاعات عمومی.\n"
-            "می‌تونی از من سوالت رو بپرسی مثل:\n"
-            "🔹 سوال ریاضی: 5*(3+2)\n"
-            "🔹 سوال درسی: شب امتحان چه بخونم؟\n"
-            "🔹 سوال عمومی: چرا آسمان آبیه؟"
+            "می‌تونی از من هر سوالی بپرسی!"
         )
     )
 
@@ -76,28 +72,13 @@ def handle_message(message):
             bot.reply_to(message, f"✅ حاصل عبارت: {result}")
             return
 
-    # General educational responses
+    # Educational replies
     if "امتحان" in text or "درس" in text:
-        bot.reply_to(
-            message,
-            "برای موفقیت در درس‌ها تمرکز، خلاصه‌نویسی و تمرین مکرر مهمه 💪 "
-            "می‌خوای راهنمای هر درس رو برات بفرستم؟"
-        )
+        bot.reply_to(message, "برای درس خوندن، تمرکز و تمرین مهمه. چه درسی داری؟")
     elif "آزمون" in text:
-        bot.reply_to(
-            message,
-            "قبل از آزمون حتماً نمونه‌سوال‌ تمرین کن و مفاهیم پایه رو مرور کن 📘"
-        )
-    elif "اطلاعات" in text or "عمومی" in text:
-        bot.reply_to(
-            message,
-            "من می‌تونم برات سوالات عمومی رو پاسخ بدم؛ فقط بپرس 🤖"
-        )
+        bot.reply_to(message, "نمونه‌سوال‌ها بهترین ابزار آمادگی برای آزمون هستن.")
     else:
-        bot.reply_to(
-            message,
-            "سوالت رو بپرس! من برای ریاضی، آزمون، اطلاعات عمومی یا هر موضوع درسی آماده‌ام 📚"
-        )
+        bot.reply_to(message, "سوالت رو بپرس! من آماده‌ام 📚")
 
 # -----------------------------
 # Stable polling loop for Railway
