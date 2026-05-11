@@ -44,3 +44,29 @@ def generate_answer(user_text: str, history: list[str]) -> str:
         return response.text.strip()
 
     return "در حال حاضر پاسخ مناسبی پیدا نشد."
+import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
+
+def make_session():
+    retry = Retry(
+        total=3,
+        backoff_factor=1.2,           # 1.2s, 2.4s, 4.8s ...
+        status_forcelist=(429, 500, 502, 503, 504),
+        allowed_methods=("GET", "POST")
+    )
+    s = requests.Session()
+    s.mount("https://", HTTPAdapter(max_retries=retry))
+    s.mount("http://", HTTPAdapter(max_retries=retry))
+    return s
+
+session = make_session()
+
+def call_ai(url, headers, payload):
+    # connect timeout جدا از read timeout
+    return session.post(
+        url,
+        headers=headers,
+        json=payload,
+        timeout=(10, 120)   # connect=10s, read=120s
+    )
