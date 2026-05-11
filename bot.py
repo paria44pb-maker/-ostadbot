@@ -78,7 +78,7 @@ def handle_message(message):
     elif "آزمون" in text:
         bot.reply_to(message, "نمونه‌سوال‌ها بهترین ابزار آمادگی برای آزمون هستن.")
     else:
-        bot.reply_to(message, "سوالت رو بپرس! من آماده‌ام 📚")
+    
 
 # -----------------------------
 # Stable polling loop for Railway
