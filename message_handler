@@ -1,0 +1,15 @@
+reply = None
+
+try:
+    if client_groq:
+        completion = client_groq.chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_text}
+            ]
+        )
+        reply = completion.choices[0].message.content
+
+except Exception as e:
+    logger.error(f"Groq Error: {e}")
