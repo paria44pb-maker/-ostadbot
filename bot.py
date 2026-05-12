@@ -11,7 +11,6 @@ logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     level=logging.INFO
 )
-
 logger = logging.getLogger(__name__)
 
 # ---------------- DATABASE ----------------
@@ -33,8 +32,8 @@ def init_db():
     conn.commit()
     conn.close()
 
-def save_chat(user_id, role, content):
 
+def save_chat(user_id, role, content):
     conn = sqlite3.connect(DB_NAME)
     cur = conn.cursor()
 
@@ -46,8 +45,8 @@ def save_chat(user_id, role, content):
     conn.commit()
     conn.close()
 
-def get_chat_history(user_id, limit=10):
 
+def get_chat_history(user_id, limit=12):
     conn = sqlite3.connect(DB_NAME)
     cur = conn.cursor()
 
@@ -60,18 +59,13 @@ def get_chat_history(user_id, limit=10):
     """, (str(user_id), limit))
 
     rows = cur.fetchall()
-
     conn.close()
 
     rows.reverse()
 
     messages = []
-
     for role, content in rows:
-        messages.append({
-            "role": role,
-            "content": content
-        })
+        messages.append({"role": role, "content": content})
 
     return messages
 
@@ -85,15 +79,13 @@ client_deepseek = None
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await update.message.reply_text(
-        "سلام 👋\n"
-        "من یک ربات هوش مصنوعی هستم.\n"
-        "هر سوالی داری بپرس."
+        "سلام فرهاد 👋\n"
+        "من یک دستیار هوش مصنوعی هستم. هر سوالی داری بپرس."
     )
 
 
 # ---------------- MESSAGE HANDLER ----------------
 async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-
     global client_groq, client_deepseek
 
     user_text = update.message.text
@@ -101,51 +93,42 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     history = get_chat_history(user_id)
 
-    system_prompt = "تو یک دستیار هوش مصنوعی فارسی هستی. پاسخ‌ها را دقیق، واضح و حرفه‌ای بده."
+    system_prompt = "تو یک دستیار هوش مصنوعی حرفه‌ای و دقیق هستی. پاسخ‌ها را شفاف، منطقی و مفید بده."
 
-    messages = [
-        {"role": "system", "content": system_prompt}
-    ]
-
+    messages = [{"role": "system", "content": system_prompt}]
     messages.extend(history)
-
-    messages.append({
-        "role": "user",
-        "content": user_text
-    })
+    messages.append({"role": "user", "content": user_text})
 
     reply = None
 
-    # ---------- GROQ ----------
+    # ---------- TRY GROQ ----------
     if client_groq:
         try:
-
             completion = client_groq.chat.completions.create(
                 model="llama-3.3-70b-versatile",
                 messages=messages,
                 temperature=0.7,
                 max_tokens=1024
             )
-
             reply = completion.choices[0].message.content
-
+            logger.info("Reply from Groq")
         except Exception as e:
             logger.error(f"Groq error: {e}")
 
-    # ---------- DEEPSEEK ----------
+    # ---------- TRY DEEPSEEK ----------
     if not reply and client_deepseek:
         try:
-
             completion = client_deepseek.chat.completions.create(
                 model="deepseek-chat",
-                messages=messages
+                messages=messages,
+                temperature=0.7
             )
-
             reply = completion.choices[0].message.content
-
+            logger.info("Reply from DeepSeek")
         except Exception as e:
             logger.error(f"DeepSeek error: {e}")
 
+    # ---------- FALLBACK ----------
     if not reply:
         reply = "خطا در اتصال به مدل‌های هوش مصنوعی."
 
@@ -157,7 +140,6 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # ---------------- MAIN ----------------
 def main():
-
     global client_groq, client_deepseek
 
     token = os.getenv("BOT_TOKEN")
@@ -165,45 +147,40 @@ def main():
     deepseek_key = os.getenv("DEEPSEEK_API_KEY")
 
     if not token:
-        logger.error("BOT_TOKEN not found")
+        logger.error("❌ BOT_TOKEN not found")
         return
 
+    # ---------- GROQ ----------
     if groq_key:
         try:
             client_groq = Groq(api_key=groq_key)
-            logger.info("Groq connected")
+            logger.info("✅ Groq connected")
         except Exception as e:
-            logger.error(f"Groq connection failed: {e}")
+            logger.error(f"❌ Groq connection failed: {e}")
 
+    # ---------- DEEPSEEK ----------
     if deepseek_key:
         try:
+            # IMPORTANT: /v1
             client_deepseek = OpenAI(
                 api_key=deepseek_key,
-                base_url="https://api.deepseek.com"
+                base_url="https://api.deepseek.com/v1"
             )
-            logger.info("DeepSeek connected")
+            logger.info("✅ DeepSeek connected")
         except Exception as e:
-            logger.error(f"DeepSeek connection failed: {e}")
+            logger.error(f"❌ DeepSeek connection failed: {e}")
 
     if not client_groq and not client_deepseek:
-        logger.error("No AI provider available")
+        logger.error("❌ No AI provider available")
         return
 
     init_db()
 
     app = ApplicationBuilder().token(token).build()
-
     app.add_handler(CommandHandler("start", start))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, message_handler))
 
-    app.add_handler(
-        MessageHandler(
-            filters.TEXT & ~filters.COMMAND,
-            message_handler
-        )
-    )
-
-    logger.info("Bot started")
-
+    logger.info("🚀 Bot started successfully")
     app.run_polling()
 
 
