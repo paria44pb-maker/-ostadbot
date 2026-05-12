@@ -6,23 +6,22 @@ from ai_engine import generate_answer
 from memory import add_to_history, get_history, clear_history
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("سلام! 👋 من استادبات هستم، هر سوالی داری بپرس.")
+    await update.message.reply_text("سلام 👋 من استادبات هستم؛ آماده‌ام پاسخ بدم.")
 
 async def clear(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_chat.id
     clear_history(user_id)
-    await update.message.reply_text("حافظه پاک شد ✔")
+    await update.message.reply_text("✅ حافظه پاک شد.")
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_chat.id
-    user_text = update.message.text
-
+    text = update.message.text
     await update.message.reply_text("در حال پردازش... ⏳")
 
     history = get_history(user_id)
-    answer = generate_answer(user_text, history)
+    answer = generate_answer(text, history)
 
-    add_to_history(user_id, user_text)
+    add_to_history(user_id, text)
     add_to_history(user_id, answer)
 
     await update.message.reply_text(answer)
