@@ -1,17 +1,10 @@
 import os
 import logging
 import sqlite3
-
 from telegram import Update
-from telegram.ext import (
-    ApplicationBuilder,
-    CommandHandler,
-    ContextTypes,
-    MessageHandler,
-    filters,
-)
-
+from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
 from groq import Groq
+from openai import OpenAI
 
 # ---------------- LOGGING ----------------
 logging.basicConfig(
@@ -24,176 +17,178 @@ logger = logging.getLogger(__name__)
 # ---------------- DATABASE ----------------
 DB_NAME = "memory.db"
 
-
 def init_db():
     conn = sqlite3.connect(DB_NAME)
     cur = conn.cursor()
 
     cur.execute("""
-        CREATE TABLE IF NOT EXISTS memory (
+        CREATE TABLE IF NOT EXISTS chat_history (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             user_id TEXT,
-            memory_key TEXT,
-            memory_value TEXT
+            role TEXT,
+            content TEXT
         )
     """)
 
     conn.commit()
     conn.close()
 
+def save_chat(user_id, role, content):
 
-def save_memory(user_id, key, value):
     conn = sqlite3.connect(DB_NAME)
     cur = conn.cursor()
 
-    # اگر قبلاً وجود داشت آپدیت کن
     cur.execute("""
-        SELECT id FROM memory
-        WHERE user_id=? AND memory_key=?
-    """, (str(user_id), key))
-
-    existing = cur.fetchone()
-
-    if existing:
-        cur.execute("""
-            UPDATE memory
-            SET memory_value=?
-            WHERE user_id=? AND memory_key=?
-        """, (value, str(user_id), key))
-    else:
-        cur.execute("""
-            INSERT INTO memory (
-                user_id,
-                memory_key,
-                memory_value
-            )
-            VALUES (?, ?, ?)
-        """, (str(user_id), key, value))
+        INSERT INTO chat_history (user_id, role, content)
+        VALUES (?, ?, ?)
+    """, (str(user_id), role, content))
 
     conn.commit()
     conn.close()
 
+def get_chat_history(user_id, limit=10):
 
-def get_memory(user_id, key):
     conn = sqlite3.connect(DB_NAME)
     cur = conn.cursor()
 
     cur.execute("""
-        SELECT memory_value
-        FROM memory
-        WHERE user_id=? AND memory_key=?
-    """, (str(user_id), key))
+        SELECT role, content
+        FROM chat_history
+        WHERE user_id=?
+        ORDER BY id DESC
+        LIMIT ?
+    """, (str(user_id), limit))
 
-    row = cur.fetchone()
+    rows = cur.fetchall()
 
     conn.close()
 
-    if row:
-        return row[0]
+    rows.reverse()
 
-    return None
+    messages = []
+
+    for role, content in rows:
+        messages.append({
+            "role": role,
+            "content": content
+        })
+
+    return messages
 
 
-# ---------------- GROQ ----------------
-GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+# ---------------- AI CLIENTS ----------------
+client_groq = None
+client_deepseek = None
 
-client = Groq(
-    api_key=GROQ_API_KEY
-)
 
-# ---------------- START ----------------
+# ---------------- COMMAND ----------------
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
     await update.message.reply_text(
         "سلام 👋\n"
-        "من OstadBot هستم.\n"
+        "من یک ربات هوش مصنوعی هستم.\n"
         "هر سوالی داری بپرس."
     )
 
-# ---------------- CHAT ----------------
+
+# ---------------- MESSAGE HANDLER ----------------
 async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+    global client_groq, client_deepseek
 
     user_text = update.message.text
     user_id = update.effective_user.id
 
-    # ذخیره اسم کاربر
-    if "اسم من" in user_text:
-        name = user_text.replace("اسم من", "").replace("است", "").strip()
+    history = get_chat_history(user_id)
 
-        if name:
-            save_memory(user_id, "name", name)
+    system_prompt = "تو یک دستیار هوش مصنوعی فارسی هستی. پاسخ‌ها را دقیق، واضح و حرفه‌ای بده."
 
-            await update.message.reply_text(
-                f"خوشحالم {name} 😊\nاسمت یادم موند."
+    messages = [
+        {"role": "system", "content": system_prompt}
+    ]
+
+    messages.extend(history)
+
+    messages.append({
+        "role": "user",
+        "content": user_text
+    })
+
+    reply = None
+
+    # ---------- GROQ ----------
+    if client_groq:
+        try:
+
+            completion = client_groq.chat.completions.create(
+                model="llama-3.3-70b-versatile",
+                messages=messages,
+                temperature=0.7,
+                max_tokens=1024
             )
-            return
 
-    # بازیابی اسم
-    if "اسم من چیست" in user_text:
-        saved_name = get_memory(user_id, "name")
+            reply = completion.choices[0].message.content
 
-        if saved_name:
-            await update.message.reply_text(
-                f"اسم شما {saved_name} است 😊"
+        except Exception as e:
+            logger.error(f"Groq error: {e}")
+
+    # ---------- DEEPSEEK ----------
+    if not reply and client_deepseek:
+        try:
+
+            completion = client_deepseek.chat.completions.create(
+                model="deepseek-chat",
+                messages=messages
             )
-        else:
-            await update.message.reply_text(
-                "هنوز اسم شما را نمی‌دانم."
-            )
 
-        return
+            reply = completion.choices[0].message.content
 
-    # گرفتن حافظه
-    saved_name = get_memory(user_id, "name")
+        except Exception as e:
+            logger.error(f"DeepSeek error: {e}")
 
-    try:
+    if not reply:
+        reply = "خطا در اتصال به مدل‌های هوش مصنوعی."
 
-        system_prompt = (
-            "تو یک دستیار فارسی حرفه‌ای و دوستانه هستی. "
-            "کامل، روان و طبیعی جواب بده. "
-            "هیچوقت اسم کاربر را حدس نزن."
-        )
-
-        if saved_name:
-            system_prompt += f"\nاسم کاربر {saved_name} است."
-
-        completion = client.chat.completions.create(
-            model="llama-3.3-70b-versatile",
-            messages=[
-                {
-                    "role": "system",
-                    "content": system_prompt
-                },
-                {
-                    "role": "user",
-                    "content": user_text
-                }
-            ],
-            temperature=0.7,
-            max_tokens=1024,
-        )
-
-        reply = completion.choices[0].message.content
-
-    except Exception as e:
-        logger.error(f"Groq Error: {e}")
-        reply = "خطا در اتصال به هوش مصنوعی."
+    save_chat(user_id, "user", user_text)
+    save_chat(user_id, "assistant", reply)
 
     await update.message.reply_text(reply)
+
 
 # ---------------- MAIN ----------------
 def main():
 
+    global client_groq, client_deepseek
+
     token = os.getenv("BOT_TOKEN")
+    groq_key = os.getenv("GROQ_API_KEY")
+    deepseek_key = os.getenv("DEEPSEEK_API_KEY")
 
     if not token:
         logger.error("BOT_TOKEN not found")
         return
 
-    if not GROQ_API_KEY:
-        logger.error("GROQ_API_KEY not found")
+    if groq_key:
+        try:
+            client_groq = Groq(api_key=groq_key)
+            logger.info("Groq connected")
+        except Exception as e:
+            logger.error(f"Groq connection failed: {e}")
+
+    if deepseek_key:
+        try:
+            client_deepseek = OpenAI(
+                api_key=deepseek_key,
+                base_url="https://api.deepseek.com"
+            )
+            logger.info("DeepSeek connected")
+        except Exception as e:
+            logger.error(f"DeepSeek connection failed: {e}")
+
+    if not client_groq and not client_deepseek:
+        logger.error("No AI provider available")
         return
 
-    # ساخت دیتابیس
     init_db()
 
     app = ApplicationBuilder().token(token).build()
@@ -207,9 +202,10 @@ def main():
         )
     )
 
-    logger.info("Bot started successfully")
+    logger.info("Bot started")
 
     app.run_polling()
+
 
 # ---------------- RUN ----------------
 if __name__ == "__main__":
