@@ -1,24 +1,23 @@
-from telegram.ext import Updater, MessageHandler, CommandHandler, Filters
+import asyncio
+from telegram import Update
+from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, ContextTypes, filters
 from config import BOT_TOKEN
 from ai_engine import generate_answer
 from memory import add_to_history, get_history, clear_history
 
-updater = Updater(BOT_TOKEN, use_context=True)
-dispatcher = updater.dispatcher
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("سلام! 👋 من استادبات هستم، هر سوالی داری بپرس.")
 
-def start(update, context):
-    update.message.reply_text("سلام! 👋\nمن استادبات هستم. هر سوالی داری بپرس.")
-
-def clear(update, context):
-    user_id = update.message.chat_id
+async def clear(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_chat.id
     clear_history(user_id)
-    update.message.reply_text("حافظه پاک شد ✔")
+    await update.message.reply_text("حافظه پاک شد ✔")
 
-def handle_message(update, context):
-    user_id = update.message.chat_id
+async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_chat.id
     user_text = update.message.text
 
-    update.message.reply_text("در حال پردازش... ⏳")
+    await update.message.reply_text("در حال پردازش... ⏳")
 
     history = get_history(user_id)
     answer = generate_answer(user_text, history)
@@ -26,11 +25,13 @@ def handle_message(update, context):
     add_to_history(user_id, user_text)
     add_to_history(user_id, answer)
 
-    update.message.reply_text(answer)
+    await update.message.reply_text(answer)
 
-dispatcher.add_handler(CommandHandler("start", start))
-dispatcher.add_handler(CommandHandler("clear", clear))
-dispatcher.add_handler(MessageHandler(Filters.text & ~Filters.command, handle_message))
+app = ApplicationBuilder().token(BOT_TOKEN).build()
 
-updater.start_polling()
-updater.idle()
+app.add_handler(CommandHandler("start", start))
+app.add_handler(CommandHandler("clear", clear))
+app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+
+if __name__ == "__main__":
+    asyncio.run(app.run_polling())
