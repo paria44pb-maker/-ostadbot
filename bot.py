@@ -31,7 +31,16 @@ def main():
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, echo))
 
     print("🚀 Bot is starting polling...")
-    app.run_polling()
+    async def post_init(app):
+    await app.bot.delete_webhook(drop_pending_updates=True)
 
+def main():
+    app = ApplicationBuilder().token(TOKEN).post_init(post_init).build()
+
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, echo))
+
+    print("🚀 Bot is starting polling
+    app.run_polling()
 if __name__ == "__main__":
     main()
