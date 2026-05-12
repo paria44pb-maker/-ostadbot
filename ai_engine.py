@@ -3,24 +3,12 @@ from config import GEMINI_API_KEY
 
 genai.configure(api_key=GEMINI_API_KEY)
 
-def generate_answer(user_text, history):
+model = genai.GenerativeModel("gemini-1.5-flash")
+
+def generate_answer(question, history=None):
     try:
-        model = genai.GenerativeModel("gemini-1.5-flash-latest")
-
-        prompt = ""
-        for msg in history[-10:]:
-            prompt += f"{msg}\n"
-        prompt += f"User: {user_text}\nAssistant:"
-
-        response = model.generate_content(
-            prompt,
-            generation_config={
-                "max_output_tokens": 300,
-                "temperature": 0.7,
-            }
-        )
-
+        response = model.generate_content(question)
         return response.text
-
     except Exception as e:
-        return f"❗ خطا در پردازش پیام: {e}"
+        print("AI ERROR:", e)
+        return "❌ خطا در ارتباط با هوش مصنوعی."
