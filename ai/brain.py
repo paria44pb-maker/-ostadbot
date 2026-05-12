@@ -1,8 +1,12 @@
-if "کد" in text or "برنامه" in text:
-    model = "deepseek"
+def choose_ai(text):
 
-elif "تحلیل" in text or "ارز" in text:
-    model = "deepseek"
+    coding_words = [
+        "کد", "پایتون", "ربات",
+        "برنامه", "تحلیل", "اندیکاتور"
+    ]
 
-else:
-    model = "groq"
+    for word in coding_words:
+        if word in text:
+            return "deepseek"
+
+    return "groq"
