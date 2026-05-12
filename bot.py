@@ -1,36 +1,31 @@
-import asyncio
-from telegram import Update
-from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, ContextTypes, filters
-from config import BOT_TOKEN
-from ai_engine import generate_answer
-from memory import add_to_history, get_history, clear_history
+import os
+import logging
+from telegram.ext import ApplicationBuilder
 
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("سلام 👋 من استادبات هستم؛ آماده‌ام پاسخ بدم.")
+logging.basicConfig(level=logging.INFO)
 
-async def clear(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_chat.id
-    clear_history(user_id)
-    await update.message.reply_text("✅ حافظه پاک شد.")
+def load_token():
+    raw = os.getenv("BOT_TOKEN")
 
-async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_chat.id
-    text = update.message.text
-    await update.message.reply_text("در حال پردازش... ⏳")
+    print("RAW TOKEN:", repr(raw))
 
-    history = get_history(user_id)
-    answer = generate_answer(text, history)
+    if not raw:
+        raise RuntimeError("BOT_TOKEN is missing")
 
-    add_to_history(user_id, text)
-    add_to_history(user_id, answer)
+    clean = raw.strip().replace("`", "").replace('"', "").replace("'", "")
 
-    await update.message.reply_text(answer)
+    print("CLEAN TOKEN:", repr(clean))
+    print("TOKEN LENGTH:", len(clean))
+
+    if ":" not in clean:
+        raise RuntimeError("Invalid token format")
+
+    return clean
+
+BOT_TOKEN = load_token()
 
 app = ApplicationBuilder().token(BOT_TOKEN).build()
 
-app.add_handler(CommandHandler("start", start))
-app.add_handler(CommandHandler("clear", clear))
-app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-
 if __name__ == "__main__":
-    asyncio.run(app.run_polling())
+    logging.info("Starting bot polling...")
+    app.run_polling()
