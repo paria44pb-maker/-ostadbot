@@ -1,14 +1,26 @@
-import google.generativeai as genai
-from config import GEMINI_API_KEY
+from groq import Groq
+from config import GROQ_API_KEY, GROQ_MODEL
 
-genai.configure(api_key=GEMINI_API_KEY)
+# Initialize Groq client
+client = Groq(api_key=GROQ_API_KEY)
 
-model = genai.GenerativeModel("gemini-1.5-flash")
 
-def generate_answer(question, history=None):
+def generate_answer(prompt: str) -> str:
+    """
+    Generate AI response using Groq LLM
+    """
     try:
-        response = model.generate_content(question)
-        return response.text
+        response = client.chat.completions.create(
+            model=GROQ_MODEL,
+            messages=[
+                {"role": "system", "content": "You are a helpful Persian AI assistant."},
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0.7,
+            max_tokens=1024,
+        )
+
+        return response.choices[0].message.content.strip()
+
     except Exception as e:
-        print("AI ERROR:", e)
-        return "❌ خطا در ارتباط با هوش مصنوعی."
+        return f"❌ خطا در پردازش پاسخ: {e}"
