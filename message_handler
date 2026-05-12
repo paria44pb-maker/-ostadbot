@@ -1,15 +1,97 @@
-reply = None
+async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
-try:
+    global client_groq, client_deepseek
+
+    from datetime import datetime
+    import pytz
+
+    user_text = update.message.text
+    user_id = update.effective_user.id
+
+    # ---------- REAL TIME ----------
+    tehran = pytz.timezone("Asia/Tehran")
+    now = datetime.now(tehran)
+
+    current_time = now.strftime("%H:%M:%S")
+    current_date = now.strftime("%Y-%m-%d")
+    weekday = now.strftime("%A")
+
+    days = {
+        "Monday": "دوشنبه",
+        "Tuesday": "سه‌شنبه",
+        "Wednesday": "چهارشنبه",
+        "Thursday": "پنجشنبه",
+        "Friday": "جمعه",
+        "Saturday": "شنبه",
+        "Sunday": "یکشنبه"
+    }
+
+    weekday_fa = days.get(weekday, weekday)
+
+    # ---------- MEMORY ----------
+    history = get_chat_history(user_id)
+
+    # ---------- SYSTEM PROMPT ----------
+    system_prompt = f"""
+تو یک دستیار هوش مصنوعی فارسی هستی.
+
+اطلاعات زمان واقعی:
+ساعت: {current_time}
+تاریخ: {current_date}
+روز هفته: {weekday_fa}
+
+اگر کاربر درباره زمان یا تاریخ پرسید از این اطلاعات استفاده کن.
+پاسخ‌ها باید دقیق، واضح و حرفه‌ای باشند.
+"""
+
+    messages = [
+        {"role": "system", "content": system_prompt}
+    ]
+
+    messages.extend(history)
+
+    messages.append({
+        "role": "user",
+        "content": user_text
+    })
+
+    reply = None
+
+    # ---------- GROQ ----------
     if client_groq:
-        completion = client_groq.chat.completions.create(
-            model="llama-3.3-70b-versatile",
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_text}
-            ]
-        )
-        reply = completion.choices[0].message.content
+        try:
 
-except Exception as e:
-    logger.error(f"Groq Error: {e}")
+            completion = client_groq.chat.completions.create(
+                model="llama-3.3-70b-versatile",
+                messages=messages,
+                temperature=0.7,
+                max_tokens=1024
+            )
+
+            reply = completion.choices[0].message.content
+
+        except Exception as e:
+            logger.error(f"Groq error: {e}")
+
+    # ---------- DEEPSEEK ----------
+    if not reply and client_deepseek:
+        try:
+
+            completion = client_deepseek.chat.completions.create(
+                model="deepseek-chat",
+                messages=messages
+            )
+
+            reply = completion.choices[0].message.content
+
+        except Exception as e:
+            logger.error(f"DeepSeek error: {e}")
+
+    if not reply:
+        reply = "خطا در اتصال به مدل‌های هوش مصنوعی."
+
+    # ---------- SAVE MEMORY ----------
+    save_chat(user_id, "user", user_text)
+    save_chat(user_id, "assistant", reply)
+
+    await update.message.reply_text(reply)
