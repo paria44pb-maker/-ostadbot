@@ -1,44 +1,31 @@
-import ast
-import operator as op
+# Simple in-memory chat history storage
 
-ALLOWED_OPERATORS = {
-    ast.Add: op.add,
-    ast.Sub: op.sub,
-    ast.Mult: op.mul,
-    ast.Div: op.truediv,
-    ast.Pow: op.pow,
-    ast.Mod: op.mod,
-    ast.USub: op.neg,
-    ast.UAdd: op.pos,
-}
+user_histories = {}
 
-def eval_expr(expression: str):
-    try:
-        expression = expression.strip().replace("^", "**")
-        node = ast.parse(expression, mode="eval").body
-        return _eval(node)
-    except Exception:
-        return None
 
-def _eval(node):
-    if isinstance(node, ast.Constant):
-        if isinstance(node.value, (int, float)):
-            return node.value
-        raise TypeError("Only int/float allowed")
+def add_to_history(user_id: int, role: str, content: str):
+    """
+    Add a message to the user's chat history.
+    """
+    if user_id not in user_histories:
+        user_histories[user_id] = []
 
-    if isinstance(node, ast.Num):
-        return node.n
+    user_histories[user_id].append({
+        "role": role,
+        "content": content
+    })
 
-    if isinstance(node, ast.BinOp):
-        op_type = type(node.op)
-        if op_type not in ALLOWED_OPERATORS:
-            raise TypeError("Operator not allowed")
-        return ALLOWED_OPERATORS[op_type](_eval(node.left), _eval(node.right))
 
-    if isinstance(node, ast.UnaryOp):
-        op_type = type(node.op)
-        if op_type not in ALLOWED_OPERATORS:
-            raise TypeError("Unary operator not allowed")
-        return ALLOWED_OPERATORS[op_type](_eval(node.operand))
+def get_history(user_id: int):
+    """
+    Return the chat history for a user.
+    """
+    return user_histories.get(user_id, [])
 
-    raise TypeError("Unsupported expression")
+
+def clear_history(user_id: int):
+    """
+    Remove all history for a specific user.
+    """
+    if user_id in user_histories:
+        del user_histories[user_id]
