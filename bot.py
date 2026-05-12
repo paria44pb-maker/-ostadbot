@@ -1,30 +1,43 @@
 import os
+import logging
 from telegram import Update
-from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, ContextTypes, filters
+from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes, MessageHandler, filters
 
-TOKEN = os.getenv("BOT_TOKEN")
-if not TOKEN:
-    raise ValueError("❌ BOT_TOKEN متغیر محیطی یافت نشد")
+# تنظیمات لاگ‌ها
+logging.basicConfig(
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    level=logging.INFO
+)
+logger = logging.getLogger(__name__)
 
+# تابع استارت
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("سلام فرهاد! ربات روشنه 😊")
+    await update.message.reply_text(
+        "سلام فرهاد! به استاد بات خوش آمدی.\n"
+        "هر سوالی داشتی بپرس!"
+    )
 
+# تابع پیام‌ها با پاسخ شرطی ساده
 async def echo(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(update.message.text)
+    text = update.message.text.lower()
+    logger.info(f"Received message: {text}")
 
-async def post_init(app):
-    # حذف هر وبهوک قبلی
-    await app.bot.delete_webhook(drop_pending_updates=True)
+    if "سلام" in text:
+        reply = "سلام فرهاد! 😄 حالت چطوره؟"
+    elif "خوبم" in text:
+        reply = "خوشحالم که حالت خوبه 🌟"
+    elif "کی هستی" in text:
+        reply = "من OstadBot هستم 🤖"
+    else:
+        reply = "جالبه! بیشتر توضیح بده 👀"
 
+    await update.message.reply_text(reply)
+
+# تابع اصلی
 def main():
-    app = ApplicationBuilder().token(TOKEN).post_init(post_init).build()
+    token = os.getenv("BOT_TOKEN")
+    if not token:
+        logger.err❌ BOT_TOKEN متغیر محیطی یافت نشد!")
+        return
 
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, echo))
-
-    print("Bot is starting polling...")  # بدون ایموجی و ۱۰۰٪ بدون خطا
-
-    app.run_polling()
-
-if __name__ == "__main__":
-    main()
+   
