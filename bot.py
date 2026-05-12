@@ -1,9 +1,17 @@
 import os
 import logging
 from telegram import Update
-from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes, MessageHandler, filters
+from telegram.ext import (
+    ApplicationBuilder,
+    CommandHandler,
+    ContextTypes,
+    MessageHandler,
+    filters,
+)
 
-# logging setup
+from groq import Groq
+
+# ---------------- LOGGING ----------------
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     level=logging.INFO
@@ -11,47 +19,77 @@ logging.basicConfig(
 
 logger = logging.getLogger(__name__)
 
+# ---------------- GROQ ----------------
+GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 
+client = Groq(
+    api_key=GROQ_API_KEY
+)
+
+# ---------------- START ----------------
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "سلام فرهاد! به OstadBot خوش آمدی.\nهر سوالی داری بپرس."
+        "سلام 👋\n"
+        "من OstadBot هستم.\n"
+        "هر سوالی داری بپرس."
     )
 
-
+# ---------------- CHAT ----------------
 async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    text = update.message.text.lower()
+    user_text = update.message.text
 
-    if "سلام" in text:
-        reply = "سلام فرهاد! حالت چطوره؟"
+    try:
+        completion = client.chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        "تو یک دستیار فارسی حرفه‌ای و دوستانه هستی. "
+                        "کامل، روان و طبیعی جواب بده. "
+                        "هیچوقت اسم کاربر را حدس نزن."
+                    )
+                },
+                {
+                    "role": "user",
+                    "content": user_text
+                }
+            ],
+            temperature=0.7,
+            max_tokens=1024,
+        )
 
-    elif "خوبم" in text:
-        reply = "خوشحالم که حالت خوبه."
+        reply = completion.choices[0].message.content
 
-    elif "کی هستی" in text:
-        reply = "من OstadBot هستم."
-
-    else:
-        reply = "متوجه شدم. بیشتر توضیح بده."
+    except Exception as e:
+        logger.error(f"Groq Error: {e}")
+        reply = "خطا در اتصال به هوش مصنوعی."
 
     await update.message.reply_text(reply)
 
-
+# ---------------- MAIN ----------------
 def main():
     token = os.getenv("BOT_TOKEN")
 
     if not token:
-        logger.error("BOT_TOKEN environment variable not found")
+        logger.error("BOT_TOKEN not found")
+        return
+
+    if not GROQ_API_KEY:
+        logger.error("GROQ_API_KEY not found")
         return
 
     app = ApplicationBuilder().token(token).build()
 
     app.add_handler(CommandHandler("start", start))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, message_handler))
+    app.add_handler(
+        MessageHandler(filters.TEXT & ~filters.COMMAND, message_handler)
+    )
 
     logger.info("Bot started successfully")
 
     app.run_polling()
 
-
+# ---------------- RUN ----------------
 if __name__ == "__main__":
     main()
