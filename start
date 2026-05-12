@@ -1,0 +1,2 @@
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("سلام! نسخه: v1.0.3 / deploy-check")
