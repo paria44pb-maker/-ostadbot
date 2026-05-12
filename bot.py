@@ -1,5 +1,7 @@
 import os
 import logging
+import sqlite3
+import requests
 
 from telegram import Update
 from telegram.ext import (
@@ -12,77 +14,178 @@ from telegram.ext import (
 
 from groq import Groq
 
-from market import get_price, get_24h
-from analysis import analyze_market
-from memory import save_user
-from prompts import SYSTEM_PROMPT
+# =========================================
+# Logging
+# =========================================
 
-# =====================================
+logging.basicConfig(
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    level=logging.INFO
+)
+
+logger = logging.getLogger(__name__)
+
+# =========================================
+# ENV
+# =========================================
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 
+if not BOT_TOKEN:
+    raise ValueError("BOT_TOKEN تنظیم نشده")
+
+if not GROQ_API_KEY:
+    raise ValueError("GROQ_API_KEY تنظیم نشده")
+
+# =========================================
+# AI Client
+# =========================================
+
 client = Groq(api_key=GROQ_API_KEY)
 
-logging.basicConfig(level=logging.INFO)
+# =========================================
+# Database
+# =========================================
 
-logger = logging.getLogger(__name__)
+conn = sqlite3.connect("memory.db", check_same_thread=False)
 
-# =====================================
+cursor = conn.cursor()
+
+cursor.execute("""
+CREATE TABLE IF NOT EXISTS users (
+    user_id INTEGER PRIMARY KEY,
+    favorite_coin TEXT
+)
+""")
+
+conn.commit()
+
+# =========================================
+# Memory Functions
+# =========================================
+
+def save_user(user_id, coin):
+
+    cursor.execute("""
+    INSERT OR REPLACE INTO users
+    VALUES (?, ?)
+    """, (user_id, coin))
+
+    conn.commit()
+
+
+def get_user(user_id):
+
+    cursor.execute("""
+    SELECT favorite_coin
+    FROM users
+    WHERE user_id=?
+    """, (user_id,))
+
+    return cursor.fetchone()
+
+# =========================================
+# Market Data
+# =========================================
+
+def get_market_data(symbol):
+
+    url = f"https://api.binance.com/api/v3/ticker/24hr?symbol={symbol}"
+
+    response = requests.get(url, timeout=10)
+
+    if response.status_code != 200:
+        raise Exception("خطا در دریافت اطلاعات بازار")
+
+    data = response.json()
+
+    return {
+        "price": data["lastPrice"],
+        "change": data["priceChangePercent"],
+        "volume": data["volume"]
+    }
+
+# =========================================
+# Analysis
+# =========================================
+
+def analyze_market(change):
+
+    change = float(change)
+
+    if change > 3:
+        trend = "Strong Bullish"
+
+    elif change > 0:
+        trend = "Bullish"
+
+    elif change < -3:
+        trend = "Strong Bearish"
+
+    else:
+        trend = "Bearish"
+
+    return trend
+
+# =========================================
+# Commands
+# =========================================
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
-    await update.message.reply_text(
-        "🤖 Crypto AI Pro فعال شد."
-    )
+    text = """
+🤖 Crypto AI Bot فعال شد
 
-# =====================================
+نمونه:
+btc
+eth
+sol
+bnb
+"""
 
-async def crypto(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text(text)
 
-    text = update.message.text.upper().strip()
+# =========================================
+# Main Chat
+# =========================================
 
-    user_id = update.message.from_user.id
-
-    symbol = text.replace("/", "")
-
-    if not symbol.endswith("USDT"):
-        symbol += "USDT"
+async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     try:
 
-        ticker = get_24h(symbol)
+        user_id = update.message.from_user.id
 
-        price = float(ticker["lastPrice"])
+        text = update.message.text.upper().strip()
 
-        change = ticker["priceChangePercent"]
+        symbol = text.replace("/", "")
 
-        volume = ticker["volume"]
+        if not symbol.endswith("USDT"):
+            symbol += "USDT"
 
-        analysis = analyze_market(price, change)
+        market = get_market_data(symbol)
 
         save_user(user_id, symbol)
 
-        ai_prompt = f"""
+        trend = analyze_market(market["change"])
+
+        prompt = f"""
 ارز:
 {symbol}
 
 قیمت:
-{price}
+{market['price']}
 
 تغییر 24 ساعته:
-{change}%
+{market['change']}%
 
 حجم:
-{volume}
+{market['volume']}
 
 روند:
-{analysis['trend']}
+{trend}
 
-قدرت بازار:
-{analysis['momentum']}
-
-تحلیل حرفه‌ای کوتاه بده.
+یک تحلیل کوتاه حرفه‌ای فارسی بده.
 """
 
         completion = client.chat.completions.create(
@@ -90,13 +193,24 @@ async def crypto(update: Update, context: ContextTypes.DEFAULT_TYPE):
             messages=[
                 {
                     "role": "system",
-                    "content": SYSTEM_PROMPT
+                    "content": """
+تو یک تحلیلگر حرفه‌ای ارز دیجیتال هستی.
+
+تحلیل‌ها:
+- کوتاه
+- دقیق
+- حرفه‌ای
+- فارسی
+باشند.
+"""
                 },
                 {
                     "role": "user",
-                    "content": ai_prompt
+                    "content": prompt
                 }
-            ]
+            ],
+            temperature=0.7,
+            max_tokens=300
         )
 
         ai_text = completion.choices[0].message.content
@@ -105,19 +219,16 @@ async def crypto(update: Update, context: ContextTypes.DEFAULT_TYPE):
 📊 {symbol}
 
 💰 Price:
-{price}
+{market['price']}
 
 📈 24h Change:
-{change}%
+{market['change']}%
 
 🔥 Trend:
-{analysis['trend']}
-
-⚡ Momentum:
-{analysis['momentum']}
+{trend}
 
 📦 Volume:
-{volume}
+{market['volume']}
 
 🧠 AI Analysis:
 {ai_text}
@@ -130,10 +241,12 @@ async def crypto(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.error(e)
 
         await update.message.reply_text(
-            "❌ خطا در تحلیل بازار."
+            "❌ خطا در تحلیل بازار یا اتصال."
         )
 
-# =====================================
+# =========================================
+# Main
+# =========================================
 
 def main():
 
@@ -144,7 +257,7 @@ def main():
     app.add_handler(
         MessageHandler(
             filters.TEXT & ~filters.COMMAND,
-            crypto
+            handle_message
         )
     )
 
@@ -152,7 +265,7 @@ def main():
 
     app.run_polling()
 
-# =====================================
+# =========================================
 
 if __name__ == "__main__":
     main()
