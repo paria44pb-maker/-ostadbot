@@ -1,22 +1,34 @@
 import requests
 
+
 BASE_URL = "https://api.nobitex.ir"
 
 
 def get_usdt_price():
 
-    url = f"{BASE_URL}/market/stats"
+    try:
 
-    params = {
-        "srcCurrency": "usdt",
-        "dstCurrency": "rls"
-    }
+        url = f"{BASE_URL}/market/stats"
 
-    response = requests.get(
-        url,
-        params=params
-    )
+        params = {
+            "srcCurrency": "usdt",
+            "dstCurrency": "rls"
+        }
 
-    data = response.json()
+        response = requests.get(
+            url,
+            params=params,
+            timeout=10
+        )
 
-    return data["stats"]["usdt-rls"]["latest"]
+        data = response.json()
+
+        print("Nobitex Response:", data)
+
+        return data["stats"]["usdt-rls"]["latest"]
+
+    except Exception as e:
+
+        print("Nobitex Error:", e)
+
+        return "خطا در دریافت قیمت"
