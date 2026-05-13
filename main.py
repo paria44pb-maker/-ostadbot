@@ -1,35 +1,14 @@
 import os
 import requests
+import json
 
-def test_groq():
-    url = "https://api.groq.com/openai/v1/models"
+def call_groq(prompt: str):
     api_key = os.getenv("GROQ_API_KEY")
     if not api_key:
-        print("GROQ_API_KEY is NOT set")
+        print("❌ متغیر محیطی GROQ_API_KEY تنظیم نشده!")
         return
 
-    headers = {
-        "Authorization": f"Bearer {api_key}",
-        "Content-Type": "application/json",
-    }
-
-    try:
-        r = requests.get(url, headers=headers, timeout=20)
-        print("Groq status:", r.status_code)
-        print("Groq response (first 300 chars):", r.text[:300])
-    except Exception as e:
-        print("Groq request error:", repr(e))
-
-def test_deepseek():
-    # اگر DeepSeek را با OpenAI-compatible API صدا می‌زنی
-    # آدرس دقیق ممکن است بسته به اکانت/پراوایدر متفاوت باشد.
-    # برای تست، از فرم رایج استفاده می‌کنیم:
-    url = "https://api.deepseek.com/chat/completions"
-
-    api_key = os.getenv("DEEPSEEK_API_KEY")
-    if not api_key:
-        print("DEEPSEEK_API_KEY is NOT set")
-        return
+    url = "https://api.groq.com/openai/v1/chat/completions"
 
     headers = {
         "Authorization": f"Bearer {api_key}",
@@ -37,19 +16,28 @@ def test_deepseek():
     }
 
     payload = {
-        "model": "deepseek-chat",
-        "messages": [{"role": "user", "content": "Say hello in Persian."}],
-        "max_tokens": 20,
-        "temperature": 0.2
+        "model": "mixtral-8x7b-32768",
+        "messages": [
+            {"role": "user", "content": prompt}
+        ],
+        "temperature": 0.3
     }
 
     try:
-        r = requests.post(url, headers=headers, json=payload, timeout=25)
-        print("DeepSeek status:", r.status_code)
-        print("DeepSeek response (first 300 chars):", r.text[:300])
+        res = requests.post(url, headers=headers, json=payload, timeout=25)
+        print("🔵 وضعیت پاسخ:", res.status_code)
+        print("🔵 پاسخ کامل:", res.text)
+
+        if res.status_code == 200:
+            data = res.json()
+            answer = data["choices"][0]["message"]["content"]
+            print("\n🤖 پاسخ هوش مصنوعی:\n", answer)
+
     except Exception as e:
-        print("DeepSeek request error:", repr(e))
+        print("❌ خطا در درخواست:", repr(e))
+
 
 if __name__ == "__main__":
-    test_groq()
-    test_deepseek()
+    print("=== شروع تست اتصال به Groq n")
+    call_groq("سلام. لطفا ثابت کن که اتصال برقرار است.")
+    print("\n=== پایان تست ===")
