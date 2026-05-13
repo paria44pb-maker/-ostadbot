@@ -1,9 +1,14 @@
 import sqlite3
+import os
 
+DB_FOLDER = "database"
 DB_NAME = "database/memory.db"
 
 
 def init_db():
+
+    # ساخت خودکار پوشه database
+    os.makedirs(DB_FOLDER, exist_ok=True)
 
     conn = sqlite3.connect(DB_NAME)
 
