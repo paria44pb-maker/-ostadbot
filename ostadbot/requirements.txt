@@ -1,0 +1,15 @@
+fastapi
+uvicorn
+python-telegram-bot==20.7
+python-dotenv
+requests
+pandas
+numpy
+openai
+groq
+httpx
+sqlalchemy
+psycopg2-binary
+aiohttp
+ta
+scikit-learn
