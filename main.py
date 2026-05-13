@@ -1,40 +1,49 @@
-from fastapi import FastAPI, Request, HTTPException
-from pydantic import BaseModel
-import uvicorn
+from fastapi import FastAPI, Request
+import requests
 import os
-import logging
-
-# تنظیم لاگر
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
-
-# توکن از محیط (الان فقط نیاز نیست، بعداً برای sendMessage استفاده می‌کنیم)
-BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 
 app = FastAPI()
 
-class TelegramUpdate(BaseModel):
-    update_id: int
-    message: dict | None = None
-    edited_message: dict | None = None
-
-@app.get("/")
-def home():
-    return {"message": "WhaleMind AI Telegram Webhook is running."}
+TELEGRAM_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+TELEGRAM_API = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}"
 
 @app.post("/telegram/webhook")
-async def telegram_webhook(update: TelegramUpdate):
-    try:
-        if update.message:
-            chat_id = update.message.get("chat", {}).get("id")
-            text = update.message.get("text")  # این خط قبلاً syntax error داشت
-            logger.info(f"Received message from chat_id {chat_id}: {text}")
+async def telegram_webhook(request: Request):
+    data = await request.json()
 
-        # پاسخ سریع به تلگرام
+    # اگر پیام متنی وجود داشت
+    message = data.get("message", {})
+    chat_id = message.get("chat", {}).get("id")
+    text = message.get("text")
+
+    if not text:
         return {"ok": True}
-    except Exception as e:
-        logger.error(f"Error processing update: {e}")
-        raise HTTPException(status_code=500, detail="Internal Server Error")
 
-if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=8080)
+    print(f"Received message from chat_id {chat_id}: {text}")
+
+    # پاسخ‌ها بر اساس دستور
+    reply = handle_command(text)
+
+    if reply:
+        send_message(chat_id, reply)
+
+    return {"ok": True}
+
+def send_message(chat_id, text):
+    url = f"{TELEGRAM_API}/sendMessage"
+    payload = {"chat_id": chat_id, "text": text}
+    requests.post(url, json=payload)
+
+def handle_command(text):
+    text = text.lower().strip()
+
+    if text in ["/start", "سلام"]:
+        return "سلام فرهاد 😄! من آماده‌ام. دستور‌هات رو بفرست 🚀"
+    elif text == "/balance":
+        return "موجودی حساب: ۲.۳۴ BTC 💰"
+    elif text == "/buy":
+        return "خرید انجام شد ✅"
+    elif text == "/sell":
+        return "فروش انجام شد 💸"
+    else:
+        return "دستور ناشناخته است. لطفاً از /start، /buy، /sell یا /balance استفاده کن."
