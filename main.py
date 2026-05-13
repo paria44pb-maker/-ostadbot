@@ -1,177 +1,208 @@
+# =========================================================
+# WHALEMIND AI - INSTITUTIONAL VERSION
+# main.py
+# =========================================================
+
 import requests
+import time
 import datetime
 import json
 import os
-import time
 import numpy as np
 
 # =========================================================
 # CONFIG
 # =========================================================
 
-BINANCE_API = "https://api.binance.com/api/v3/ticker/price"
-DEFAULT_SYMBOL = "BTCUSDT"
+SYMBOL = "BTCUSDT"
+
+BINANCE_PRICE_API = "https://api.binance.com/api/v3/ticker/price"
+BINANCE_DEPTH_API = "https://api.binance.com/api/v3/depth"
+BINANCE_KLINE_API = "https://api.binance.com/api/v3/klines"
 
 MEMORY_DIR = "memory"
-MEMORY_FILE = f"{MEMORY_DIR}/trades.json"
+TRADES_FILE = f"{MEMORY_DIR}/trades.json"
+
+START_BALANCE = 10000
 
 # =========================================================
-# STARTUP
+# INIT
 # =========================================================
 
 if not os.path.exists(MEMORY_DIR):
     os.makedirs(MEMORY_DIR)
 
-if not os.path.exists(MEMORY_FILE):
-    with open(MEMORY_FILE, "w") as f:
+if not os.path.exists(TRADES_FILE):
+    with open(TRADES_FILE, "w") as f:
         json.dump([], f)
 
 # =========================================================
 # LOGGER
 # =========================================================
 
-def log(message):
+def log(msg):
 
     now = datetime.datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
 
-    log_message = f"[{now}] {message}"
+    line = f"[{now}] {msg}"
 
-    print(log_message)
+    print(line)
 
-    try:
-        with open("whalemind.log", "a") as f:
-            f.write(log_message + "\n")
-    except:
-        pass
-
+    with open("whalemind.log", "a") as f:
+        f.write(line + "\n")
 
 # =========================================================
 # MARKET DATA
 # =========================================================
 
-def get_binance_price(symbol=DEFAULT_SYMBOL):
+def get_price():
 
     try:
 
         r = requests.get(
-            BINANCE_API,
-            params={"symbol": symbol},
+            BINANCE_PRICE_API,
+            params={"symbol": SYMBOL},
             timeout=5
+        )
+
+        return float(r.json()["price"])
+
+    except Exception as e:
+
+        log(f"PRICE ERROR {e}")
+
+        return None
+
+
+def get_order_book(limit=20):
+
+    try:
+
+        r = requests.get(
+            BINANCE_DEPTH_API,
+            params={
+                "symbol": SYMBOL,
+                "limit": limit
+            },
+            timeout=5
+        )
+
+        return r.json()
+
+    except Exception as e:
+
+        log(f"ORDERBOOK ERROR {e}")
+
+        return None
+
+
+def get_historical_klines(interval="1m", limit=200):
+
+    try:
+
+        r = requests.get(
+            BINANCE_KLINE_API,
+            params={
+                "symbol": SYMBOL,
+                "interval": interval,
+                "limit": limit
+            },
+            timeout=10
         )
 
         data = r.json()
 
-        return float(data["price"])
+        closes = [float(k[4]) for k in data]
+
+        return closes
 
     except Exception as e:
 
-        log(f"Binance Error {e}")
+        log(f"KLINE ERROR {e}")
 
-        return None
-
+        return []
 
 # =========================================================
 # INDICATORS
 # =========================================================
 
-def calculate_rsi(prices, period=14):
-
-    if len(prices) < period:
-        return 50
-
-    deltas = np.diff(prices)
-
-    gains = np.where(deltas > 0, deltas, 0)
-    losses = np.where(deltas < 0, -deltas, 0)
-
-    avg_gain = np.mean(gains[-period:])
-    avg_loss = np.mean(losses[-period:])
-
-    if avg_loss == 0:
-        return 100
-
-    rs = avg_gain / avg_loss
-
-    rsi = 100 - (100 / (1 + rs))
-
-    return round(rsi, 2)
-
-
-def calculate_ema(prices, period=20):
-
-    prices = np.array(prices)
+def ema(prices, period):
 
     alpha = 2 / (period + 1)
 
-    ema = prices[0]
+    e = prices[0]
 
-    for price in prices[1:]:
-        ema = alpha * price + (1 - alpha) * ema
+    for p in prices[1:]:
+        e = alpha * p + (1 - alpha) * e
 
-    return float(ema)
+    return e
 
 
-def calculate_macd(prices):
+def rsi(prices, period=14):
 
-    ema12 = calculate_ema(prices, 12)
-    ema26 = calculate_ema(prices, 26)
+    if len(prices) < period + 1:
+        return 50
 
-    return round(ema12 - ema26, 4)
+    gains = []
+    losses = []
 
+    for i in range(1, period):
+
+        diff = prices[-i] - prices[-i - 1]
+
+        if diff > 0:
+            gains.append(diff)
+        else:
+            losses.append(abs(diff))
+
+    avg_gain = np.mean(gains) if gains else 0.0001
+    avg_loss = np.mean(losses) if losses else 0.0001
+
+    rs = avg_gain / avg_loss
+
+    return round(100 - (100 / (1 + rs)), 2)
+
+
+def macd(prices):
+
+    return round(ema(prices, 12) - ema(prices, 26), 2)
 
 # =========================================================
 # PRICE ACTION
 # =========================================================
 
-def detect_trend(prices):
+def trend(prices):
 
-    if len(prices) < 30:
-        return "side"
+    fast = ema(prices, 12)
+    slow = ema(prices, 26)
 
-    ema_fast = calculate_ema(prices, 12)
-    ema_slow = calculate_ema(prices, 26)
-
-    if ema_fast > ema_slow:
+    if fast > slow:
         return "up"
 
-    if ema_fast < ema_slow:
+    if fast < slow:
         return "down"
 
     return "side"
 
 
-def detect_break_of_structure(prices):
+def bos(prices):
 
     if len(prices) < 10:
         return None
 
-    high = max(prices[-10:-1])
-    low = min(prices[-10:-1])
+    recent_high = max(prices[-10:-1])
+    recent_low = min(prices[-10:-1])
 
-    if prices[-1] > high:
-        return "bullish_bos"
+    if prices[-1] > recent_high:
+        return "bullish"
 
-    if prices[-1] < low:
-        return "bearish_bos"
+    if prices[-1] < recent_low:
+        return "bearish"
 
     return None
 
-
-def detect_liquidity_sweep(prices):
-
-    if len(prices) < 5:
-        return False
-
-    recent_high = max(prices[-5:-1])
-
-    if prices[-1] > recent_high:
-        return True
-
-    return False
-
-
 # =========================================================
-# WHALE DETECTION
+# WHALE DETECTOR
 # =========================================================
 
 def whale_activity(prices):
@@ -179,218 +210,284 @@ def whale_activity(prices):
     if len(prices) < 20:
         return False
 
-    recent_move = abs(prices[-1] - prices[-2])
+    moves = [
+        abs(prices[i] - prices[i - 1])
+        for i in range(1, len(prices))
+    ]
 
-    avg_move = np.mean([
-        abs(prices[i] - prices[i-1])
-        for i in range(1, len(prices)-1)
-    ])
+    avg_move = np.mean(moves[:-1])
 
-    if avg_move == 0:
-        return False
+    last_move = moves[-1]
 
-    if recent_move > avg_move * 3:
-        return True
-
-    return False
-
+    return last_move > avg_move * 3
 
 # =========================================================
-# AI BRAINS
+# ORDER BOOK AI
 # =========================================================
 
-def groq_fast_signal(indicators):
+def analyze_orderbook():
 
-    rsi = indicators["rsi"]
-    trend = indicators["trend"]
-    macd = indicators["macd"]
+    data = get_order_book()
 
-    if rsi < 30 and trend == "up" and macd > 0:
+    if not data:
+        return "neutral"
+
+    bids = data["bids"]
+    asks = data["asks"]
+
+    bid_volume = sum(float(b[1]) for b in bids)
+    ask_volume = sum(float(a[1]) for a in asks)
+
+    ratio = bid_volume / (ask_volume + 0.0001)
+
+    if ratio > 1.5:
+        return "bullish"
+
+    if ratio < 0.7:
+        return "bearish"
+
+    return "neutral"
+
+# =========================================================
+# SMART MONEY DETECTOR
+# =========================================================
+
+def smart_money_signal(prices):
+
+    if len(prices) < 30:
+        return None
+
+    volume_spike = whale_activity(prices)
+
+    structure = bos(prices)
+
+    if volume_spike and structure == "bullish":
         return "buy"
 
-    if rsi > 70 and trend == "down" and macd < 0:
+    if volume_spike and structure == "bearish":
+        return "sell"
+
+    return None
+
+# =========================================================
+# AI ENGINE
+# =========================================================
+
+def ai_signal(prices):
+
+    rrsi = rsi(prices)
+    mmacd = macd(prices)
+    ttrend = trend(prices)
+
+    orderbook = analyze_orderbook()
+
+    smart = smart_money_signal(prices)
+
+    if smart:
+        return smart
+
+    if rrsi < 30 and ttrend == "up" and orderbook == "bullish":
+        return "buy"
+
+    if rrsi > 70 and ttrend == "down" and orderbook == "bearish":
+        return "sell"
+
+    if mmacd > 0 and orderbook == "bullish":
+        return "buy"
+
+    if mmacd < 0 and orderbook == "bearish":
         return "sell"
 
     return "hold"
-
-
-def deepseek_trend(prices):
-
-    bos = detect_break_of_structure(prices)
-
-    if bos == "bullish_bos":
-        return "buy"
-
-    if bos == "bearish_bos":
-        return "sell"
-
-    return "hold"
-
-
-def ai_decision(prices):
-
-    indicators = {
-        "rsi": calculate_rsi(prices),
-        "trend": detect_trend(prices),
-        "macd": calculate_macd(prices)
-    }
-
-    try:
-
-        signal = groq_fast_signal(indicators)
-
-        log(f"GROQ SIGNAL {signal}")
-
-        return signal
-
-    except Exception as e:
-
-        log(f"GROQ FAILED {e}")
-
-        signal = deepseek_trend(prices)
-
-        log(f"DEEPSEEK SIGNAL {signal}")
-
-        return signal
-
 
 # =========================================================
 # RISK MANAGEMENT
 # =========================================================
 
-def position_size(balance, risk_percent, stop_loss_percent):
+def position_size(balance, risk=1, stoploss=0.5):
 
-    risk_amount = balance * (risk_percent / 100)
+    risk_amount = balance * (risk / 100)
 
-    position = risk_amount / stop_loss_percent
+    size = risk_amount / stoploss
 
-    return round(position, 4)
-
+    return round(size, 2)
 
 # =========================================================
 # MEMORY
 # =========================================================
 
-def load_memory():
+def load_trades():
 
-    try:
-        with open(MEMORY_FILE) as f:
-            return json.load(f)
-    except:
-        return []
+    with open(TRADES_FILE) as f:
+        return json.load(f)
 
 
 def save_trade(trade):
 
-    data = load_memory()
+    data = load_trades()
 
     data.append(trade)
 
-    with open(MEMORY_FILE, "w") as f:
+    with open(TRADES_FILE, "w") as f:
         json.dump(data, f, indent=4)
 
 
 def strategy_stats():
 
-    trades = load_memory()
+    trades = load_trades()
 
-    if len(trades) == 0:
-        return {"winrate":0}
+    if not trades:
+        return 0
 
     wins = 0
 
     for t in trades:
-        if t.get("profit",0) > 0:
+
+        if t["profit"] > 0:
             wins += 1
 
-    winrate = wins / len(trades) * 100
-
-    return {"winrate":round(winrate,2)}
-
+    return round((wins / len(trades)) * 100, 2)
 
 # =========================================================
 # TRADE ENGINE
 # =========================================================
 
-open_position = None
+position = None
 
+def open_trade(side, price, balance):
 
-def open_trade(signal, price, balance):
+    global position
 
-    global open_position
+    size = position_size(balance)
 
-    if signal not in ["buy","sell"]:
-        return
-
-    size = position_size(balance,1,0.5)
-
-    if signal == "buy":
+    if side == "buy":
 
         sl = price * 0.995
-        tp = price * 1.01
+        tp = price * 1.015
 
     else:
 
         sl = price * 1.005
-        tp = price * 0.99
+        tp = price * 0.985
 
-    open_position = {
-        "side":signal,
-        "entry":price,
-        "size":size,
-        "stop":sl,
-        "tp":tp
+    position = {
+        "side": side,
+        "entry": price,
+        "size": size,
+        "sl": sl,
+        "tp": tp
     }
 
-    log(f"OPEN {signal} {price}")
+    log(f"OPEN {side} @ {price}")
 
 
-def check_position(price):
+def check_trade(price):
 
-    global open_position
+    global position
 
-    if open_position is None:
+    if not position:
         return
 
-    side = open_position["side"]
-    entry = open_position["entry"]
-    size = open_position["size"]
-    sl = open_position["stop"]
-    tp = open_position["tp"]
+    side = position["side"]
+
+    entry = position["entry"]
+
+    size = position["size"]
+
+    sl = position["sl"]
+
+    tp = position["tp"]
 
     if side == "buy":
 
         if price <= sl or price >= tp:
 
-            profit = (price-entry)*size
+            profit = (price - entry) * size
 
-            close_trade(price,profit)
+            close_trade(price, profit)
 
     else:
 
         if price >= sl or price <= tp:
 
-            profit = (entry-price)*size
+            profit = (entry - price) * size
 
-            close_trade(price,profit)
+            close_trade(price, profit)
 
 
-def close_trade(price,profit):
+def close_trade(price, profit):
 
-    global open_position
+    global position
 
     log(f"CLOSE TRADE PROFIT {profit}")
 
     save_trade({
-        "entry":open_position["entry"],
-        "exit":price,
-        "side":open_position["side"],
-        "profit":profit,
-        "time":str(datetime.datetime.utcnow())
+        "side": position["side"],
+        "entry": position["entry"],
+        "exit": price,
+        "profit": profit,
+        "time": str(datetime.datetime.utcnow())
     })
 
-    open_position = None
+    position = None
 
+# =========================================================
+# BACKTEST ENGINE
+# =========================================================
+
+def backtest():
+
+    log("STARTING BACKTEST")
+
+    prices = get_historical_klines()
+
+    if len(prices) < 50:
+        log("NOT ENOUGH DATA")
+        return
+
+    wins = 0
+    losses = 0
+
+    for i in range(40, len(prices)):
+
+        sample = prices[:i]
+
+        signal = ai_signal(sample)
+
+        current = sample[-1]
+
+        future = prices[i]
+
+        if signal == "buy":
+
+            if future > current:
+                wins += 1
+            else:
+                losses += 1
+
+        elif signal == "sell":
+
+            if future < current:
+                wins += 1
+            else:
+                losses += 1
+
+    total = wins + losses
+
+    if total == 0:
+        accuracy = 0
+    else:
+        accuracy = round((wins / total) * 100, 2)
+
+    log(f"BACKTEST ACCURACY {accuracy}%")
+
+# =========================================================
+# NOBITEX PLACEHOLDER
+# =========================================================
+
+def send_nobitex_order(side, amount):
+
+    log(f"NOBITEX ORDER => {side} {amount}")
 
 # =========================================================
 # MAIN LOOP
@@ -398,51 +495,80 @@ def close_trade(price,profit):
 
 def run_bot():
 
-    prices=[]
+    prices = []
 
-    balance=10000
+    balance = START_BALANCE
 
-    log("WhaleMind AI Started")
+    log("WHALEMIND AI STARTED")
+
+    backtest()
 
     while True:
 
         try:
 
-            price=get_binance_price()
+            price = get_price()
 
-            if price is None:
+            if not price:
+
                 time.sleep(5)
+
                 continue
 
             prices.append(price)
 
-            if len(prices)>300:
+            if len(prices) > 300:
                 prices.pop(0)
 
-            if len(prices)<40:
-                log("Collecting data")
+            if len(prices) < 40:
+
+                log("COLLECTING DATA")
+
                 time.sleep(2)
+
                 continue
 
-            signal=ai_decision(prices)
+            signal = ai_signal(prices)
 
-            if whale_activity(prices):
-                log("WHALE ACTIVITY DETECTED")
+            whale = whale_activity(prices)
 
-            if open_position is None:
-                open_trade(signal,price,balance)
+            orderbook = analyze_orderbook()
 
-            check_position(price)
+            if whale:
+                log("WHALE DETECTED")
 
-            stats=strategy_stats()
+            if position is None:
+
+                if signal in ["buy", "sell"]:
+
+                    open_trade(signal, price, balance)
+
+            else:
+
+                check_trade(price)
+
+            winrate = strategy_stats()
 
             log(f"""
-PRICE {price}
-SIGNAL {signal}
-TREND {detect_trend(prices)}
-RSI {calculate_rsi(prices)}
-MACD {calculate_macd(prices)}
-WINRATE {stats['winrate']}%
+=================================
+PRICE: {price}
+
+SIGNAL: {signal}
+
+TREND: {trend(prices)}
+
+RSI: {rsi(prices)}
+
+MACD: {macd(prices)}
+
+ORDERBOOK: {orderbook}
+
+BOS: {bos(prices)}
+
+POSITION: {position}
+
+WINRATE: {winrate}%
+=================================
 """)
 
             time.sleep(5)
@@ -459,10 +585,10 @@ WINRATE {stats['winrate']}%
 
             time.sleep(5)
 
-
 # =========================================================
 # START
 # =========================================================
 
 if __name__ == "__main__":
+
     run_bot()
