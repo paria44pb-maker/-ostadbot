@@ -1,47 +1,47 @@
-# nobitex_client.py
-# ارتباط با API نوبیتکس
-
 import requests
 
 BASE_URL = "https://api.nobitex.ir"
+API_TOKEN = "YOUR_API_TOKEN"
 
+session = requests.Session()
+session.headers.update({
+    "Content-Type": "application/json",
+    "Authorization": f"Token {API_TOKEN}"
+})
 
-class NobitexClient:
-
-    def __init__(self, api_key):
-        self.api_key = api_key
-
-    def get_wallet(self):
-        url = f"{BASE_URL}/users/wallets/list"
-
-        headers = {
-            "Authorization": f"Token {self.api_key}"
-        }
-
-        r = requests.get(url, headers=headers)
-
+def safe_get(endpoint):
+    try:
+        r = session.get(BASE_URL + endpoint, timeout=10)
+        r.raise_for_status()
         return r.json()
+    except Exception as e:
+        print("GET ERROR:", e)
+        return None
 
-    def place_order(self, market, side, price, amount):
-        """
-        market: BTCUSDT
-        side: buy or sell
-        """
 
-        url = f"{BASE_URL}/market/orders/add"
-
-        headers = {
-            "Authorization": f"Token {self.api_key}"
-        }
-
-        data = {
-            "type": side,
-            "srcCurrency": market[:3],
-            "dstCurrency": market[3:],
-            "amount": str(amount),
-            "price": str(price)
-        }
-
-        r = requests.post(url, json=data, headers=headers)
-
+def safe_post(endpoint, payload):
+    try:
+        r = session.post(BASE_URL + endpoint, json=payload, timeout=10)
+        r.raise_for_status()
         return r.json()
+    except Exception as e:
+        print("POST ERROR:", e)
+        return None
+
+
+def execute_trade(side, amount, symbol="btc-usdt", order_type="market", price=None):
+
+    src, dst = symbol.split("-")
+
+    payload = {
+        "type": order_type,
+        "side": side,
+        "amount": str(amount),
+        "srcCurrency": src,
+        "dstCurrency": dst
+    }
+
+    if order_type == "limit":
+        payload["price"] = str(price)
+
+    return safe_post("/market/orders/add", payload)
