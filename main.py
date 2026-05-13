@@ -1,6 +1,3 @@
-# main.py
-# WhaleMind AI - Full Integrated Version
-
 import requests
 import datetime
 import json
@@ -12,12 +9,11 @@ import numpy as np
 # CONFIG
 # =========================================================
 
+BINANCE_API = "https://api.binance.com/api/v3/ticker/price"
+DEFAULT_SYMBOL = "BTCUSDT"
+
 MEMORY_DIR = "memory"
 MEMORY_FILE = f"{MEMORY_DIR}/trades.json"
-
-BINANCE_API = "https://api.binance.com/api/v3/ticker/price"
-
-DEFAULT_SYMBOL = "BTCUSDT"
 
 # =========================================================
 # STARTUP
@@ -43,11 +39,11 @@ def log(message):
     print(log_message)
 
     try:
-        with open("whalemind.log", "a", encoding="utf-8") as f:
+        with open("whalemind.log", "a") as f:
             f.write(log_message + "\n")
+    except:
+        pass
 
-    except Exception as e:
-        print("Log Error:", e)
 
 # =========================================================
 # MARKET DATA
@@ -57,70 +53,28 @@ def get_binance_price(symbol=DEFAULT_SYMBOL):
 
     try:
 
-        response = requests.get(
+        r = requests.get(
             BINANCE_API,
             params={"symbol": symbol},
             timeout=5
         )
 
-        response.raise_for_status()
+        data = r.json()
 
-        data = response.json()
-
-        return {
-            "symbol": symbol,
-            "price": float(data["price"])
-        }
+        return float(data["price"])
 
     except Exception as e:
 
-        log(f"Binance Error: {e}")
+        log(f"Binance Error {e}")
 
         return None
 
-# =========================================================
-# NEWS ANALYSIS
-# =========================================================
-
-def analyze_news(news_text):
-
-    positive_words = [
-        "ETF",
-        "Bullish",
-        "Adoption",
-        "Partnership",
-        "Pump"
-    ]
-
-    negative_words = [
-        "Hack",
-        "Ban",
-        "Crash",
-        "Dump",
-        "Liquidation"
-    ]
-
-    score = 0
-
-    for word in positive_words:
-
-        if word.lower() in news_text.lower():
-            score += 1
-
-    for word in negative_words:
-
-        if word.lower() in news_text.lower():
-            score -= 1
-
-    return score
 
 # =========================================================
 # INDICATORS
 # =========================================================
 
 def calculate_rsi(prices, period=14):
-
-    prices = np.array(prices)
 
     if len(prices) < period:
         return 50
@@ -147,9 +101,6 @@ def calculate_ema(prices, period=20):
 
     prices = np.array(prices)
 
-    if len(prices) < period:
-        return float(np.mean(prices))
-
     alpha = 2 / (period + 1)
 
     ema = prices[0]
@@ -157,7 +108,7 @@ def calculate_ema(prices, period=20):
     for price in prices[1:]:
         ema = alpha * price + (1 - alpha) * ema
 
-    return round(float(ema), 2)
+    return float(ema)
 
 
 def calculate_macd(prices):
@@ -165,9 +116,8 @@ def calculate_macd(prices):
     ema12 = calculate_ema(prices, 12)
     ema26 = calculate_ema(prices, 26)
 
-    macd = ema12 - ema26
+    return round(ema12 - ema26, 4)
 
-    return round(macd, 4)
 
 # =========================================================
 # PRICE ACTION
@@ -175,7 +125,7 @@ def calculate_macd(prices):
 
 def detect_trend(prices):
 
-    if len(prices) < 20:
+    if len(prices) < 30:
         return "side"
 
     ema_fast = calculate_ema(prices, 12)
@@ -184,10 +134,27 @@ def detect_trend(prices):
     if ema_fast > ema_slow:
         return "up"
 
-    elif ema_fast < ema_slow:
+    if ema_fast < ema_slow:
         return "down"
 
     return "side"
+
+
+def detect_break_of_structure(prices):
+
+    if len(prices) < 10:
+        return None
+
+    high = max(prices[-10:-1])
+    low = min(prices[-10:-1])
+
+    if prices[-1] > high:
+        return "bullish_bos"
+
+    if prices[-1] < low:
+        return "bearish_bos"
+
+    return None
 
 
 def detect_liquidity_sweep(prices):
@@ -203,55 +170,40 @@ def detect_liquidity_sweep(prices):
     return False
 
 
-def detect_break_of_structure(prices):
-
-    if len(prices) < 10:
-        return None
-
-    recent_high = max(prices[-10:-1])
-    recent_low = min(prices[-10:-1])
-
-    if prices[-1] > recent_high:
-        return "bullish_bos"
-
-    if prices[-1] < recent_low:
-        return "bearish_bos"
-
-    return None
-
 # =========================================================
 # WHALE DETECTION
 # =========================================================
 
 def whale_activity(prices):
 
-    if len(prices) < 15:
+    if len(prices) < 20:
         return False
 
     recent_move = abs(prices[-1] - prices[-2])
 
-    average_move = np.mean([
-        abs(prices[i] - prices[i - 1])
-        for i in range(1, len(prices) - 1)
+    avg_move = np.mean([
+        abs(prices[i] - prices[i-1])
+        for i in range(1, len(prices)-1)
     ])
 
-    if average_move == 0:
+    if avg_move == 0:
         return False
 
-    if recent_move > average_move * 3:
+    if recent_move > avg_move * 3:
         return True
 
     return False
+
 
 # =========================================================
 # AI BRAINS
 # =========================================================
 
-def groq_fast_signal(price, indicators):
+def groq_fast_signal(indicators):
 
-    rsi = indicators.get("rsi", 50)
-    trend = indicators.get("trend", "side")
-    macd = indicators.get("macd", 0)
+    rsi = indicators["rsi"]
+    trend = indicators["trend"]
+    macd = indicators["macd"]
 
     if rsi < 30 and trend == "up" and macd > 0:
         return "buy"
@@ -262,42 +214,51 @@ def groq_fast_signal(price, indicators):
     return "hold"
 
 
-def deepseek_strategic_trend(candles, news_sentiment):
+def deepseek_trend(prices):
 
-    score = 0
-
-    closes = [c["close"] for c in candles]
-
-    if news_sentiment > 0:
-        score += 1
-
-    if closes[-1] > closes[0]:
-        score += 1
-
-    bos = detect_break_of_structure(closes)
+    bos = detect_break_of_structure(prices)
 
     if bos == "bullish_bos":
-        score += 1
+        return "buy"
 
-    if detect_liquidity_sweep(closes):
-        score -= 1
+    if bos == "bearish_bos":
+        return "sell"
 
-    if score >= 2:
-        return "up"
+    return "hold"
 
-    if score <= 0:
-        return "down"
 
-    return "side"
+def ai_decision(prices):
+
+    indicators = {
+        "rsi": calculate_rsi(prices),
+        "trend": detect_trend(prices),
+        "macd": calculate_macd(prices)
+    }
+
+    try:
+
+        signal = groq_fast_signal(indicators)
+
+        log(f"GROQ SIGNAL {signal}")
+
+        return signal
+
+    except Exception as e:
+
+        log(f"GROQ FAILED {e}")
+
+        signal = deepseek_trend(prices)
+
+        log(f"DEEPSEEK SIGNAL {signal}")
+
+        return signal
+
 
 # =========================================================
 # RISK MANAGEMENT
 # =========================================================
 
 def position_size(balance, risk_percent, stop_loss_percent):
-
-    if stop_loss_percent <= 0:
-        return 0
 
     risk_amount = balance * (risk_percent / 100)
 
@@ -306,45 +267,27 @@ def position_size(balance, risk_percent, stop_loss_percent):
     return round(position, 4)
 
 
-def kelly_criterion(win_rate, risk_reward):
-
-    if risk_reward <= 0:
-        return 0
-
-    kelly = win_rate - ((1 - win_rate) / risk_reward)
-
-    return max(kelly, 0)
-
 # =========================================================
-# MEMORY SYSTEM
+# MEMORY
 # =========================================================
 
 def load_memory():
 
     try:
-
-        with open(MEMORY_FILE, "r") as f:
+        with open(MEMORY_FILE) as f:
             return json.load(f)
-
-    except Exception:
+    except:
         return []
 
 
 def save_trade(trade):
 
-    memory = load_memory()
+    data = load_memory()
 
-    memory.append(trade)
+    data.append(trade)
 
     with open(MEMORY_FILE, "w") as f:
-        json.dump(memory, f, indent=4)
-
-
-def last_trades(limit=5):
-
-    memory = load_memory()
-
-    return memory[-limit:]
+        json.dump(data, f, indent=4)
 
 
 def strategy_stats():
@@ -352,97 +295,112 @@ def strategy_stats():
     trades = load_memory()
 
     if len(trades) == 0:
-
-        return {
-            "total": 0,
-            "wins": 0,
-            "losses": 0,
-            "winrate": 0
-        }
+        return {"winrate":0}
 
     wins = 0
-    losses = 0
 
-    for trade in trades:
-
-        if trade.get("profit", 0) > 0:
+    for t in trades:
+        if t.get("profit",0) > 0:
             wins += 1
-        else:
-            losses += 1
 
-    total = wins + losses
+    winrate = wins / len(trades) * 100
 
-    winrate = (wins / total) * 100
+    return {"winrate":round(winrate,2)}
 
-    return {
-        "total": total,
-        "wins": wins,
-        "losses": losses,
-        "winrate": round(winrate, 2)
+
+# =========================================================
+# TRADE ENGINE
+# =========================================================
+
+open_position = None
+
+
+def open_trade(signal, price, balance):
+
+    global open_position
+
+    if signal not in ["buy","sell"]:
+        return
+
+    size = position_size(balance,1,0.5)
+
+    if signal == "buy":
+
+        sl = price * 0.995
+        tp = price * 1.01
+
+    else:
+
+        sl = price * 1.005
+        tp = price * 0.99
+
+    open_position = {
+        "side":signal,
+        "entry":price,
+        "size":size,
+        "stop":sl,
+        "tp":tp
     }
 
-# =========================================================
-# AI DECISION ENGINE
-# =========================================================
+    log(f"OPEN {signal} {price}")
 
-def ai_decision(price, prices):
 
-    indicators = {
-        "rsi": calculate_rsi(prices),
-        "trend": detect_trend(prices),
-        "macd": calculate_macd(prices)
-    }
+def check_position(price):
 
-    signal = None
+    global open_position
 
-    try:
+    if open_position is None:
+        return
 
-        signal = groq_fast_signal(
-            price,
-            indicators
-        )
+    side = open_position["side"]
+    entry = open_position["entry"]
+    size = open_position["size"]
+    sl = open_position["stop"]
+    tp = open_position["tp"]
 
-        log(f"GROQ SIGNAL => {signal}")
+    if side == "buy":
 
-    except Exception as e:
+        if price <= sl or price >= tp:
 
-        log(f"Groq Failed => {e}")
+            profit = (price-entry)*size
 
-        try:
+            close_trade(price,profit)
 
-            trend = deepseek_strategic_trend(
-                [{"close": p} for p in prices],
-                0
-            )
+    else:
 
-            if trend == "up":
-                signal = "buy"
+        if price >= sl or price <= tp:
 
-            elif trend == "down":
-                signal = "sell"
+            profit = (entry-price)*size
 
-            else:
-                signal = "hold"
+            close_trade(price,profit)
 
-            log(f"DEEPSEEK SIGNAL => {signal}")
 
-        except Exception as e2:
+def close_trade(price,profit):
 
-            log(f"DeepSeek Failed => {e2}")
+    global open_position
 
-            signal = "hold"
+    log(f"CLOSE TRADE PROFIT {profit}")
 
-    return signal
+    save_trade({
+        "entry":open_position["entry"],
+        "exit":price,
+        "side":open_position["side"],
+        "profit":profit,
+        "time":str(datetime.datetime.utcnow())
+    })
+
+    open_position = None
+
 
 # =========================================================
-# MAIN BOT LOOP
+# MAIN LOOP
 # =========================================================
 
 def run_bot():
 
-    prices = []
+    prices=[]
 
-    balance = 10000
+    balance=10000
 
     log("WhaleMind AI Started")
 
@@ -450,79 +408,61 @@ def run_bot():
 
         try:
 
-            market = get_binance_price(DEFAULT_SYMBOL)
+            price=get_binance_price()
 
-            if not market:
+            if price is None:
                 time.sleep(5)
                 continue
 
-            price = market["price"]
-
             prices.append(price)
 
-            if len(prices) > 300:
+            if len(prices)>300:
                 prices.pop(0)
 
-            if len(prices) < 30:
-
-                log("Collecting market data...")
-
+            if len(prices)<40:
+                log("Collecting data")
                 time.sleep(2)
-
                 continue
 
-            signal = ai_decision(price, prices)
+            signal=ai_decision(prices)
 
-            whale = whale_activity(prices)
+            if whale_activity(prices):
+                log("WHALE ACTIVITY DETECTED")
 
-            if whale:
-                log("🐋 Whale Activity Detected")
+            if open_position is None:
+                open_trade(signal,price,balance)
 
-            position = position_size(
-                balance=balance,
-                risk_percent=1,
-                stop_loss_percent=0.5
-            )
+            check_position(price)
 
-            stats = strategy_stats()
+            stats=strategy_stats()
 
-            log(
-                f"""
-PRICE: {price}
-SIGNAL: {signal}
-TREND: {detect_trend(prices)}
-RSI: {calculate_rsi(prices)}
-MACD: {calculate_macd(prices)}
-POSITION SIZE: {position}
-WINRATE: {stats['winrate']}%
-                """
-            )
-
-            save_trade({
-                "timestamp": str(datetime.datetime.utcnow()),
-                "price": price,
-                "signal": signal,
-                "profit": 0
-            })
+            log(f"""
+PRICE {price}
+SIGNAL {signal}
+TREND {detect_trend(prices)}
+RSI {calculate_rsi(prices)}
+MACD {calculate_macd(prices)}
+WINRATE {stats['winrate']}%
+""")
 
             time.sleep(5)
 
         except KeyboardInterrupt:
 
-            log("Bot stopped manually")
+            log("BOT STOPPED")
 
             break
 
         except Exception as e:
 
-            log(f"MAIN LOOP ERROR => {e}")
+            log(f"MAIN ERROR {e}")
 
             time.sleep(5)
+
 
 # =========================================================
 # START
 # =========================================================
 
 if __name__ == "__main__":
-
     run_bot()
