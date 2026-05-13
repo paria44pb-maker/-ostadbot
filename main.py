@@ -8,58 +8,43 @@ from fastapi import FastAPI, Request
 from dotenv import load_dotenv
 
 # =========================
-# LOAD ENV
+# بارگذاری متغیرهای محیطی
 # =========================
-
 load_dotenv()
 
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 NOBITEX_API_KEY = os.getenv("NOBITEX_API_KEY")
 
 if not TELEGRAM_BOT_TOKEN:
-    raise ValueError("TELEGRAM_BOT_TOKEN not found")
+    raise ValueError("متغیر محیطی TELEGRAM_BOT_TOKEN تعریف نشده است")
 
 if not NOBITEX_API_KEY:
-    raise ValueError("NOBITEX_API_KEY not found")
+    raise ValueError("متغیر محیطی NOBITEX_API_KEY تعریف نشده است")
 
 # =========================
-# APP
+# پیکربندی FastAPI و Logger
 # =========================
-
 app = FastAPI()
-
-# =========================
-# LOGGING
-# =========================
 
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s | %(levelname)s | %(message)s"
 )
-
 logger = logging.getLogger(__name__)
 
 # =========================
-# TELEGRAM
+# ثابت‌ها و آدرس‌ها
 # =========================
-
 TELEGRAM_API = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}"
-
-# =========================
-# NOBITEX
-# =========================
-
 NOBITEX_BASE_URL = "https://api.nobitex.ir"
-
 NOBITEX_HEADERS = {
     "Authorization": f"Token {NOBITEX_API_KEY}",
     "Content-Type": "application/json"
 }
 
 # =========================
-# DATABASE
+# دیتابیس SQLite
 # =========================
-
 DB_NAME = "bot.db"
 
 conn = sqlite3.connect(DB_NAME, check_same_thread=False)
@@ -88,30 +73,25 @@ CREATE TABLE IF NOT EXISTS trades (
 conn.commit()
 
 # =========================
-# TELEGRAM SEND MESSAGE
+# ارسال پیام به تلگرام
 # =========================
-
 def send_message(chat_id, text):
-
     url = f"{TELEGRAM_API}/sendMessage"
-
     payload = {
         "chat_id": chat_id,
         "text": text,
         "parse_mode": "Markdown"
     }
-
-    response = requests.post(url, json=payload)
-
-    if response.status_code != 200:
-        logger.error(f"Telegram send error: {response.text}")
+    try:
+        r = requests.post(url, json=payload)
+        r.raise_for_status()
+    except requests.exceptions.RequestException as e:
+        logger.error(f"خطا در ارسال پیام به تلگرام: {e}")
 
 # =========================
-# SAVE USER
+# ذخیره کاربر در دیتابیس
 # =========================
-
 def save_user(chat_id, username, first_name):
-
     cursor.execute("""
     INSERT OR IGNORE INTO users
     (chat_id, username, first_name, joined_at)
@@ -122,106 +102,56 @@ def save_user(chat_id, username, first_name):
         first_name,
         datetime.utcnow().isoformat()
     ))
-
     conn.commit()
 
 # =========================
-# GET MARKET PRICE
+# دریافت قیمت لحظه‌ای از نوبیتکس
 # =========================
-
 def get_market_price(symbol="BTCUSDT"):
-
     try:
-
         src = symbol.replace("USDT", "").lower()
-
         url = f"{NOBITEX_BASE_URL}/market/stats"
-
-        payload = {
-            "srcCurrency": src,
-            "dstCurrency": "usdt"
-        }
-
-        response = requests.post(
-            url,
-            json=payload
-        )
-
+        response = requests.post(url, json={"srcCurrency": src, "dstCurrency": "usdt"})
+        response.raise_for_status()
         data = response.json()
-
         stats = data.get("stats", {})
-
         pair = f"{src}-usdt"
-
         if pair not in stats:
             return None
-
-        latest = stats[pair]["latest"]
-
-        return latest
-
+        return stats[pair]["latest"]
     except Exception as e:
-        logger.error(f"Price error: {e}")
+        logger.error(f"خطا در دریافت قیمت: {e}")
         return None
 
 # =========================
-# GET BALANCE
+# دریافت موجودی کیف پول‌ها
 # =========================
-
 def get_balance():
-
     try:
-
         url = f"{NOBITEX_BASE_URL}/users/wallets/list"
-
-        response = requests.get(
-            url,
-            headers=NOBITEX_HEADERS
-        )
-
+        response = requests.get(url, headers=NOBITEX_HEADERS)
+        response.raise_for_status()
         data = response.json()
-
-        if response.status_code != 200:
-            logger.error(data)
-            return "خطا در دریافت موجودی"
-
         wallets = data.get("wallets", [])
-
-        result = []
-
+        balances = []
         for wallet in wallets:
-
-            balance = float(wallet["balance"])
-
+            balance = float(wallet.get("balance", 0))
             if balance > 0:
-
-                currency = wallet["currency"].upper()
-
-                result.append(
-                    f"{currency}: {balance}"
-                )
-
-        if not result:
-            return "موجودی خالی است"
-
-        return "\n".join(result)
-
+                balances.append(f"{wallet.get('currency').upper()}: {balance}")
+        if not balances:
+            return "موجودی کیف پول‌ها خالی است."
+        return "\n".join(balances)
     except Exception as e:
-        logger.error(f"Balance error: {e}")
-        return "خطا در دریافت موجودی"
+        logger.error(f"خطا در دریافت موجودی: {e}")
+        return "خطا در دریافت موجودی کیف پول‌ها."
 
 # =========================
-# PLACE ORDER
+# ثبت سفارش خرید/فروش
 # =========================
-
 def place_order(side, symbol, amount):
-
     try:
-
         src = symbol.replace("USDT", "").lower()
-
         url = f"{NOBITEX_BASE_URL}/market/orders/add"
-
         payload = {
             "type": side,
             "srcCurrency": src,
@@ -229,281 +159,150 @@ def place_order(side, symbol, amount):
             "amount": str(amount),
             "execution": "market"
         }
-
-        response = requests.post(
-            url,
-            headers=NOBITEX_HEADERS,
-            json=payload
-        )
-
-        data = response.json()
-
-        logger.info(data)
-
-        return data
-
+        response = requests.post(url, headers=NOBITEX_HEADERS, json=payload)
+        response.raise_for_status()
+        return response.json()
     except Exception as e:
-        logger.error(f"Order error: {e}")
+        logger.error(f"خطا در ثبت سفارش: {e}")
         return None
 
 # =========================
-# AI ANALYSIS
+# تحلیل ساده AI بازار
 # =========================
-
 def ai_analysis(symbol="BTCUSDT"):
-
     price = get_market_price(symbol)
-
     if not price:
-        return "تحلیل در دسترس نیست"
-
+        return "تحلیل بازار در دسترس نیست."
     price = float(price)
-
     if price > 100000:
-        signal = "BUY 🚀"
+        signal = "خرید پیشنهادی 🚀"
     else:
-        signal = "HOLD ⏳"
-
+        signal = "نگهداری ⏳"
     return f"""
-📊 AI Market Analysis
+📊 تحلیل هوشمند بازار
 
-Symbol: {symbol}
-
-Current Price: {price}
-
-Signal: {signal}
-
-Risk Level: Medium
+نماد: {symbol}
+قیمت فعلی: {price}
+سیگنال: {signal}
+سطح ریسک: متوسط
 """
 
 # =========================
-# TRADE COMMAND
+# پردازش دستورات خرید و فروش
 # =========================
-
 def handle_trade(text, side, chat_id):
-
     parts = text.split()
-
     if len(parts) != 3:
-        return f"""
-فرمت صحیح:
-
-/{side} BTCUSDT 0.001
-"""
-
-    _, symbol, amount_text = parts
-
+        return f"فرمت درست:\n/{side} BTCUSDT 0.001"
+    _, symbol, amount_str = parts
     try:
-        amount = float(amount_text)
-
-    except:
-        return "مقدار وارد شده نامعتبر است"
-
+        amount = float(amount_str)
+    except ValueError:
+        return "مقدار وارد شده معتبر نیست."
     result = place_order(side, symbol, amount)
-
     if not result:
-        return "خطا در ثبت سفارش"
-
+        return "خطا در ثبت سفارش."
     cursor.execute("""
-    INSERT INTO trades
-    (chat_id, side, symbol, amount, created_at)
+    INSERT INTO trades (chat_id, side, symbol, amount, created_at)
     VALUES (?, ?, ?, ?, ?)
-    """, (
-        chat_id,
-        side,
-        symbol,
-        amount,
-        datetime.utcnow().isoformat()
-    ))
-
+    """, (chat_id, side, symbol, amount, datetime.utcnow().isoformat()))
     conn.commit()
-
     return f"""
-✅ سفارش ثبت شد
+✅ سفارش شما ثبت شد
 
-Type: {side.upper()}
-Symbol: {symbol}
-Amount: {amount}
+نوع سفارش: {side.upper()}
+نماد: {symbol}
+مقدار: {amount}
 """
 
 # =========================
-# COMMAND HANDLER
+# مدیریت دستورات ربات
 # =========================
-
 def handle_command(text, chat_id):
-
     text = text.strip()
-
-    # START
-
     if text == "/start":
-
         return """
-🤖 ربات ترید هوشمند فعال شد
+🎉 ربات هوشمند ترید راه‌اندازی شد.
 
-دستورات:
-
-/balance
-/price BTCUSDT
-/buy BTCUSDT 0.001
-/sell BTCUSDT 0.001
-/ai BTCUSDT
-/help
+دستورات قابل استفاده:
+/balance - نمایش موجودی کیف پول
+/price SYMBOL - قیمت لحظه‌ای نماد (مثلاً /price BTCUSDT)
+/buy SYMBOL AMOUNT - خرید
+/sell SYMBOL AMOUNT - فروش
+/ai SYMBOL - تحلیل هوشمند بازار
+/help - راهنما
 """
-
-    # HELP
-
     elif text == "/help":
-
         return """
-📚 راهنما
+راهنما:
 
-/balance
-نمایش موجودی
-
-/price BTCUSDT
-قیمت لحظه‌ای
-
-/buy BTCUSDT 0.001
-خرید
-
-/sell BTCUSDT 0.001
-فروش
-
-/ai BTCUSDT
-تحلیل هوشمند بازار
+/balance - مشاهده موجودی کیف پول
+/price SYMBOL - دریافت قیمت لحظه‌ای نماد
+/buy SYMBOL AMOUNT - ثبت سفارش خرید
+/sell SYMBOL AMOUNT - ثبت سفارش فروش
+/ai SYMBOL - تحلیل هوشمند بازار
 """
-
-    # BALANCE
-
     elif text == "/balance":
-
         return get_balance()
-
-    # PRICE
-
     elif text.startswith("/price"):
-
         parts = text.split()
-
         if len(parts) != 2:
-            return "/price BTCUSDT"
-
+            return "فرمت دستور:\n/price BTCUSDT"
         symbol = parts[1]
-
         price = get_market_price(symbol)
-
         if not price:
-            return "قیمت دریافت نشد"
-
-        return f"""
-💰 Price
-
-Symbol: {symbol}
-
-Price: {price} USDT
-"""
-
-    # BUY
-
+            return "قیمت دریافت نشد."
+        return f"💰 قیمت {symbol}: {price} USDT"
     elif text.startswith("/buy"):
-
         return handle_trade(text, "buy", chat_id)
-
-    # SELL
-
     elif text.startswith("/sell"):
-
         return handle_trade(text, "sell", chat_id)
-
-    # AI
-
     elif text.startswith("/ai"):
-
         parts = text.split()
-
         if len(parts) != 2:
-            return "/ai BTCUSDT"
-
+            return "فرمت دستور:\n/ai BTCUSDT"
         symbol = parts[1]
-
         return ai_analysis(symbol)
-
-    # UNKNOWN
-
     else:
-
-        return "دستور ناشناخته است"
+        return "دستور ناشناخته است."
 
 # =========================
-# WEBHOOK
+# مسیر Webhook تلگرام
 # =========================
-
 @app.post("/telegram/webhook")
 async def telegram_webhook(request: Request):
-
     try:
-
         data = await request.json()
-
         logger.info(data)
-
         message = data.get("message")
-
         if not message:
             return {"ok": True}
 
         chat = message.get("chat", {})
-
         chat_id = chat.get("id")
-
         text = message.get("text", "")
-
         username = chat.get("username", "")
-
         first_name = chat.get("first_name", "")
 
-        logger.info(
-            f"Message from {chat_id}: {text}"
-        )
+        logger.info(f"پیام از {chat_id}: {text}")
 
-        # SAVE USER
+        save_user(chat_id, username, first_name)
 
-        save_user(
-            chat_id,
-            username,
-            first_name
-        )
+        response_text = handle_command(text, chat_id)
 
-        # HANDLE COMMAND
-
-        response = handle_command(
-            text,
-            chat_id
-        )
-
-        # SEND MESSAGE
-
-        send_message(
-            chat_id,
-            response
-        )
+        send_message(chat_id, response_text)
 
         return {"ok": True}
 
     except Exception as e:
-
-        logger.error(f"Webhook error: {e}")
-
+        logger.error(f"خطا در webhook: {e}")
         return {"ok": False}
 
 # =========================
-# ROOT
+# مسیر ریشه برای مانیتورینگ
 # =========================
-
 @app.get("/")
 async def root():
-
     return {
         "status": "running",
         "bot": "active",
