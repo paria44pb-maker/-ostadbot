@@ -1,32 +1,25 @@
-def ask_groq(user_message):
-    if not GROQ_API_KEY:
-        return "❌ خطا: متغیر GROQ_API_KEY تنظیم نشده است."
+import os
+from groq import Groq
 
-    if not isinstance(user_message, str):
-        # اگر رشته نیست، به رشته تبدیلش کن
-        user_message = str(user_message)
+client = Groq(
+    api_key=os.getenv("GROQ_API_KEY")
+)
 
-    headers = {
-        "Content-Type": "application/json",
-        "Authorization": f"Bearer {GROQ_API_KEY}",
-    }
+MODEL_NAME = "llama-3.1-8b-instant"
+print(f"✅ USING GROQ MODEL: {MODEL_NAME}")
 
-    payload = {
-        "model": MODEL_NAME,
-        "messages": [
-            {"role": "user", "content": user_message}
-        ],
-        "temperature": 0.7
-    }
 
+def ask_groq(messages):
     try:
-        response = requests.post(GROQ_URL, json=payload, headers=headers, timeout=20)
-        data = response.json()
+        completion = client.chat.completions.create(
+            model=MODEL_NAME,
+            messages=messages,
+            temperature=0.7,
+            max_tokens=1024
+        )
 
-        if "choices" not in data:
-            return f"❌ خطای Groq API: پاسخ نامناسب:\n{data}"
-
-        return data["choices"][0]["message"]["content"]
+        return completion.choices[0].message.content.strip()
 
     except Exception as e:
-        return f"❌ خطا در اتصال به Groq: {e}"
+        print(f"❌ GROQ ERROR: {e}")
+        return "❌ در ارتباط با مدل هوش مصنوعی خطایی رخ داد."
