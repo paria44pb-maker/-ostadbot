@@ -1,43 +1,34 @@
 import os
 import requests
-import json
 
-def call_groq(prompt: str):
-    api_key = os.getenv("GROQ_API_KEY")
-    if not api_key:
-        print("❌ متغیر محیطی GROQ_API_KEY تنظیم نشده!")
-        return
+API_KEY = os.getenv("GROQ_API_KEY")
 
-    url = "https://api.groq.com/openai/v1/chat/completions"
+if not API_KEY:
+    print("GROQ_API_KEY تنظیم نشده")
+    exit()
 
-    headers = {
-        "Authorization": f"Bearer {api_key}",
-        "Content-Type": "application/json",
-    }
+url = "https://api.groq.com/openai/v1/chat/completions"
 
-    payload = {
-        "model": "mixtral-8x7b-32768",
-        "messages": [
-            {"role": "user", "content": prompt}
-        ],
-        "temperature": 0.3
-    }
+headers = {
+    "Authorization": f"Bearer {API_KEY}",
+    "Content-Type": "application/json"
+}
 
-    try:
-        res = requests.post(url, headers=headers, json=payload, timeout=25)
-        print("🔵 وضعیت پاسخ:", res.status_code)
-        print("🔵 پاسخ کامل:", res.text)
+data = {
+    "model": "llama3-8b-8192",
+    "messages": [
+        {
+            "role": "user",
+            "content": "سلام"
+        }
+    ]
+}
 
-        if res.status_code == 200:
-            data = res.json()
-            answer = data["choices"][0]["message"]["content"]
-            print("\n🤖 پاسخ هوش مصنوعی:\n", answer)
+try:
+    response = requests.post(url, headers=headers, json=data)
 
-    except Exception as e:
-        print("❌ خطا در درخواست:", repr(e))
+    print("Status:", response.status_code)
+    print(response.text)
 
-
-if __name__ == "__main__":
-    print("=== شروع تست اتصال به Groq n")
-    call_groq("سلام. لطفا ثابت کن که اتصال برقرار است.")
-    print("\n=== پایان تست ===")
+except Exception as e:
+    print("Error:", e)
