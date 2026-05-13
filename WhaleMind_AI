@@ -1,7 +1,0 @@
-WhaleMind_AI/
-│── brain/
-│── data/
-│── analysis/
-│── execution/
-│── utils/
-└── main.py
