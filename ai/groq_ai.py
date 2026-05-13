@@ -6,14 +6,21 @@ GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 
 GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
 
-# مدل پیشنهادی و فعال
-MODEL_NAME = "llama-3.1-8b-instant"
+# مدل‌های قابل تنظیم
+FAST_MODEL = "llama-3.1-8b-instant"
+STRONG_MODEL = "llama-3.1-70b-versatile"
 
 
-def ask_groq(user_message: str):
+def ask_groq(user_message: str, strong: bool = False):
+    """
+    strong = True  →  مدل 70B برای پاسخ‌های قوی و طولانی
+    strong = False →  مدل سریع 8B
+    """
 
     if not GROQ_API_KEY:
-        return "❌ خطا: کلید GROQ_API_KEY تنظیم نشده است."
+        return "❌ خطا: متغیر GROQ_API_KEY تنظیم نشده است."
+
+    model_to_use = STRONG_MODEL if strong else FAST_MODEL
 
     headers = {
         "Content-Type": "application/json",
@@ -21,7 +28,7 @@ def ask_groq(user_message: str):
     }
 
     payload = {
-        "model": MODEL_NAME,
+        "model": model_to_use,
         "messages": [
             {"role": "user", "content": user_message}
         ],
@@ -29,7 +36,13 @@ def ask_groq(user_message: str):
     }
 
     try:
-        response = requests.post(GROQ_URL, json=payload, headers=headers, timeout=15)
+        response = requests.post(
+            GROQ_URL,
+            json=payload,
+            headers=headers,
+            timeout=20
+        )
+
         data = response.json()
 
         return data["choices"][0]["message"]["content"]
