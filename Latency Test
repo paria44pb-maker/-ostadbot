@@ -1,0 +1,14 @@
+import time
+from groq import Groq
+
+client = Groq(api_key="YOUR_API_KEY")
+
+start = time.time()
+response = client.chat.completions.create(
+    model="llama-3.1-70b-versatile",
+    messages=[{"role": "user", "content": "Hello!"}]
+)
+end = time.time()
+
+print("Latency:", end - start, "seconds")
+print("Output:", response.choices[0].message["content"])
