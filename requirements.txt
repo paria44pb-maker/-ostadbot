@@ -1,7 +1,0 @@
-fastapi
-uvicorn
-python-telegram-bot==20.*
-python-dotenv
-requests
-pandas
-numpy
