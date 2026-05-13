@@ -4,7 +4,7 @@ import requests
 API_KEY = os.getenv("GROQ_API_KEY")
 
 if not API_KEY:
-    print("GROQ_API_KEY تنظیم نشده")
+    print("❌ GROQ_API_KEY تنظیم نشده")
     exit()
 
 url = "https://api.groq.com/openai/v1/chat/completions"
@@ -15,20 +15,15 @@ headers = {
 }
 
 data = {
-    "model": "llama3-8b-8192",
+    "model": "llama-3.1-8b-instant",
     "messages": [
-        {
-            "role": "user",
-            "content": "سلام"
-        }
+        {"role": "user", "content": "سلام، فقط بگو وصل شدی"}
     ]
 }
 
 try:
-    response = requests.post(url, headers=headers, json=data)
-
-    print("Status:", response.status_code)
-    print(response.text)
-
+    r = requests.post(url, headers=headers, json=data, timeout=20)
+    print("Status:", r.status_code)
+    print(r.text)
 except Exception as e:
     print("Error:", e)
