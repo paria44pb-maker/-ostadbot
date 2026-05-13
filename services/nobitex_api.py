@@ -12,7 +12,10 @@ def get_usdt_price():
         "dstCurrency": "rls"
     }
 
-    response = requests.get(url, params=params)
+    response = requests.get(
+        url,
+        params=params
+    )
 
     data = response.json()
 
