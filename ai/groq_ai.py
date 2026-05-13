@@ -1,14 +1,24 @@
+import os
 from groq import Groq
-from config import GROQ_API_KEY
 
-client = Groq(api_key=GROQ_API_KEY)
+client = Groq(
+    api_key=os.getenv("GROQ_API_KEY")
+)
+
+MODEL_NAME = "llama-3.1-8b-instant"
 
 
 def ask_groq(messages):
+    try:
+        completion = client.chat.completions.create(
+            model=MODEL_NAME,
+            messages=messages,
+            temperature=0.7,
+            max_tokens=1024
+        )
 
-    completion = client.chat.completions.create(
-        model="llama3-70b-8192",
-        messages=messages
-    )
+        return completion.choices[0].message.content.strip()
 
-    return completion.choices[0].message.content
+    except Exception as e:
+        print(f"❌ GROQ ERROR: {e}")
+        return "❌ در ارتباط با مدل هوش مصنوعی خطایی رخ داد."
