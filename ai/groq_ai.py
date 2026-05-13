@@ -1,17 +1,10 @@
-import os
-import requests
-
-
-GROQ_API_KEY = os.getenv("GROQ_API_KEY")
-
-GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
-
-MODEL_NAME = "llama-3.1-8b-instant"
-
-
-def ask_groq(user_message: str):
+def ask_groq(user_message):
     if not GROQ_API_KEY:
         return "❌ خطا: متغیر GROQ_API_KEY تنظیم نشده است."
+
+    if not isinstance(user_message, str):
+        # اگر رشته نیست، به رشته تبدیلش کن
+        user_message = str(user_message)
 
     headers = {
         "Content-Type": "application/json",
@@ -27,17 +20,10 @@ def ask_groq(user_message: str):
     }
 
     try:
-        response = requests.post(
-            GROQ_URL,
-            json=payload,
-            headers=headers,
-            timeout=20
-        )
-
+        response = requests.post(GROQ_URL, json=payload, headers=headers, timeout=20)
         data = response.json()
 
         if "choices" not in data:
-            # نمایش کل پاسخ برای debug
             return f"❌ خطای Groq API: پاسخ نامناسب:\n{data}"
 
         return data["choices"][0]["message"]["content"]
