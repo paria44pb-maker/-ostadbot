@@ -2,16 +2,18 @@ from telegram.ext import (
     Application,
     CommandHandler,
     MessageHandler,
-    filters
+    filters,
+    ContextTypes
 )
 from telegram import Update
-from telegram.ext import ContextTypes
 
 from config import TELEGRAM_TOKEN
 from handlers.start import start
 from handlers.chat import chat
 
 from memory.memory import init_db
+
+from services.nobitex import get_wallets   # ✅ اضافه شد
 
 import logging
 
@@ -52,7 +54,7 @@ init_db()
 
 
 # --------------------------------------
-# TELEGRAM TOKEN CHECK
+# TOKEN CHECK
 # --------------------------------------
 if not TELEGRAM_TOKEN:
     raise ValueError("❌ TELEGRAM_TOKEN یافت نشد!")
@@ -61,20 +63,26 @@ print("✅ TOKEN LOADED")
 
 
 # --------------------------------------
-# CREATE APPLICATION
+# CREATE APP
 # --------------------------------------
-app = (
-    Application.builder()
-    .token(TELEGRAM_TOKEN)
-    .build()
-)
+app = Application.builder().token(TELEGRAM_TOKEN).build()
+
+
+# --------------------------------------
+# COMMAND: WALLET (NOBITEX)
+# --------------------------------------
+async def wallet(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    result = get_wallets()
+    await update.message.reply_text(result)
 
 
 # --------------------------------------
 # HANDLERS
 # --------------------------------------
 app.add_handler(CommandHandler("start", start))
+app.add_handler(CommandHandler("wallet", wallet))   # ✅ اضافه شد
 app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, chat))
+
 app.add_error_handler(error_handler)
 
 
