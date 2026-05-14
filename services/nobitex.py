@@ -3,6 +3,9 @@ import os
 
 NOBITEX_API_KEY = os.getenv("NOBITEX_API_KEY")
 
+session = requests.Session()
+session.trust_env = False  # 🚀 جلوگیری از DNS/env conflict
+
 
 def get_wallets():
     if not NOBITEX_API_KEY:
@@ -15,21 +18,26 @@ def get_wallets():
     }
 
     try:
-        response = requests.get(url, headers=headers)
+        response = session.get(
+            url,
+            headers=headers,
+            timeout=20
+        )
+
         data = response.json()
 
         if response.status_code != 200:
-            return f"❌ خطا از نوبیتکس: {data}"
+            return f"❌ خطای نوبیتکس: {data}"
 
         wallets = data.get("wallets", [])
 
         if not wallets:
-            return "📭 هیچ موجودی‌ای پیدا نشد"
+            return "📭 موجودی‌ای پیدا نشد"
 
-        text = "💰 موجودی حساب نوبیتکس:\n\n"
+        text = "💰 موجودی نوبیتکس:\n\n"
 
         for w in wallets:
-            currency = w.get("currency", "unknown")
+            currency = w.get("currency")
             balance = w.get("balance", 0)
 
             if float(balance) > 0:
@@ -38,4 +46,4 @@ def get_wallets():
         return text
 
     except Exception as e:
-        return f"❌ خطا در اتصال: {str(e)}"
+        return f"❌ خطای اتصال (DNS/Network): {str(e)}"
