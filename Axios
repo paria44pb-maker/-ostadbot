@@ -1,0 +1,17 @@
+import axios from "axios";
+import http from "http";
+import https from "https";
+
+const api = axios.create({
+  baseURL: "https://api.nobitex.ir",
+  timeout: 20000,
+  httpAgent: new http.Agent({
+    keepAlive: true
+  }),
+  httpsAgent: new https.Agent({
+    keepAlive: true
+  }),
+  headers: {
+    Authorization: `Token ${process.env.NOBITEX_API_KEY}`
+  }
+});
