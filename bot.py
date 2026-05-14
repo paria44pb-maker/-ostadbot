@@ -7,13 +7,13 @@ from telegram.ext import (
 )
 from telegram import Update
 
-from config import TELEGRAM_TOKEN
+from config import TELEGRAM_TOKEN, NOBITEX_API_KEY
 from handlers.start import start
 from handlers.chat import chat
 
 from memory.memory import init_db
 
-from services.nobitex import get_wallets   # ✅ اضافه شد
+from services.nobitex import get_wallets
 
 import logging
 
@@ -63,24 +63,52 @@ print("✅ TOKEN LOADED")
 
 
 # --------------------------------------
-# CREATE APP
+# CREATE APPLICATION
 # --------------------------------------
 app = Application.builder().token(TELEGRAM_TOKEN).build()
 
 
 # --------------------------------------
-# COMMAND: WALLET (NOBITEX)
+# WALLET COMMAND (NOBITEX)
 # --------------------------------------
 async def wallet(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    result = get_wallets()
-    await update.message.reply_text(result)
+    try:
+        if not NOBITEX_API_KEY:
+            await update.message.reply_text("❌ API Key نوبیتکس تنظیم نشده")
+            return
+
+        data = get_wallets(NOBITEX_API_KEY)
+
+        if isinstance(data, dict) and "error" in data:
+            await update.message.reply_text(data["error"])
+            return
+
+        wallets = data.get("wallets", [])
+
+        if not wallets:
+            await update.message.reply_text("📭 موجودی‌ای پیدا نشد")
+            return
+
+        text = "💰 موجودی نوبیتکس:\n\n"
+
+        for w in wallets:
+            currency = w.get("currency", "unknown")
+            balance = w.get("balance", 0)
+
+            if float(balance) > 0:
+                text += f"• {currency}: {balance}\n"
+
+        await update.message.reply_text(text)
+
+    except Exception as e:
+        await update.message.reply_text(f"❌ خطای داخلی: {str(e)}")
 
 
 # --------------------------------------
 # HANDLERS
 # --------------------------------------
 app.add_handler(CommandHandler("start", start))
-app.add_handler(CommandHandler("wallet", wallet))   # ✅ اضافه شد
+app.add_handler(CommandHandler("wallet", wallet))
 app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, chat))
 
 app.add_error_handler(error_handler)
