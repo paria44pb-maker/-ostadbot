@@ -1,0 +1,15 @@
+import requests
+
+session = requests.Session()
+session.trust_env = False
+
+def safe_get(url, headers):
+    try:
+        return session.get(
+            url,
+            headers=headers,
+            timeout=20,
+            verify=True
+        )
+    except Exception as e:
+        return None
