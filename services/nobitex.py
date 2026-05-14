@@ -1,22 +1,41 @@
 import requests
+import os
 
-def get_nobitex_price(symbol="usdt-irr"):
+NOBITEX_API_KEY = os.getenv("NOBITEX_API_KEY")
+
+
+def get_wallets():
+    if not NOBITEX_API_KEY:
+        return "❌ API Key تنظیم نشده"
+
+    url = "https://api.nobitex.ir/users/wallets/list"
+
+    headers = {
+        "Authorization": f"Token {NOBITEX_API_KEY}"
+    }
+
     try:
-        url = "https://api.nobitex.ir/market/stats"
-        params = {"srcCurrency": symbol.split("-")[0],
-                  "dstCurrency": symbol.split("-")[1]}
-        
-        response = requests.get(url, params=params, timeout=5)
+        response = requests.get(url, headers=headers)
         data = response.json()
-        
-        # بررسی خطا از سمت نوبیتکس
-        if "stats" not in data:
-            return None
-        
-        price = data["stats"][symbol]["bestSell"]
-        return price
+
+        if response.status_code != 200:
+            return f"❌ خطا از نوبیتکس: {data}"
+
+        wallets = data.get("wallets", [])
+
+        if not wallets:
+            return "📭 هیچ موجودی‌ای پیدا نشد"
+
+        text = "💰 موجودی حساب نوبیتکس:\n\n"
+
+        for w in wallets:
+            currency = w.get("currency", "unknown")
+            balance = w.get("balance", 0)
+
+            if float(balance) > 0:
+                text += f"• {currency}: {balance}\n"
+
+        return text
 
     except Exception as e:
-        print(f"Nobitex error → {e}")
-        return None
-      
+        return f"❌ خطا در اتصال: {str(e)}"
