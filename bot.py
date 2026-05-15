@@ -1,27 +1,15 @@
 import os
 import requests
-from telegram.ext import ApplicationBuilder, CommandHandler
+from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters
 
 # ==========================
-# ENV VARIABLES
+# ENV
 # ==========================
-
-print("Checking environment variables...")
 
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
-DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY")
-GROQ_API_KEY = os.getenv("GROQ_API_KEY")
-NOBITEX_API_KEY = os.getenv("NOBITEX_API_KEY")
-NOBITEX_API_SECRET = os.getenv("NOBITEX_API_SECRET")
-
-print("TELEGRAM_TOKEN:", TELEGRAM_TOKEN)
-print("DEEPSEEK_API_KEY:", DEEPSEEK_API_KEY)
-print("GROQ_API_KEY:", GROQ_API_KEY)
-print("NOBITEX_API_KEY:", NOBITEX_API_KEY)
-print("NOBITEX_API_SECRET:", NOBITEX_API_SECRET)
 
 if not TELEGRAM_TOKEN:
-    raise ValueError("ERROR: TELEGRAM_TOKEN not found in Railway Variables.")
+    raise ValueError("ERROR: TELEGRAM_TOKEN is missing.")
 
 
 # ==========================
@@ -33,7 +21,7 @@ async def start(update, context):
 
 
 # ==========================
-# COMMAND: /price (bitcoin)
+# COMMAND: /price
 # ==========================
 
 async def price(update, context):
@@ -47,6 +35,15 @@ async def price(update, context):
 
 
 # ==========================
+# MESSAGE HANDLER
+# ==========================
+
+async def echo(update, context):
+    msg = update.message.text
+    await update.message.reply_text(f"پیامت رسید فرهاد: {msg}")
+
+
+# ==========================
 # RUN BOT
 # ==========================
 
@@ -54,6 +51,7 @@ app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
 
 app.add_handler(CommandHandler("start", start))
 app.add_handler(CommandHandler("price", price))
+app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, echo))
 
 print("Bot is running...")
 app.run_polling()
