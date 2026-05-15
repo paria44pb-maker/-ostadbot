@@ -1,11 +1,10 @@
 import os
-import time
 import requests
 from telegram import Bot
 from telegram.ext import Updater, CommandHandler
 
 # ==========================
-# LOAD ENVIRONMENT VARIABLES
+# ENVIRONMENT VARIABLES
 # ==========================
 
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
@@ -21,10 +20,10 @@ print("DEEPSEEK_API_KEY:", DEEPSEEK_API_KEY)
 print("GROQ_API_KEY:", GROQ_API_KEY)
 
 # ==========================
-# ERROR CHECKS
+# ERROR CHECK
 # ==========================
 
-if not TELEGRAM_TOKEN:
+if TELEGRAM_TOKEN is None:
     raise ValueError("❌ ERROR: TELEGRAM_TOKEN is missing in Railway Variables!")
 
 # ==========================
@@ -32,41 +31,40 @@ if not TELEGRAM_TOKEN:
 # ==========================
 
 print("🚀 STARTING BOT...")
-
 bot = Bot(token=TELEGRAM_TOKEN)
 
 # ==========================
-# COMMAND: /start
+# /start COMMAND
 # ==========================
 
 def start(update, context):
     update.message.reply_text("سلام فرهاد! 🤖 ربات با موفقیت روشن شد!")
 
 # ==========================
-# COMMAND: /price (Bitcoin)
+# /price COMMAND
 # ==========================
 
 def price(update, context):
     try:
-        r = requests.get("https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd")
-        data = r.json()
+        url = "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd"
+        data = requests.get(url).json()
         btc_price = data["bitcoin"]["usd"]
         update.message.reply_text(f"💰 قیمت لحظه‌ای بیت‌کوین: {btc_price} USD")
-    except:
-        update.message.reply_text("❌ خطا در دریافت قیمت")
+    except Exception as e:
+        update.message.reply_text(f"❌ خطا در دریافت قیمت: {e}")
 
 # ==========================
 # TELEGRAM HANDLERS
 # ==========================
 
-updater = Updater(token=TELEGRAM_TOKEN, use_context=True)
+updater = Updater(TELEGRAM_TOKEN, use_context=True)
 dispatcher = updater.dispatcher
 
 dispatcher.add_handler(CommandHandler("start", start))
 dispatcher.add_handler(CommandHandler("price", price))
 
 # ==========================
-# RUN THE BOT
+# RUN BOT
 # ==========================
 
 updater.start_polling()
