@@ -1,10 +1,9 @@
 import os
 import requests
-from telegram import Bot
-from telegram.ext import Updater, CommandHandler
+from telegram.ext import ApplicationBuilder, CommandHandler
 
 # ==========================
-# READ ENVIRONMENT VARIABLES
+# ENV VARIABLES
 # ==========================
 
 print("Checking environment variables...")
@@ -21,55 +20,40 @@ print("GROQ_API_KEY:", GROQ_API_KEY)
 print("NOBITEX_API_KEY:", NOBITEX_API_KEY)
 print("NOBITEX_API_SECRET:", NOBITEX_API_SECRET)
 
-# ==========================
-# VALIDATE TOKEN
-# ==========================
-
 if not TELEGRAM_TOKEN:
-    raise ValueError("ERROR: TELEGRAM_TOKEN is missing in Railway Variables.")
+    raise ValueError("ERROR: TELEGRAM_TOKEN not found in Railway Variables.")
 
-# ==========================
-# START BOT
-# ==========================
-
-print("Starting bot...")
-
-bot = Bot(token=TELEGRAM_TOKEN)
 
 # ==========================
 # COMMAND: /start
 # ==========================
 
-def start(update, context):
-    update.message.reply_text("سلام فرهاد! ربات با موفقیت روشن شد.")
+async def start(update, context):
+    await update.message.reply_text("سلام فرهاد! ربات با موفقیت روشن شد 🤖")
+
 
 # ==========================
-# COMMAND: /price
+# COMMAND: /price (bitcoin)
 # ==========================
 
-def price(update, context):
+async def price(update, context):
     try:
         url = "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd"
         data = requests.get(url).json()
         btc_price = data["bitcoin"]["usd"]
-        update.message.reply_text(f"قیمت لحظه‌ای بیت‌کوین: {btc_price} دلار")
+        await update.message.reply_text(f"قیمت بیت‌کوین: {btc_price} دلار")
     except Exception as e:
-        update.message.reply_text(f"خطا: {e}")
+        await update.message.reply_text(f"خطا: {e}")
+
 
 # ==========================
-# HANDLERS
+# RUN BOT
 # ==========================
 
-updater = Updater(TELEGRAM_TOKEN, use_context=True)
-dispatcher = updater.dispatcher
+app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
 
-dispatcher.add_handler(CommandHandler("start", start))
-dispatcher.add_handler(CommandHandler("price", price))
-
-# ==========================
-# RUN
-# ==========================
+app.add_handler(CommandHandler("start", start))
+app.add_handler(CommandHandler("price", price))
 
 print("Bot is running...")
-updater.start_polling()
-updater.idle()
+app.run_polling()
