@@ -1,21 +1,23 @@
-from telegram.ext import (
-    Application,
-    CommandHandler,
-    MessageHandler,
-    filters,
-    ContextTypes
-)
-from telegram import Update
+import os
 
+# Load keys from environment variables
+TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
+NOBITEX_API_KEY = os.getenv("NOBITEX_API_KEY")
+NOBITEX_API_SECRET = os.getenv("NOBITEX_API_SECRET")
+DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY")
+GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 
-from handlers.start import start
-from handlers.chat import chat
+print("🔍 Checking environment variables...")
+print("TELEGRAM_TOKEN:", TELEGRAM_TOKEN)
+print("NOBITEX_API_KEY:", NOBITEX_API_KEY)
+print("DEEPSEEK_API_KEY:", DEEPSEEK_API_KEY)
+print("GROQ_API_KEY:", GROQ_API_KEY)
 
-from memory.memory import init_db
+print("🚀 STARTING BOT...")
 
-from services.nobitex import get_wallets
+if not TELEGRAM_TOKEN:
+    raise ValueError("❌ TELEGRAM_TOKEN is missing from Railway variables!")
 
-import logging
 
 
 # --------------------------------------
