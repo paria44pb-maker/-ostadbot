@@ -2,16 +2,14 @@ import os
 import requests
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters
 
-
 # ===============================
 # ENVIRONMENT VARIABLES
 # ===============================
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
-DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY")
+GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 
 if not TELEGRAM_TOKEN:
     raise ValueError("TELEGRAM_TOKEN is not set in environment!")
-
 
 # ===============================
 # GET BITCOIN PRICE
@@ -19,82 +17,75 @@ if not TELEGRAM_TOKEN:
 def get_btc_price():
     try:
         url = "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd"
-        data = requests.get(url).json()
-        return data["bitcoin"]["usd"]
+        return requests.get(url).json()["bitcoin"]["usd"]
     except Exception:
         return None
 
-
 # ===============================
-# DEEPSEEK SMART REPLY (SAFE MODE)
+# GROQ SMART REPLY
 # ===============================
 def smart_reply(user_msg: str) -> str:
-    if not DEEPSEEK_API_KEY:
-        return "DeepSeek API key is missing."
+    if not GROQ_API_KEY:
+        return "GROQ API key is missing."
 
     try:
-        url = "https://api.deepseek.com/v1/chat/completions"
+        url = "https://api.groq.com/openai/v1/chat/completions"
         headers = {
-            "Authorization": f"Bearer {DEEPSEEK_API_KEY}",
+            "Authorization": f"Bearer {GROQ_API_KEY}",
             "Content-Type": "application/json"
         }
         payload = {
-            "model": "deepseek-chat",
+            "model": "llama3-70b-8192",
             "messages": [
                 {"role": "system", "content": "You are a friendly Persian assistant."},
                 {"role": "user", "content": user_msg}
-            ]
+            ],
+            "temperature": 0.4
         }
 
-        res = requests.post(url, json=payload, headers=headers, timeout=30)
+        res = requests.post(url, json=payload, headers=headers, timeout=20)
         data = res.json()
 
-        # SAFETY CHECKS
         if "error" in data:
-            return f"DeepSeek error: {data['error']}"
-
-        if "choices" not in data:
-            return f"Unexpected DeepSeek response: {data}"
-
-        if not data["choices"]:
-            return "DeepSeek returned an empty response."
+            return f"Groq Error: {data['error']}"
 
         return data["choices"][0]["message"]["content"]
 
     except Exception as e:
-        return f"Error communicating with DeepSeek: {str(e)}"
-
+        return f"Groq request failed: {str(e)}"
 
 # ===============================
 # COMMAND HANDLERS
 # ===============================
 async def start(update, context):
-    await update.message.reply_text("سلام! ربات Ultra-Safe روشن است.")
-
+    await update.message.reply_text("سلام! ربات Ultra‑Safe با Groq روشن است.")
 
 async def help_command(update, context):
     await update.message.reply_text("دستورها: /start /help /price")
 
-
 async def price(update, context):
-    price = get_btc_price()
-    if price:
-        await update.message.reply_text(f"قیمت بیت‌کوین اکنون {price} دلار است.")
+    p = get_btc_price()
+    if p:
+        await update.message.reply_text(f"قیمت بیت‌کوین: {p} دلار")
     else:
         await update.message.reply_text("خطا در دریافت قیمت بیت‌کوین.")
 
-
 async def ai_handler(update, context):
-    user_text = update.message.text
-    response = smart_reply(user_text)
-    await update.message.reply_text(response)
+    user_text = update.message.text.strip()
 
+    # جلوگیری از پاسخ مدل به پیام‌های خیلی کوتاه
+    if len(user_text) < 2:
+        await update.message.reply_text("لطفاً جمله کامل‌تر بنویس ❤️")
+        return
+
+    reply = smart_reply(user_text)
+    await update.message.reply_text(reply)
 
 # ===============================
-# MAIN BOT
+# MAIN
 # ===============================
 def main():
-    print("Bot is running... (Ultra-Safe Mode)")
+    print("Bot is running... (Ultra‑Safe + Groq)")
 
     app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
 
@@ -104,7 +95,6 @@ def main():
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, ai_handler))
 
     app.run_polling()
-
 
 if __name__ == "__main__":
     main()
