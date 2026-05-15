@@ -22,28 +22,29 @@ print("DEEPSEEK_API_KEY:", DEEPSEEK_API_KEY)
 print("GROQ_API_KEY:", GROQ_API_KEY)
 
 # ==========================
-# VALIDATE REQUIRED KEYS
+# REQUIRED TOKEN CHECK
 # ==========================
 
 if not TELEGRAM_TOKEN:
-    raise ValueError("❌ ERROR: TELEGRAM_TOKEN is missing from Railway Variables!")
+    raise ValueError("❌ ERROR: TELEGRAM_TOKEN is missing in Railway Variables!")
 
 # ==========================
 # START BOT
 # ==========================
 
-prin🚀 STARTING BOT...")
+print("🚀 STARTING BOT...")
 
 bot = Bot(token=TELEGRAM_TOKEN)
 
 # ==========================
-# COMMAND: /start
+# /start COMMAND
 # ==========================
 
 def start(update, context):
     update.message.reply_text("سلام فرهاد! 🤖 ربات با موفقیت روشن شد!")
- ==========================
-# COMMAND: /price (Bitcoin)
+
+# ==========================
+# /price COMMAND
 # ==========================
 
 def price(update, context):
@@ -53,4 +54,22 @@ def price(update, context):
         btc_price = data["bitcoin"]["usd"]
         update.message.reply_text(f"💰 قیمت لحظه‌ای بیت‌کوین: {btc_price} USD")
     except Exception as e:
-        update.message.reply_text(f"
+        update.message.reply_text(f"❌ خطا: {e}")
+
+# ==========================
+# TELEGRAM HANDLERS
+# ==========================
+
+updater = Updater(TELEGRAM_TOKEN, use_context=True)
+dispatcher = updater.dispatcher
+
+dispatcher.add_handler(CommandHandler("start", start))
+dispatcher.add_handler(CommandHandler("price", price))
+
+# ==========================
+# RUN BOT
+# ==========================
+
+print("✅ BOT IS RUNNING 24/7 ...")
+updater.start_polling()
+updater.idle()
