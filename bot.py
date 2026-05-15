@@ -7,7 +7,7 @@ from telegram.ext import (
 )
 from telegram import Update
 
-from config import TELEGRAM_TOKEN, NOBITEX_API_KEY
+
 from handlers.start import start
 from handlers.chat import chat
 
