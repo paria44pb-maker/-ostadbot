@@ -1,25 +1,137 @@
 import os
 import requests
-import tempfile
+import pandas as pd
+import pandas_ta as ta
+import matplotlib.pyplot as plt
 
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
-from telegram.ext import (
-    ApplicationBuilder,
-    CommandHandler,
-    MessageHandler,
-    CallbackQueryHandler,
-    ContextTypes,
-    filters
-)
+from telegram.ext import ApplicationBuilder, CommandHandler
+from telegram import Update
+from telegram.ext import ContextTypes
 
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 
-conversation_memory = []
+BINANCE = "https://api.binance.com/api/v3"
 
 
-# ---------------- GROQ CHAT
-def groq_chat(messages):
+# -------------------------------
+# MARKET DATA
+# -------------------------------
+
+def get_klines(symbol="BTCUSDT", interval="1h", limit=200):
+
+    url = f"{BINANCE}/klines"
+
+    params = {
+        "symbol": symbol,
+        "interval": interval,
+        "limit": limit
+    }
+
+    r = requests.get(url, params=params)
+
+    data = r.json()
+
+    candles = []
+
+    for c in data:
+        candles.append({
+            "open": float(c[1]),
+            "high": float(c[2]),
+            "low": float(c[3]),
+            "close": float(c[4]),
+            "volume": float(c[5])
+        })
+
+    return candles
+
+
+# -------------------------------
+# TECHNICAL ANALYSIS
+# -------------------------------
+
+def indicators(candles):
+
+    df = pd.DataFrame(candles)
+
+    df["rsi"] = ta.rsi(df["close"], length=14)
+
+    df["ema20"] = ta.ema(df["close"], length=20)
+
+    df["ema50"] = ta.ema(df["close"], length=50)
+
+    macd = ta.macd(df["close"])
+
+    df["macd"] = macd["MACD_12_26_9"]
+
+    bb = ta.bbands(df["close"])
+
+    df["bb_upper"] = bb["BBU_20_2.0"]
+
+    df["bb_lower"] = bb["BBL_20_2.0"]
+
+    return df
+
+
+# -------------------------------
+# PRICE ACTION
+# -------------------------------
+
+def market_structure(df):
+
+    last = df.iloc[-1]
+
+    ema20 = last["ema20"]
+    ema50 = last["ema50"]
+
+    if ema20 > ema50:
+        trend = "bullish"
+    else:
+        trend = "bearish"
+
+    rsi = last["rsi"]
+
+    if rsi > 70:
+        momentum = "overbought"
+
+    elif rsi < 30:
+        momentum = "oversold"
+
+    else:
+        momentum = "neutral"
+
+    return {
+        "trend": trend,
+        "momentum": momentum,
+        "rsi": round(rsi,2)
+    }
+
+
+# -------------------------------
+# SIGNAL ENGINE
+# -------------------------------
+
+def generate_signal(data):
+
+    trend = data["trend"]
+    momentum = data["momentum"]
+
+    if trend == "bullish" and momentum != "overbought":
+
+        return "BUY"
+
+    if trend == "bearish" and momentum != "oversold":
+
+        return "SELL"
+
+    return "NEUTRAL"
+
+
+# -------------------------------
+# AI ANALYSIS
+# -------------------------------
+
+def ai_summary(structure):
 
     url = "https://api.groq.com/openai/v1/chat/completions"
 
@@ -28,297 +140,116 @@ def groq_chat(messages):
         "Content-Type": "application/json"
     }
 
+    prompt = f"""
+    Analyze crypto market data.
+
+    Trend: {structure['trend']}
+    RSI: {structure['rsi']}
+    Momentum: {structure['momentum']}
+
+    Provide short professional analysis.
+    """
+
     payload = {
         "model": "llama-3.1-8b-instant",
-        "messages": messages,
-        "temperature": 0.5
+        "messages": [
+            {"role": "user", "content": prompt}
+        ]
     }
 
     r = requests.post(url, json=payload, headers=headers)
 
-    return r.json()
+    data = r.json()
+
+    return data["choices"][0]["message"]["content"]
 
 
-# ---------------- TEXT TO SPEECH
-def groq_tts(text):
+# -------------------------------
+# CHART
+# -------------------------------
 
-    url = "https://api.groq.com/openai/v1/audio/speech"
+def chart(df):
 
-    headers = {
-        "Authorization": f"Bearer {GROQ_API_KEY}",
-        "Content-Type": "application/json"
-    }
+    plt.figure(figsize=(10,5))
 
-    payload = {
-        "model": "bark-small",
-        "input": text,
-        "voice": "male"
-    }
+    plt.plot(df["close"], label="Price")
 
-    r = requests.post(url, json=payload, headers=headers)
+    plt.plot(df["ema20"], label="EMA20")
 
-    if r.status_code == 200:
+    plt.plot(df["ema50"], label="EMA50")
 
-        temp = tempfile.NamedTemporaryFile(delete=False, suffix=".mp3")
+    plt.legend()
 
-        temp.write(r.content)
+    file = "chart.png"
 
-        temp.close()
+    plt.savefig(file)
 
-        return temp.name
+    plt.close()
 
-    return None
+    return file
 
 
-# ---------------- VOICE TO TEXT
-def groq_whisper(audio_bytes):
+# -------------------------------
+# TELEGRAM COMMANDS
+# -------------------------------
 
-    url = "https://api.groq.com/openai/v1/audio/transcriptions"
-
-    headers = {
-        "Authorization": f"Bearer {GROQ_API_KEY}"
-    }
-
-    files = {
-        "file": ("voice.ogg", audio_bytes)
-    }
-
-    data = {
-        "model": "whisper-large-v3-turbo"
-    }
-
-    r = requests.post(url, headers=headers, files=files, data=data)
-
-    return r.json().get("text")
-
-
-# ---------------- PRICE
-async def crypto_price(update: Update, context: ContextTypes.DEFAULT_TYPE):
-
-    try:
-
-        nob = requests.get(
-            "https://api.nobitex.ir/market/stats"
-        ).json()["stats"]
-
-        btc = nob.get("btc-rls", {}).get("latest", "-")
-        eth = nob.get("eth-rls", {}).get("latest", "-")
-        usdt = nob.get("usdt-rls", {}).get("latest", "-")
-        xrp = nob.get("xrp-rls", {}).get("latest", "-")
-        ton = nob.get("ton-rls", {}).get("latest", "-")
-
-        cg = requests.get(
-            "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,ethereum,tether,ripple,the-open-network&vs_currencies=usd"
-        ).json()
-
-        btc_usd = cg["bitcoin"]["usd"]
-        eth_usd = cg["ethereum"]["usd"]
-        usdt_usd = cg["tether"]["usd"]
-        xrp_usd = cg["ripple"]["usd"]
-        ton_usd = cg["the-open-network"]["usd"]
-
-        msg = f"""
-📊 بازار کریپتو
-
-🇮🇷 نوبیتکس
-
-BTC : {btc}
-ETH : {eth}
-USDT : {usdt}
-XRP : {xrp}
-TON : {ton}
-
-🌍 بازار جهانی
-
-BTC : {btc_usd} $
-ETH : {eth_usd} $
-USDT : {usdt_usd} $
-XRP : {xrp_usd} $
-TON : {ton_usd} $
-"""
-
-        await update.message.reply_text(msg)
-
-    except:
-
-        await update.message.reply_text("خطا در دریافت قیمت بازار")
-
-
-# ---------------- TOP 10
-async def top_crypto(update: Update, context: ContextTypes.DEFAULT_TYPE):
-
-    data = requests.get(
-        "https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=10&page=1"
-    ).json()
-
-    msg = "🔥 10 ارز برتر بازار\n\n"
-
-    for coin in data:
-
-        name = coin["name"]
-
-        price = coin["current_price"]
-
-        msg += f"{name} : {price}$\n"
-
-    await update.message.reply_text(msg)
-
-
-# ---------------- MARKET ANALYSIS
-async def market_analysis(update: Update, context: ContextTypes.DEFAULT_TYPE):
-
-    data = requests.get(
-        "https://api.coingecko.com/api/v3/global"
-    ).json()
-
-    cap = data["data"]["total_market_cap"]["usd"]
-
-    btc_dom = data["data"]["market_cap_percentage"]["btc"]
-
-    msg = f"""
-🧠 تحلیل سریع بازار
-
-ارزش کل بازار:
-{cap:,.0f} $
-
-Dominance BTC:
-{btc_dom:.2f} %
-
-دامیننس بالا یعنی پول بیشتر در بیت‌کوین است.
-"""
-
-    await update.message.reply_text(msg)
-
-
-# ---------------- START
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
-    keyboard = [
-
-        [InlineKeyboardButton("📊 قیمت بازار", callback_data="price")],
-
-        [InlineKeyboardButton("🔥 10 ارز برتر", callback_data="top")],
-
-        [InlineKeyboardButton("🧠 تحلیل بازار", callback_data="analysis")],
-
-        [InlineKeyboardButton("🎧 ارسال ویس", callback_data="voice")],
-
-        [InlineKeyboardButton("💬 چت هوشمند", callback_data="chat")]
-
-    ]
-
     await update.message.reply_text(
-
-        "سلام فرهاد 👋\nربات کریپتو فعال شد",
-
-        reply_markup=InlineKeyboardMarkup(keyboard)
-
+        "Crypto AI Bot Ready\n\nUse /analyze"
     )
 
 
-# ---------------- CHAT
-async def ai_chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def analyze(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
-    user_text = update.message.text
+    candles = get_klines()
 
-    conversation_memory.append({"role": "user", "content": user_text})
+    df = indicators(candles)
 
-    if len(conversation_memory) > 5:
+    structure = market_structure(df)
 
-        conversation_memory.pop(0)
+    signal = generate_signal(structure)
 
-    messages = [
+    analysis = ai_summary(structure)
 
-        {"role": "system", "content": "You are a helpful Persian crypto assistant."},
+    img = chart(df)
 
-        *conversation_memory
+    msg = f"""
+BTC Analysis
 
-    ]
+Trend: {structure['trend']}
+RSI: {structure['rsi']}
+Momentum: {structure['momentum']}
 
-    answer = groq_chat(messages)
+Signal: {signal}
 
-    if "choices" not in answer:
+AI Analysis:
+{analysis}
+"""
 
-        await update.message.reply_text("خطا در پاسخ AI")
-
-        return
-
-    text = answer["choices"][0]["message"]["content"]
-
-    await update.message.reply_text(text)
-
-    audio = groq_tts(text)
-
-    if audio:
-
-        await update.message.reply_voice(open(audio, "rb"))
-
-        os.remove(audio)
+    await update.message.reply_photo(
+        open(img,"rb"),
+        caption=msg
+    )
 
 
-# ---------------- VOICE
-async def ai_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
+# -------------------------------
+# MAIN
+# -------------------------------
 
-    file = await update.message.voice.get_file()
-
-    voice_bytes = await file.download_as_bytearray()
-
-    text = groq_whisper(voice_bytes)
-
-    if not text:
-
-        await update.message.reply_text("خطا در تبدیل ویس")
-
-        return
-
-    update.message.text = text
-
-    await ai_chat(update, context)
-
-
-# ---------------- BUTTON
-async def callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-
-    q = update.callback_query
-
-    await q.answer()
-
-    if q.data == "price":
-
-        await crypto_price(q, context)
-
-    elif q.data == "top":
-
-        await top_crypto(q, context)
-
-    elif q.data == "analysis":
-
-        await market_analysis(q, context)
-
-    elif q.data == "voice":
-
-        await q.message.reply_text("یک ویس بفرست")
-
-    elif q.data == "chat":
-
-        await q.message.reply_text("چت فعال شد")
-
-
-# ---------------- MAIN
 def main():
 
     app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
 
     app.add_handler(CommandHandler("start", start))
 
-    app.add_handler(CallbackQueryHandler(callback))
+    app.add_handler(CommandHandler("analyze", analyze))
 
-    app.add_handler(MessageHandler(filters.VOICE, ai_voice))
-
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, ai_chat))
+    print("Bot Started...")
 
     app.run_polling()
 
 
 if __name__ == "__main__":
+
     main()
