@@ -1,254 +1,180 @@
-import os
-import requests
 import pandas as pd
-import pandas_ta as ta
 import matplotlib.pyplot as plt
 
-from telegram.ext import ApplicationBuilder, CommandHandler
 from telegram import Update
-from telegram.ext import ContextTypes
+from telegram.ext import (
+    ApplicationBuilder,
+    CommandHandler,
+    ContextTypes
+)
 
-TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
-GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+from config import *
+from exchange import get_ohlcv
+from indicators import apply_indicators
+from smart_money import detect_structure
+from ai_engine import generate_ai_text
+from risk_manager import calculate_risk
 
-BINANCE = "https://api.binance.com/api/v3"
+# --------------------
+# LOAD DATA
+# --------------------
 
+def load_dataframe():
 
-# -------------------------------
-# MARKET DATA
-# -------------------------------
+    data = get_ohlcv(SYMBOL, TIMEFRAME)
 
-def get_klines(symbol="BTCUSDT", interval="1h", limit=200):
-
-    url = f"{BINANCE}/klines"
-
-    params = {
-        "symbol": symbol,
-        "interval": interval,
-        "limit": limit
-    }
-
-    r = requests.get(url, params=params)
-
-    data = r.json()
-
-    candles = []
-
-    for c in data:
-        candles.append({
-            "open": float(c[1]),
-            "high": float(c[2]),
-            "low": float(c[3]),
-            "close": float(c[4]),
-            "volume": float(c[5])
-        })
-
-    return candles
-
-
-# -------------------------------
-# TECHNICAL ANALYSIS
-# -------------------------------
-
-def indicators(candles):
-
-    df = pd.DataFrame(candles)
-
-    df["rsi"] = ta.rsi(df["close"], length=14)
-
-    df["ema20"] = ta.ema(df["close"], length=20)
-
-    df["ema50"] = ta.ema(df["close"], length=50)
-
-    macd = ta.macd(df["close"])
-
-    df["macd"] = macd["MACD_12_26_9"]
-
-    bb = ta.bbands(df["close"])
-
-    df["bb_upper"] = bb["BBU_20_2.0"]
-
-    df["bb_lower"] = bb["BBL_20_2.0"]
+    df = pd.DataFrame(data, columns=[
+        "time",
+        "open",
+        "high",
+        "low",
+        "close",
+        "volume"
+    ])
 
     return df
 
+# --------------------
+# GENERATE SIGNAL
+# --------------------
 
-# -------------------------------
-# PRICE ACTION
-# -------------------------------
+def generate_signal(df):
 
-def market_structure(df):
+    rsi = df["rsi"].iloc[-1]
 
-    last = df.iloc[-1]
+    macd = df["macd"].iloc[-1]
 
-    ema20 = last["ema20"]
-    ema50 = last["ema50"]
+    macd_signal = df["macd_signal"].iloc[-1]
 
-    if ema20 > ema50:
-        trend = "bullish"
-    else:
-        trend = "bearish"
+    ema50 = df["ema50"].iloc[-1]
 
-    rsi = last["rsi"]
+    ema200 = df["ema200"].iloc[-1]
 
-    if rsi > 70:
-        momentum = "overbought"
+    price = df["close"].iloc[-1]
 
-    elif rsi < 30:
-        momentum = "oversold"
-
-    else:
-        momentum = "neutral"
-
-    return {
-        "trend": trend,
-        "momentum": momentum,
-        "rsi": round(rsi,2)
-    }
-
-
-# -------------------------------
-# SIGNAL ENGINE
-# -------------------------------
-
-def generate_signal(data):
-
-    trend = data["trend"]
-    momentum = data["momentum"]
-
-    if trend == "bullish" and momentum != "overbought":
-
+    if (
+        rsi < 35 and
+        macd > macd_signal and
+        ema50 > ema200
+    ):
         return "BUY"
 
-    if trend == "bearish" and momentum != "oversold":
-
+    if (
+        rsi > 65 and
+        macd < macd_signal and
+        ema50 < ema200
+    ):
         return "SELL"
 
     return "NEUTRAL"
 
-
-# -------------------------------
-# AI ANALYSIS
-# -------------------------------
-
-def ai_summary(structure):
-
-    url = "https://api.groq.com/openai/v1/chat/completions"
-
-    headers = {
-        "Authorization": f"Bearer {GROQ_API_KEY}",
-        "Content-Type": "application/json"
-    }
-
-    prompt = f"""
-    Analyze crypto market data.
-
-    Trend: {structure['trend']}
-    RSI: {structure['rsi']}
-    Momentum: {structure['momentum']}
-
-    Provide short professional analysis.
-    """
-
-    payload = {
-        "model": "llama-3.1-8b-instant",
-        "messages": [
-            {"role": "user", "content": prompt}
-        ]
-    }
-
-    r = requests.post(url, json=payload, headers=headers)
-
-    data = r.json()
-
-    return data["choices"][0]["message"]["content"]
-
-
-# -------------------------------
+# --------------------
 # CHART
-# -------------------------------
+# --------------------
 
-def chart(df):
+def create_chart(df):
 
-    plt.figure(figsize=(10,5))
+    path = "charts/chart.png"
 
-    plt.plot(df["close"], label="Price")
+    plt.figure(figsize=(12,6))
 
-    plt.plot(df["ema20"], label="EMA20")
+    plt.plot(df["close"])
 
-    plt.plot(df["ema50"], label="EMA50")
+    plt.title("AI Trading Chart")
 
-    plt.legend()
+    plt.grid(True)
 
-    file = "chart.png"
-
-    plt.savefig(file)
+    plt.savefig(path)
 
     plt.close()
 
-    return file
+    return path
 
-
-# -------------------------------
-# TELEGRAM COMMANDS
-# -------------------------------
+# --------------------
+# COMMANDS
+# --------------------
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await update.message.reply_text(
-        "Crypto AI Bot Ready\n\nUse /analyze"
+        "AI Trading Bot Activated ✅"
     )
-
 
 async def analyze(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
-    candles = get_klines()
+    df = load_dataframe()
 
-    df = indicators(candles)
+    df = apply_indicators(df)
 
-    structure = market_structure(df)
+    signal = generate_signal(df)
 
-    signal = generate_signal(structure)
+    structure = detect_structure(df)
 
-    analysis = ai_summary(structure)
+    rsi = round(df["rsi"].iloc[-1],2)
 
-    img = chart(df)
+    entry = round(df["close"].iloc[-1],2)
+
+    stop = round(entry * 0.98,2)
+
+    risk = calculate_risk(entry, stop)
+
+    ai_text = generate_ai_text(
+        signal,
+        structure,
+        rsi
+    )
+
+    chart = create_chart(df)
 
     msg = f"""
-BTC Analysis
+PAIR: {SYMBOL}
 
-Trend: {structure['trend']}
-RSI: {structure['rsi']}
-Momentum: {structure['momentum']}
+SIGNAL: {signal}
 
-Signal: {signal}
+STRUCTURE: {structure}
 
-AI Analysis:
-{analysis}
+RSI: {rsi}
+
+ENTRY: {entry}
+
+STOP LOSS: {stop}
+
+TP1: {risk['tp1']}
+
+TP2: {risk['tp2']}
+
+AI ANALYSIS:
+{ai_text}
 """
 
     await update.message.reply_photo(
-        open(img,"rb"),
+        open(chart, "rb"),
         caption=msg
     )
 
-
-# -------------------------------
+# --------------------
 # MAIN
-# -------------------------------
+# --------------------
 
 def main():
 
-    app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
+    app = ApplicationBuilder()\
+        .token(TELEGRAM_TOKEN)\
+        .build()
 
-    app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler(
+        "start",
+        start
+    ))
 
-    app.add_handler(CommandHandler("analyze", analyze))
+    app.add_handler(CommandHandler(
+        "analyze",
+        analyze
+    ))
 
-    print("Bot Started...")
+    print("AI BOT RUNNING...")
 
     app.run_polling()
-
 
 if __name__ == "__main__":
 
