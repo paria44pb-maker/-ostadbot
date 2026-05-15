@@ -1,4 +1,9 @@
 python-telegram-bot==20.7
-groq
+pandas
+numpy
+matplotlib
+ccxt
+ta
+sqlite3
+mplfinance
 requests
-python-dotenv
