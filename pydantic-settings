@@ -1,0 +1,10 @@
+from pydantic_settings import BaseSettings
+
+class Settings(BaseSettings):
+    nobitex_api_key: str
+    nobitex_api_secret: str
+    nobitex_api_passphrase: str
+
+settings = Settings()
+
+print(settings.nobitex_api_key)
