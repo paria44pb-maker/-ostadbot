@@ -1,5 +1,8 @@
+import os
 import pandas as pd
+import numpy as np
 import matplotlib.pyplot as plt
+import ccxt
 
 from telegram import Update
 from telegram.ext import (
@@ -8,22 +11,36 @@ from telegram.ext import (
     ContextTypes
 )
 
-from config import *
-from exchange import get_ohlcv
-from indicators import apply_indicators
-from smart_money import detect_structure
-from ai_engine import generate_ai_text
-from risk_manager import calculate_risk
+# =====================================
+# CONFIG
+# =====================================
 
-# --------------------
-# LOAD DATA
-# --------------------
+TELEGRAM_TOKEN = "YOUR_BOT_TOKEN"
 
-def load_dataframe():
+SYMBOL = "BTC/USDT"
+TIMEFRAME = "1h"
 
-    data = get_ohlcv(SYMBOL, TIMEFRAME)
+# =====================================
+# EXCHANGE
+# =====================================
 
-    df = pd.DataFrame(data, columns=[
+exchange = ccxt.binance({
+    "enableRateLimit": True
+})
+
+# =====================================
+# LOAD MARKET DATA
+# =====================================
+
+def load_market_data():
+
+    candles = exchange.fetch_ohlcv(
+        SYMBOL,
+        timeframe=TIMEFRAME,
+        limit=300
+    )
+
+    df = pd.DataFrame(candles, columns=[
         "time",
         "open",
         "high",
@@ -34,13 +51,93 @@ def load_dataframe():
 
     return df
 
-# --------------------
-# GENERATE SIGNAL
-# --------------------
+# =====================================
+# RSI
+# =====================================
 
-def generate_signal(df):
+def calculate_rsi(series, period=14):
 
-    rsi = df["rsi"].iloc[-1]
+    delta = series.diff()
+
+    gain = delta.clip(lower=0)
+
+    loss = -delta.clip(upper=0)
+
+    avg_gain = gain.rolling(period).mean()
+
+    avg_loss = loss.rolling(period).mean()
+
+    rs = avg_gain / avg_loss
+
+    rsi = 100 - (100 / (1 + rs))
+
+    return rsi
+
+# =====================================
+# EMA
+# =====================================
+
+def calculate_ema(series, period):
+
+    return series.ewm(
+        span=period,
+        adjust=False
+    ).mean()
+
+# =====================================
+# MACD
+# =====================================
+
+def calculate_macd(series):
+
+    ema12 = calculate_ema(series, 12)
+
+    ema26 = calculate_ema(series, 26)
+
+    macd = ema12 - ema26
+
+    signal = macd.ewm(
+        span=9,
+        adjust=False
+    ).mean()
+
+    return macd, signal
+
+# =====================================
+# APPLY INDICATORS
+# =====================================
+
+def apply_indicators(df):
+
+    df["rsi"] = calculate_rsi(df["close"])
+
+    macd, signal = calculate_macd(df["close"])
+
+    df["macd"] = macd
+
+    df["macd_signal"] = signal
+
+    df["ema50"] = calculate_ema(
+        df["close"],
+        50
+    )
+
+    df["ema200"] = calculate_ema(
+        df["close"],
+        200
+    )
+
+    return df
+
+# =====================================
+# MARKET STRUCTURE
+# =====================================
+
+def analyze_market(df):
+
+    price = df["close"].iloc[-1]
+
+    rsi = round(df["rsi"].iloc[-1], 2)
 
     macd = df["macd"].iloc[-1]
 
@@ -50,37 +147,82 @@ def generate_signal(df):
 
     ema200 = df["ema200"].iloc[-1]
 
-    price = df["close"].iloc[-1]
+    trend = "BULLISH"
+
+    if ema50 < ema200:
+        trend = "BEARISH"
+
+    signal = "NEUTRAL"
 
     if (
-        rsi < 35 and
-        macd > macd_signal and
-        ema50 > ema200
+        trend == "BULLISH"
+        and rsi < 40
+        and macd > macd_signal
     ):
-        return "BUY"
+        signal = "BUY"
 
     if (
-        rsi > 65 and
-        macd < macd_signal and
-        ema50 < ema200
+        trend == "BEARISH"
+        and rsi > 60
+        and macd < macd_signal
     ):
-        return "SELL"
+        signal = "SELL"
 
-    return "NEUTRAL"
+    return {
+        "price": round(price, 2),
+        "trend": trend,
+        "signal": signal,
+        "rsi": rsi
+    }
 
-# --------------------
+# =====================================
+# AI ANALYSIS
+# =====================================
+
+def ai_analysis(data):
+
+    text = f"""
+AI MARKET ANALYSIS
+
+Pair: {SYMBOL}
+
+Trend: {data['trend']}
+
+Signal: {data['signal']}
+
+RSI: {data['rsi']}
+
+Current Price: {data['price']}
+
+Interpretation:
+The AI engine analyzed momentum,
+trend direction and market strength.
+
+Use proper risk management before trading.
+"""
+
+    return text
+
+# =====================================
 # CHART
-# --------------------
+# =====================================
 
-def create_chart(df):
+def generate_chart(df):
+
+    if not os.path.exists("charts"):
+        os.makedirs("charts")
 
     path = "charts/chart.png"
 
-    plt.figure(figsize=(12,6))
+    plt.figure(figsize=(12, 6))
 
     plt.plot(df["close"])
 
-    plt.title("AI Trading Chart")
+    plt.title(f"{SYMBOL} Price Chart")
+
+    plt.xlabel("Candles")
+
+    plt.ylabel("Price")
 
     plt.grid(True)
 
@@ -90,71 +232,82 @@ def create_chart(df):
 
     return path
 
-# --------------------
-# COMMANDS
-# --------------------
+# =====================================
+# START COMMAND
+# =====================================
 
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def start(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
 
     await update.message.reply_text(
         "AI Trading Bot Activated ✅"
     )
 
-async def analyze(update: Update, context: ContextTypes.DEFAULT_TYPE):
+# =====================================
+# ANALYZE COMMAND
+# =====================================
 
-    df = load_dataframe()
+async def analyze(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
 
-    df = apply_indicators(df)
+    try:
 
-    signal = generate_signal(df)
+        await update.message.reply_text(
+            "Analyzing Market..."
+        )
 
-    structure = detect_structure(df)
+        df = load_market_data()
 
-    rsi = round(df["rsi"].iloc[-1],2)
+        df = apply_indicators(df)
 
-    entry = round(df["close"].iloc[-1],2)
+        result = analyze_market(df)
 
-    stop = round(entry * 0.98,2)
+        analysis = ai_analysis(result)
 
-    risk = calculate_risk(entry, stop)
+        chart = generate_chart(df)
 
-    ai_text = generate_ai_text(
-        signal,
-        structure,
-        rsi
-    )
+        await update.message.reply_photo(
+            photo=open(chart, "rb"),
+            caption=analysis
+        )
 
-    chart = create_chart(df)
+    except Exception as e:
 
-    msg = f"""
-PAIR: {SYMBOL}
+        await update.message.reply_text(
+            f"Error:\n{str(e)}"
+        )
 
-SIGNAL: {signal}
+# =====================================
+# HELP COMMAND
+# =====================================
 
-STRUCTURE: {structure}
+async def help_command(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
 
-RSI: {rsi}
+    msg = """
+AVAILABLE COMMANDS
 
-ENTRY: {entry}
+/start
+Start bot
 
-STOP LOSS: {stop}
+/analyze
+Analyze BTC market
 
-TP1: {risk['tp1']}
-
-TP2: {risk['tp2']}
-
-AI ANALYSIS:
-{ai_text}
+/help
+Show commands
 """
 
-    await update.message.reply_photo(
-        open(chart, "rb"),
-        caption=msg
-    )
+    await update.message.reply_text(msg)
 
-# --------------------
+# =====================================
 # MAIN
-# --------------------
+# =====================================
 
 def main():
 
@@ -162,19 +315,34 @@ def main():
         .token(TELEGRAM_TOKEN)\
         .build()
 
-    app.add_handler(CommandHandler(
-        "start",
-        start
-    ))
+    app.add_handler(
+        CommandHandler(
+            "start",
+            start
+        )
+    )
 
-    app.add_handler(CommandHandler(
-        "analyze",
-        analyze
-    ))
+    app.add_handler(
+        CommandHandler(
+            "analyze",
+            analyze
+        )
+    )
+
+    app.add_handler(
+        CommandHandler(
+            "help",
+            help_command
+        )
+    )
 
     print("AI BOT RUNNING...")
 
     app.run_polling()
+
+# =====================================
+# RUN
+# =====================================
 
 if __name__ == "__main__":
 
