@@ -2,14 +2,15 @@ import os
 import requests
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters
 
+
 # ==========================
-# ENV
+# ENV VARIABLES
 # ==========================
 
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 
 if not TELEGRAM_TOKEN:
-    raise ValueError("ERROR: TELEGRAM_TOKEN is missing.")
+    raise ValueError("ERROR: TELEGRAM_TOKEN not found in Railway Variables")
 
 
 # ==========================
@@ -17,11 +18,11 @@ if not TELEGRAM_TOKEN:
 # ==========================
 
 async def start(update, context):
-    await update.message.reply_text("سلام فرهاد! ربات با موفقیت روشن شد 🤖")
+    await update.message.reply_text("سلام فرهاد! ربات با موفقیت روشن شد 🤖🔥")
 
 
 # ==========================
-# COMMAND: /price
+# COMMAND: /price (Bitcoin)
 # ==========================
 
 async def price(update, context):
@@ -29,29 +30,53 @@ async def price(update, context):
         url = "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd"
         data = requests.get(url).json()
         btc_price = data["bitcoin"]["usd"]
-        await update.message.reply_text(f"قیمت بیت‌کوین: {btc_price} دلار")
+        await update.message.reply_text(f"قیمت بیت‌کوین الان: {btc_price} دلار 💰")
     except Exception as e:
-        await update.message.reply_text(f"خطا: {e}")
+        await update.message.reply_text(f"خطا در دریافت قیمت: {e}")
 
 
 # ==========================
-# MESSAGE HANDLER
+# TEXT MESSAGE HANDLER
 # ==========================
 
-async def echo(update, context):
-    msg = update.message.text
-    await update.message.reply_text(f"پیامت رسید فرهاد: {msg}")
+async def message_handler(update, context):
+    text = update.message.text.lower()
+
+    # سلام
+    if "سلام" in text or "hi" in text:
+        await update.message.reply_text("سلام فرهاد! چطوری؟ 😊")
+
+    # قیمت
+    elif "قیمت" in text or "price" in text:
+        await update.message.reply_text("برای دریافت قیمت بیت‌کوین دستور /price رو بزن 🔥")
+
+    # نوبیتکس
+    elif "نوبیتکس" in text:
+        await update.message.reply_text("چه کاری با نوبیتکس داری فرهاد؟ 😎")
+
+    # پیام‌های دیگر
+    else:
+        await update.message.reply_text("دارم گوش میدم فرهاد... دقیق‌تر بگو 👂")
 
 
 # ==========================
 # RUN BOT
 # ==========================
 
-app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
+def main():
+    print("Bot is running...")
 
-app.add_handler(CommandHandler("start", start))
-app.add_handler(CommandHandler("price", price))
-app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, echo))
+    app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
 
-print("Bot is running...")
-app.run_polling()
+    # دستورات
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("price", price))
+
+    # پیام متنی
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, message_handler))
+
+    app.run_polling()
+
+
+if __name__ == "__main__":
+    main()
