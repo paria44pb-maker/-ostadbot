@@ -3,8 +3,8 @@ import requests
 import tempfile
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import (
-    ApplicationBuilder, CommandHandler, MessageHandler, CallbackQueryHandler,
-    filters, ContextTypes
+    ApplicationBuilder, CommandHandler, MessageHandler,
+    CallbackQueryHandler, filters, ContextTypes
 )
 
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
@@ -13,7 +13,9 @@ GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 conversation_memory = []
 
 
+# ---------------- GROQ CHAT
 def groq_chat(messages):
+
     url = "https://api.groq.com/openai/v1/chat/completions"
 
     headers = {
@@ -28,10 +30,13 @@ def groq_chat(messages):
     }
 
     r = requests.post(url, json=payload, headers=headers, timeout=30)
+
     return r.json()
 
 
+# ---------------- TEXT TO SPEECH
 def groq_tts(text):
+
     url = "https://api.groq.com/openai/v1/audio/speech"
 
     headers = {
@@ -48,15 +53,21 @@ def groq_tts(text):
     r = requests.post(url, json=payload, headers=headers, timeout=60)
 
     if r.status_code == 200:
+
         temp = tempfile.NamedTemporaryFile(delete=False, suffix=".mp3")
+
         temp.write(r.content)
+
         temp.close()
+
         return temp.name
 
     return None
 
 
+# ---------------- VOICE TO TEXT
 def groq_whisper(audio_bytes):
+
     url = "https://api.groq.com/openai/v1/audio/transcriptions"
 
     headers = {
@@ -76,62 +87,84 @@ def groq_whisper(audio_bytes):
     return r.json().get("text", None)
 
 
-# ---------------- PRICE (CoinGecko)
-async def price(update: Update, context: ContextTypes.DEFAULT_TYPE):
-
-    try:
-        data = requests.get(
-            "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd"
-        ).json()
-
-        await update.message.reply_text(
-            f"قیمت بیت‌کوین: {data['bitcoin']['usd']} دلار 💰"
-        )
-
-    except:
-        await update.message.reply_text("خطا در دریافت قیمت.")
-
-
-# ---------------- Nobitex (NEW)
+# ---------------- PRICE FUNCTION
 async def nobitex_price(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     try:
 
-        url = "https://api.nobitex.ir/market/stats?srcCurrency=btc&dstCurrency=rls"
+        # Nobitex
+        nob = requests.get(
+            "https://api.nobitex.ir/market/stats"
+        ).json()["stats"]
 
-        data = requests.get(url).json()
+        btc_irr = nob["btc-rls"]["latest"]
+        usdt_irr = nob["usdt-rls"]["latest"]
+        xrp_irr = nob["xrp-rls"]["latest"]
+        gold_irr = nob["paxg-rls"]["latest"]
 
-        price = data["stats"]["btc-rls"]["latest"]
+        # Global
+        cg = requests.get(
+            "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,tether,ripple,pax-gold&vs_currencies=usd"
+        ).json()
 
-        await update.message.reply_text(
-            f"قیمت بیت‌کوین در نوبیتکس:\n{price} ریال 🇮🇷"
-        )
+        btc_usd = cg["bitcoin"]["usd"]
+        usdt_usd = cg["tether"]["usd"]
+        xrp_usd = cg["ripple"]["usd"]
+        gold_usd = cg["pax-gold"]["usd"]
+
+        message = f"""
+📊 بازار کریپتو
+
+🇮🇷 نوبیتکس
+
+BTC: {btc_irr}
+USDT: {usdt_irr}
+XRP: {xrp_irr}
+GOLD: {gold_irr}
+
+
+🌍 بازار جهانی
+
+BTC: {btc_usd} $
+USDT: {usdt_usd} $
+XRP: {xrp_usd} $
+GOLD: {gold_usd} $
+"""
+
+        await update.message.reply_text(message)
 
     except:
 
-        await update.message.reply_text("خطا در دریافت قیمت از نوبیتکس.")
+        await update.message.reply_text("خطا در دریافت قیمت.")
 
 
 # ---------------- START
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     keyboard = [
+
         [InlineKeyboardButton("💬 چت هوشمند", callback_data="chat")],
+
         [InlineKeyboardButton("🎧 ارسال ویس", callback_data="voice")],
-        [InlineKeyboardButton("📈 قیمت بیت‌کوین", callback_data="price")],
-        [InlineKeyboardButton("🇮🇷 قیمت نوبیتکس", callback_data="nobitex")],
+
+        [InlineKeyboardButton("📊 قیمت بازار", callback_data="price")],
+
         [InlineKeyboardButton("⚙ تنظیمات", callback_data="settings")]
+
     ]
 
     await update.message.reply_text(
-        "سلام فرهاد 👋 نسخه Super Turbo فعال شد",
+
+        "سلام فرهاد 👋 ربات فعال شد",
+
         reply_markup=InlineKeyboardMarkup(keyboard)
+
     )
 
 
 async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
-    await update.message.reply_text("/start /help /price")
+    await update.message.reply_text("/start /help")
 
 
 # ---------------- CHAT
@@ -142,19 +175,25 @@ async def ai_chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
     conversation_memory.append({"role": "user", "content": user_text})
 
     if len(conversation_memory) > 5:
+
         conversation_memory.pop(0)
 
     await context.bot.send_chat_action(update.effective_chat.id, "typing")
 
     messages = [
+
         {"role": "system", "content": "You are a helpful Persian assistant."},
+
         *conversation_memory
+
     ]
 
     answer = groq_chat(messages)
 
     if "error" in answer:
+
         await update.message.reply_text(str(answer["error"]))
+
         return
 
     bot_text = answer["choices"][0]["message"]["content"]
@@ -166,11 +205,13 @@ async def ai_chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
     audio_path = groq_tts(bot_text)
 
     if audio_path:
+
         await update.message.reply_voice(open(audio_path, "rb"))
+
         os.remove(audio_path)
 
 
-# ---------------- VOICE
+# ---------------- VOICE MESSAGE
 async def ai_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     file = await update.message.voice.get_file()
@@ -180,7 +221,9 @@ async def ai_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = groq_whisper(voice_bytes)
 
     if not text:
+
         await update.message.reply_text("خطا در تبدیل ویس")
+
         return
 
     await update.message.reply_text(f"متن ویس:\n{text}")
@@ -198,33 +241,32 @@ async def callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await q.answer()
 
     if q.data == "chat":
+
         await q.message.reply_text("چت فعال شد")
 
     elif q.data == "voice":
+
         await q.message.reply_text("یک ویس بفرست")
 
     elif q.data == "price":
-        await price(q, context)
 
-    elif q.data == "nobitex":
         await nobitex_price(q, context)
 
     else:
+
         await q.message.reply_text("تنظیم خاصی نیست")
 
 
 # ---------------- MAIN
 def main():
 
-    print("Bot running with Groq + Nobitex")
+    print("Bot running with Groq + Crypto prices")
 
     app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
 
     app.add_handler(CommandHandler("start", start))
 
     app.add_handler(CommandHandler("help", help_cmd))
-
-    app.add_handler(CommandHandler("price", price))
 
     app.add_handler(CallbackQueryHandler(callback))
 
