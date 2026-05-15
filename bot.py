@@ -16,25 +16,24 @@ conversation_memory = []
 if not TELEGRAM_TOKEN:
     raise ValueError("TELEGRAM_TOKEN is missing!")
 
-# ============ API HELPERS ============
+# ==================== API HELPERS ====================
 
-def call_groq_chat(messages):
-    """Chat completion با Groq"""
+def groq_chat(messages):
     url = "https://api.groq.com/openai/v1/chat/completions"
     headers = {
         "Authorization": f"Bearer {GROQ_API_KEY}",
         "Content-Type": "application/json"
     }
     payload = {
-        "model": "llama-3.1-70b-versatile",
+        "model": "llama3-70b-8192",
         "messages": messages,
-        "temperature": 0.4
+        "temperature": 0.5
     }
-    res = requests.post(url, json=payload, headers=headers, timeout=30)
+    res = requests.post(url, headers=headers, json=payload, timeout=30)
     return res.json()
 
-def call_groq_tts(text):
-    """تبدیل متن به صوت با Bark روی Groq"""
+def groq_tts(text):
+    """Convert text to speech (male voice)."""
     url = "https://api.groq.com/openai/v1/audio/speech"
     headers = {
         "Authorization": f"Bearer {GROQ_API_KEY}",
@@ -43,9 +42,10 @@ def call_groq_tts(text):
     payload = {
         "model": "bark-small",
         "input": text,
-        "voice": "female"
+        "voice": "male"
     }
-    res = requests.post(url, json=payload, headers=headers, timeout=60)
+    res = requests.post(url, headers=headers, json=payload, timeout=60)
+
     if res.status_code == 200:
         temp = tempfile.NamedTemporaryFile(delete=False, suffix=".mp3")
         temp.write(res.content)
@@ -53,8 +53,8 @@ def call_groq_tts(text):
         return temp.name
     return None
 
-def call_groq_whisper(audio_bytes):
-    """تبدیل ویس کاربر به متن با Whisper روی Groq"""
+def groq_whisper(audio_bytes):
+    """Voice → Text"""
     url = "https://api.groq.com/openai/v1/audio/transcriptions"
     headers = {"Authorization": f"Bearer {GROQ_API_KEY}"}
     files = {"file": ("voice.ogg", audio_bytes)}
@@ -62,108 +62,101 @@ def call_groq_whisper(audio_bytes):
     res = requests.post(url, headers=headers, files=files, data=data)
     return res.json().get("text", None)
 
-
-# ============ COMMANDS ============
+# ==================== COMMANDS ====================
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [
         [InlineKeyboardButton("💬 چت هوشمند", callback_data="chat")],
+        [InlineKeyboardButton("🎧 ارسال ویس", callback_data="voice")],
         [InlineKeyboardButton("📈 قیمت بیت‌کوین", callback_data="price")],
-        [InlineKeyboardButton("🎧 ویس بده", callback_data="voice")],
         [InlineKeyboardButton("⚙ تنظیمات", callback_data="settings")]
     ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
     await update.message.reply_text(
-        "سلام فرهاد! 👋 ربات Super‑Turbo با Groq آماده‌ست 🌪",
-        reply_markup=reply_markup
+        "سلام فرهاد! 👋 نسخه Super‑Turbo فعال شد 🌪",
+        reply_markup=InlineKeyboardMarkup(keyboard)
     )
 
-
 async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("دستورات: /start /help /price /chat")
-
+    await update.message.reply_text("دستورات: /start /help /price")
 
 async def price(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Bitcoin Price"""
     try:
         res = requests.get(
             "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd"
         ).json()
         await update.message.reply_text(f"قیمت بیت‌کوین: {res['bitcoin']['usd']} دلار 💰")
-    except Exception:
+    except:
         await update.message.reply_text("خطا در دریافت قیمت بیت‌کوین.")
 
-
-# ============ CHAT HANDLERS ============
+# ==================== CHAT ====================
 
 async def ai_chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_msg = update.message.text.strip()
-
-    if len(user_msg) < 2:
-        await update.message.reply_text("لطفاً جمله کامل‌تر بنویس ❤️")
+    if len(user_msg) == 0:
         return
 
-    # اضافه به حافظه مکالمه
+    # حافظه مکالمه
     conversation_memory.append({"role": "user", "content": user_msg})
     if len(conversation_memory) > 5:
         conversation_memory.pop(0)
 
-    # نشان دادن حالت تایپ
-    await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
+    # حالت تایپ
+    await context.bot.send_chat_action(update.effective_chat.id, "typing")
 
-    # ارسال پیام‌ها به Groq
-    messages = [{"role": "system", "content": "You are a Persian assistant."}] + conversation_memory
-    data = call_groq_chat(messages)
+    messages = [{"role": "system", "content": "You are a helpful Persian assistant."}]
+    messages.extend(conversation_memory)
+
+    data = groq_chat(messages)
 
     if "error" in data:
-        await update.message.reply_text(f"Groq Error: {data['error']}")
+        await update.message.reply_text(str(data["error"]))
         return
 
     ai_text = data["choices"][0]["message"]["content"]
     conversation_memory.append({"role": "assistant", "content": ai_text})
 
-    # ارسال متن پاسخ
+    # ارسال متن
     await update.message.reply_text(ai_text)
 
-    # تبدیل به صوت و ارسال
-    audio_path = call_groq_tts(ai_text)
+    # ارسال ویس male
+    audio_path = groq_tts(ai_text)
     if audio_path:
-        await update.message.reply_voice(voice=open(audio_path, "rb"))
+        await update.message.reply_voice(open(audio_path, "rb"))
         os.remove(audio_path)
 
+async def ai_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    file = await update.message.voice.get_file()
+    voice_data = await file.download_as_bytearray()
 
-async def voice_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """وقتی کاربر ویس می‌فرستد"""
-    voice_file = await update.message.voice.get_file()
-    voice_bytes = await voice_file.download_as_bytearray()
-
-    transcribed = call_groq_whisper(voice_bytes)
-    if not transcribed:
-        await update.message.reply_text("خطا در تبدیل ویس به متن ❌")
+    text = groq_whisper(voice_data)
+    if not text:
+        await update.message.reply_text("نتونستم ویس رو تبدیل کنم ❌")
         return
 
-    await update.message.reply_text(f"متن ویس: {transcribed}")
-    update.message.text = transcribed
+    await update.message.reply_text(f"متن ویس:\n{text}")
+    update.message.text = text
     await ai_chat(update, context)
 
+# ==================== BUTTONS ====================
 
-# ============ CALLBACK BUTTONS ============
-async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
+async def callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    q = update.callback_query
+    await q.answer()
 
-    if query.data == "chat":
-        await query.message.reply_text("✨ چت هوشمند فعال شد! بنویس:")
-    elif query.data == "price":
-        await price(query, context)
-    elif query.data == "voice":
-        await query.message.reply_text("🎙 یک ویس بفرست تا تبدیل به متن و پاسخ داده شود.")
-    elif query.data == "settings":
-        await query.message.reply_text("تنظیم خاصی فعلاً فعال نیست ⚙️")
+    if q.data == "chat":
+        await q.message.reply_text("بزن بریم 💬")
+    elif q.data == "voice":
+        await q.message.reply_text("🎙 یه ویس ارسال کن")
+    elif q.data == "price":
+        await price(q, context)
+    elif q.data == "settings":
+        await q.message.reply_text("فعلاً تنظیم خاصی وجود نداره.")
 
+# ==================== MAIN ====================
 
-# ============ MAIN ============
 def main():
-    print("Bot Super‑Turbo is running... 🔥")
+    print("Bot Super‑Turbo FINAL is running... 🔥")
 
     app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
 
@@ -171,108 +164,11 @@ def main():
     app.add_handler(CommandHandler("help", help_cmd))
     app.add_handler(CommandHandler("price", price))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, ai_chat))
-    app.add_handler(MessageHandler(filters.VOICE, voice_input))
+    app.add_handler(MessageHandler(filters.VOICE, ai_voice))
     app.add_handler(MessageHandler(filters.COMMAND, help_cmd))
     app.add_handler(MessageHandler(filters.COMMAND, help_cmd))
     app.add_handler(MessageHandler(filters.COMMAND, help_cmd))
     app.add_handler(MessageHandler(filters.COMMAND, help_cmd))
-    app.add_handler(MessageHandler(filters.COMMAND, help_cmd))
-    app.add_handler(CommandHandler("chat", start))
-    app.add_handler(MessageHandler(filters.COMMAND, help_cmd))
-    app.add_handler(MessageHandler(filters.COMMAND, help_cmd))
-    app.add_handler(MessageHandler(filters.COMMAND, help_cmd))
-    app.add_handler(MessageHandler(filters.COMMAND, help_cmd))
-    app.add_handler(MessageHandler(filters.COMMAND, help_cmd))
-    app.add_handler(MessageHandler(filters.COMMAND, help_cmd))
-    app.add_handler(CommandHandler("chat", start))
-    app.add_handler(MessageHandler(filters.COMMAND, help_cmd))
-    app.add_handler(MessageHandler(filters.COMMAND, help_cmd))
-    app.add_handler(MessageHandler(filters.COMMAND, help_cmd))
-    app.add_handler(CommandHandler("chat", start))
-    app.add_handler(CommandHandler("chat", start))
-    app.add_handler(CommandHandler("chat", start))
-    app.add_handler(CommandHandler("chat", start))
-    app.add_handler(MessageHandler(filters.COMMAND, help_cmd))
-    app.add_handler(MessageHandler(filters.COMMAND, help_cmd))
-    app.add_handler(CommandHandler("chat", start))
-    app.add_handler(MessageHandler(filters.COMMAND, help_cmd))
-    app.add_handler(MessageHandler(filters.COMMAND, help_cmd))
-    app.add_handler(CommandHandler("chat", start))
-    app.add_handler(MessageHandler(filters.COMMAND, help_cmd))
-    app.add_handler(CommandHandler("chat", start))
-    app.add_handler(MessageHandler(filters.COMMAND, help_cmd))
-    app.add_handler(MessageHandler(filters.COMMAND, help_cmd))
-    app.add_handler(CommandHandler("chat", start))
-    app.add_handler(MessageHandler(filters.COMMAND, help_cmd))
-    app.add_handler(CommandHandler("chat", start))
-    app.add_handler(MessageHandler(filters.COMMAND, help_cmd))
-    app.add_handler(CommandHandler("chat", start))
-    app.add_handler(MessageHandler(filters.COMMAND, help_cmd))
-    app.add_handler(CommandHandler("chat", start))
-    app.add_handler(MessageHandler(filters.COMMAND, help_cmd))
-    app.add_handler(CommandHandler("chat", start))
-    app.add_handler(MessageHandler(filters.COMMAND, help_cmd))
-    app.add_handler(CommandHandler("chat", start))
-    app.add_handler(MessageHandler(filters.COMMAND, help_cmd))
-    app.add_handler(CommandHandler("chat", start))
-    app.add_handler(MessageHandler(filters.COMMAND, help_cmd))
-    app.add_handler(CommandHandler("chat", start))
-    app.add_handler(MessageHandler(filters.COMMAND, help_cmd))
-    app.add_handler(CommandHandler("chat", start))
-    app.add_handler(MessageHandler(filters.COMMAND, help_cmd))
-    app.add_handler(CommandHandler("chat", start))
-    app.add_handler(MessageHandler(filters.COMMAND, help_cmd))
-    app.add_handler(CommandHandler("chat", start))
-    app.add_handler(MessageHandler(filters.COMMAND, help_cmd))
-    app.add_handler(CommandHandler("chat", start))
-    app.add_handler(CommandHandler("chat", start))
-    app.add_handler(MessageHandler(filters.COMMAND, help_cmd))
-    app.add_handler(MessageHandler(filters.COMMAND, help_cmd))
-    app.add_handler(CommandHandler("chat", start))
-    app.add_handler(MessageHandler(filters.COMMAND, help_cmd))
-    app.add_handler(MessageHandler(filters.COMMAND, help_cmd))
-    app.add_handler(CommandHandler("chat", start))
-    app.add_handler(CommandHandler("chat", start))
-    app.add_handler(CommandHandler("chat", start))
-    app.add_handler(CommandHandler("chat", start))
-    app.add_handler(CommandHandler("chat", start))
-    app.add_handler(MessageHandler(filters.COMMAND, help_cmd))
-    app.add_handler(CommandHandler("chat", start))
-    app.add_handler(CommandHandler("chat", start))
-    app.add_handler(CommandHandler("chat", start))
-    app.add_handler(CommandHandler("chat", start))
-    app.add_handler(CommandHandler("chat", start))
-    app.add_handler(CommandHandler("chat", start))
-    app.add_handler(CommandHandler("chat", start))
-    app.add_handler(CommandHandler("chat", start))
-    app.add_handler(CommandHandler("chat", start))
-    app.add_handler(CommandHandler("chat", start))
-    app.add_handler(CommandHandler("chat", start))
-    app.add_handler(CommandHandler("chat", start))
-    app.add_handler(CommandHandler("chat", start))
-    app.add_handler(CommandHandler("chat", start))
-    app.add_handler(CommandHandler("chat", start))
-    app.add_handler(CommandHandler("chat", start))
-    app.add_handler(CommandHandler("chat", start))
-    app.add_handler(CommandHandler("chat", start))
-    app.add_handler(CommandHandler("chat", start))
-    app.add_handler(MessageHandler(filters.COMMAND, help_cmd))
-    app.add_handler(CommandHandler("chat", start))
-    app.add_handler(MessageHandler(filters.COMMAND, help_cmd))
-    app.add_handler(CommandHandler("chat", start))
-    app.add_handler(MessageHandler(filters.COMMAND, help_cmd))
-    app.add_handler(CommandHandler("chat", start))
-    app.add_handler(MessageHandler(filters.COMMAND, help_cmd))
-    app.add_handler(CommandHandler("chat", start))
-    app.add_handler(CommandHandler("chat", start))
-    app.add_handler(CommandHandler("chat", start))
-    app.add_handler(CommandHandler("chat", start))
-    app.add_handler(CommandHandler("chat", start))
-    app.add_handler(CommandHandler("chat", start))
-
-    # callbacks
-    app.add_handler(MessageHandler(filters.COMMAND, help_cmd))
-    app.add_handler(CommandHandler("chat", start))
     app.run_polling()
 
 
