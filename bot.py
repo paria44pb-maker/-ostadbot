@@ -1,10 +1,15 @@
 import os
 import requests
 import tempfile
+
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import (
-    ApplicationBuilder, CommandHandler, MessageHandler,
-    CallbackQueryHandler, filters, ContextTypes
+    ApplicationBuilder,
+    CommandHandler,
+    MessageHandler,
+    CallbackQueryHandler,
+    ContextTypes,
+    filters
 )
 
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
@@ -29,7 +34,7 @@ def groq_chat(messages):
         "temperature": 0.5
     }
 
-    r = requests.post(url, json=payload, headers=headers, timeout=30)
+    r = requests.post(url, json=payload, headers=headers)
 
     return r.json()
 
@@ -50,7 +55,7 @@ def groq_tts(text):
         "voice": "male"
     }
 
-    r = requests.post(url, json=payload, headers=headers, timeout=60)
+    r = requests.post(url, json=payload, headers=headers)
 
     if r.status_code == 200:
 
@@ -84,58 +89,105 @@ def groq_whisper(audio_bytes):
 
     r = requests.post(url, headers=headers, files=files, data=data)
 
-    return r.json().get("text", None)
+    return r.json().get("text")
 
 
-# ---------------- PRICE FUNCTION
-async def nobitex_price(update: Update, context: ContextTypes.DEFAULT_TYPE):
+# ---------------- PRICE
+async def crypto_price(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     try:
 
-        # Nobitex
         nob = requests.get(
             "https://api.nobitex.ir/market/stats"
         ).json()["stats"]
 
-        btc_irr = nob["btc-rls"]["latest"]
-        usdt_irr = nob["usdt-rls"]["latest"]
-        xrp_irr = nob["xrp-rls"]["latest"]
-        gold_irr = nob["paxg-rls"]["latest"]
+        btc = nob.get("btc-rls", {}).get("latest", "-")
+        eth = nob.get("eth-rls", {}).get("latest", "-")
+        usdt = nob.get("usdt-rls", {}).get("latest", "-")
+        xrp = nob.get("xrp-rls", {}).get("latest", "-")
+        ton = nob.get("ton-rls", {}).get("latest", "-")
 
-        # Global
         cg = requests.get(
-            "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,tether,ripple,pax-gold&vs_currencies=usd"
+            "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,ethereum,tether,ripple,the-open-network&vs_currencies=usd"
         ).json()
 
         btc_usd = cg["bitcoin"]["usd"]
+        eth_usd = cg["ethereum"]["usd"]
         usdt_usd = cg["tether"]["usd"]
         xrp_usd = cg["ripple"]["usd"]
-        gold_usd = cg["pax-gold"]["usd"]
+        ton_usd = cg["the-open-network"]["usd"]
 
-        message = f"""
+        msg = f"""
 📊 بازار کریپتو
 
 🇮🇷 نوبیتکس
 
-BTC: {btc_irr}
-USDT: {usdt_irr}
-XRP: {xrp_irr}
-GOLD: {gold_irr}
-
+BTC : {btc}
+ETH : {eth}
+USDT : {usdt}
+XRP : {xrp}
+TON : {ton}
 
 🌍 بازار جهانی
 
-BTC: {btc_usd} $
-USDT: {usdt_usd} $
-XRP: {xrp_usd} $
-GOLD: {gold_usd} $
+BTC : {btc_usd} $
+ETH : {eth_usd} $
+USDT : {usdt_usd} $
+XRP : {xrp_usd} $
+TON : {ton_usd} $
 """
 
-        await update.message.reply_text(message)
+        await update.message.reply_text(msg)
 
     except:
 
-        await update.message.reply_text("خطا در دریافت قیمت.")
+        await update.message.reply_text("خطا در دریافت قیمت بازار")
+
+
+# ---------------- TOP 10
+async def top_crypto(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+    data = requests.get(
+        "https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=10&page=1"
+    ).json()
+
+    msg = "🔥 10 ارز برتر بازار\n\n"
+
+    for coin in data:
+
+        name = coin["name"]
+
+        price = coin["current_price"]
+
+        msg += f"{name} : {price}$\n"
+
+    await update.message.reply_text(msg)
+
+
+# ---------------- MARKET ANALYSIS
+async def market_analysis(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+    data = requests.get(
+        "https://api.coingecko.com/api/v3/global"
+    ).json()
+
+    cap = data["data"]["total_market_cap"]["usd"]
+
+    btc_dom = data["data"]["market_cap_percentage"]["btc"]
+
+    msg = f"""
+🧠 تحلیل سریع بازار
+
+ارزش کل بازار:
+{cap:,.0f} $
+
+Dominance BTC:
+{btc_dom:.2f} %
+
+دامیننس بالا یعنی پول بیشتر در بیت‌کوین است.
+"""
+
+    await update.message.reply_text(msg)
 
 
 # ---------------- START
@@ -143,34 +195,31 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     keyboard = [
 
-        [InlineKeyboardButton("💬 چت هوشمند", callback_data="chat")],
+        [InlineKeyboardButton("📊 قیمت بازار", callback_data="price")],
+
+        [InlineKeyboardButton("🔥 10 ارز برتر", callback_data="top")],
+
+        [InlineKeyboardButton("🧠 تحلیل بازار", callback_data="analysis")],
 
         [InlineKeyboardButton("🎧 ارسال ویس", callback_data="voice")],
 
-        [InlineKeyboardButton("📊 قیمت بازار", callback_data="price")],
-
-        [InlineKeyboardButton("⚙ تنظیمات", callback_data="settings")]
+        [InlineKeyboardButton("💬 چت هوشمند", callback_data="chat")]
 
     ]
 
     await update.message.reply_text(
 
-        "سلام فرهاد 👋 ربات فعال شد",
+        "سلام فرهاد 👋\nربات کریپتو فعال شد",
 
         reply_markup=InlineKeyboardMarkup(keyboard)
 
     )
 
 
-async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-
-    await update.message.reply_text("/start /help")
-
-
 # ---------------- CHAT
 async def ai_chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
-    user_text = update.message.text.strip()
+    user_text = update.message.text
 
     conversation_memory.append({"role": "user", "content": user_text})
 
@@ -178,11 +227,9 @@ async def ai_chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         conversation_memory.pop(0)
 
-    await context.bot.send_chat_action(update.effective_chat.id, "typing")
-
     messages = [
 
-        {"role": "system", "content": "You are a helpful Persian assistant."},
+        {"role": "system", "content": "You are a helpful Persian crypto assistant."},
 
         *conversation_memory
 
@@ -190,28 +237,26 @@ async def ai_chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     answer = groq_chat(messages)
 
-    if "error" in answer:
+    if "choices" not in answer:
 
-        await update.message.reply_text(str(answer["error"]))
+        await update.message.reply_text("خطا در پاسخ AI")
 
         return
 
-    bot_text = answer["choices"][0]["message"]["content"]
+    text = answer["choices"][0]["message"]["content"]
 
-    conversation_memory.append({"role": "assistant", "content": bot_text})
+    await update.message.reply_text(text)
 
-    await update.message.reply_text(bot_text)
+    audio = groq_tts(text)
 
-    audio_path = groq_tts(bot_text)
+    if audio:
 
-    if audio_path:
+        await update.message.reply_voice(open(audio, "rb"))
 
-        await update.message.reply_voice(open(audio_path, "rb"))
-
-        os.remove(audio_path)
+        os.remove(audio)
 
 
-# ---------------- VOICE MESSAGE
+# ---------------- VOICE
 async def ai_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     file = await update.message.voice.get_file()
@@ -226,47 +271,45 @@ async def ai_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         return
 
-    await update.message.reply_text(f"متن ویس:\n{text}")
-
     update.message.text = text
 
     await ai_chat(update, context)
 
 
-# ---------------- BUTTON CALLBACK
+# ---------------- BUTTON
 async def callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     q = update.callback_query
 
     await q.answer()
 
-    if q.data == "chat":
+    if q.data == "price":
 
-        await q.message.reply_text("چت فعال شد")
+        await crypto_price(q, context)
+
+    elif q.data == "top":
+
+        await top_crypto(q, context)
+
+    elif q.data == "analysis":
+
+        await market_analysis(q, context)
 
     elif q.data == "voice":
 
         await q.message.reply_text("یک ویس بفرست")
 
-    elif q.data == "price":
+    elif q.data == "chat":
 
-        await nobitex_price(q, context)
-
-    else:
-
-        await q.message.reply_text("تنظیم خاصی نیست")
+        await q.message.reply_text("چت فعال شد")
 
 
 # ---------------- MAIN
 def main():
 
-    print("Bot running with Groq + Crypto prices")
-
     app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
 
     app.add_handler(CommandHandler("start", start))
-
-    app.add_handler(CommandHandler("help", help_cmd))
 
     app.add_handler(CallbackQueryHandler(callback))
 
