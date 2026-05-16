@@ -1,238 +1,174 @@
-import os
 import requests
 import pandas as pd
-import pandas_ta as ta
-import matplotlib.pyplot as plt
+import numpy as np
 
-from telegram.ext import ApplicationBuilder, CommandHandler
 from telegram import Update
-from telegram.ext import ContextTypes
+from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
 
-TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
-GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+TOKEN = "YOUR_BOT_TOKEN"
 
-BINANCE = "https://api.binance.com/api/v3"
+# =========================
+# دریافت دیتا از بایننس
+# =========================
+def get_data(symbol="BTCUSDT", interval="1h", limit=150):
 
+    url = f"https://api.binance.com/api/v3/klines?symbol={symbol}&interval={interval}&limit={limit}"
+    data = requests.get(url).json()
 
-# -------------------------------
-# MARKET DATA
-# -------------------------------
+    df = pd.DataFrame(data, columns=[
+        "time","open","high","low","close","volume",
+        "close_time","qav","num_trades","taker_base_vol",
+        "taker_quote_vol","ignore"
+    ])
 
-def get_klines(symbol="BTCUSDT", interval="1h", limit=200):
-
-    url = f"{BINANCE}/klines"
-
-    params = {
-        "symbol": symbol,
-        "interval": interval,
-        "limit": limit
-    }
-
-    r = requests.get(url, params=params)
-
-    data = r.json()
-
-    candles = []
-
-    for c in data:
-        candles.append({
-            "open": float(c[1]),
-            "high": float(c[2]),
-            "low": float(c[3]),
-            "close": float(c[4]),
-            "volume": float(c[5])
-        })
-
-    return candles
-
-
-# -------------------------------
-# TECHNICAL ANALYSIS
-# -------------------------------
-
-def indicators(candles):
-
-    df = pd.DataFrame(candles)
-
-    df["rsi"] = ta.rsi(df["close"], length=14)
-
-    df["ema20"] = ta.ema(df["close"], length=20)
-
-    df["ema50"] = ta.ema(df["close"], length=50)
-
-    macd = ta.macd(df["close"])
-    df["macd"] = macd["MACD_12_26_9"]
-
-    bb = ta.bbands(df["close"])
-    df["bb_upper"] = bb["BBU_20_2.0"]
-    df["bb_lower"] = bb["BBL_20_2.0"]
+    df["close"] = df["close"].astype(float)
 
     return df
 
 
-# -------------------------------
-# PRICE ACTION
-# -------------------------------
+# =========================
+# EMA
+# =========================
+def EMA(series, period):
+    return series.ewm(span=period, adjust=False).mean()
 
-def market_structure(df):
 
-    last = df.iloc[-1]
+# =========================
+# RSI
+# =========================
+def RSI(series, period=14):
 
-    ema20 = last["ema20"]
-    ema50 = last["ema50"]
+    delta = series.diff()
 
-    trend = "bullish" if ema20 > ema50 else "bearish"
+    gain = np.where(delta > 0, delta, 0)
+    loss = np.where(delta < 0, -delta, 0)
 
-    rsi = last["rsi"]
+    gain = pd.Series(gain).rolling(period).mean()
+    loss = pd.Series(loss).rolling(period).mean()
 
-    if rsi > 70:
-        momentum = "overbought"
-    elif rsi < 30:
-        momentum = "oversold"
-    else:
-        momentum = "neutral"
+    rs = gain / loss
+
+    rsi = 100 - (100 / (1 + rs))
+
+    return rsi
+
+
+# =========================
+# MACD
+# =========================
+def MACD(series):
+
+    ema12 = EMA(series,12)
+    ema26 = EMA(series,26)
+
+    macd = ema12 - ema26
+    signal = EMA(macd,9)
+
+    return macd, signal
+
+
+# =========================
+# Bollinger Bands
+# =========================
+def BBANDS(series, period=20):
+
+    sma = series.rolling(period).mean()
+    std = series.rolling(period).std()
+
+    upper = sma + (std * 2)
+    lower = sma - (std * 2)
+
+    return upper, lower
+
+
+# =========================
+# تحلیل
+# =========================
+def analyze(symbol):
+
+    df = get_data(symbol)
+
+    close = df["close"]
+
+    ema20 = EMA(close,20)
+    ema50 = EMA(close,50)
+
+    rsi = RSI(close)
+
+    macd, signal = MACD(close)
+
+    upper, lower = BBANDS(close)
+
+    price = close.iloc[-1]
+
+    trend = "Neutral"
+
+    if ema20.iloc[-1] > ema50.iloc[-1]:
+        trend = "Bullish"
+
+    if ema20.iloc[-1] < ema50.iloc[-1]:
+        trend = "Bearish"
 
     return {
-        "trend": trend,
-        "momentum": momentum,
-        "rsi": round(rsi, 2)
+        "price":price,
+        "trend":trend,
+        "rsi":rsi.iloc[-1],
+        "macd":macd.iloc[-1]
     }
 
 
-# -------------------------------
-# SIGNAL ENGINE
-# -------------------------------
-
-def generate_signal(data):
-
-    trend = data["trend"]
-    momentum = data["momentum"]
-
-    if trend == "bullish" and momentum != "overbought":
-        return "BUY"
-
-    if trend == "bearish" and momentum != "oversold":
-        return "SELL"
-
-    return "NEUTRAL"
-
-
-# -------------------------------
-# AI ANALYSIS
-# -------------------------------
-
-def ai_summary(structure):
-
-    url = "https://api.groq.com/openai/v1/chat/completions"
-
-    headers = {
-        "Authorization": f"Bearer {GROQ_API_KEY}",
-        "Content-Type": "application/json"
-    }
-
-    prompt = (
-        "Analyze the crypto market.\n"
-        f"Trend: {structure['trend']}\n"
-        f"RSI: {structure['rsi']}\n"
-        f"Momentum: {structure['momentum']}\n"
-        "Give short professional analysis."
-    )
-
-    payload = {
-        "model": "llama-3.1-8b-instant",
-        "messages": [
-            {"role": "user", "content": prompt}
-        ]
-    }
-
-    r = requests.post(url, json=payload, headers=headers)
-
-    data = r.json()
-
-    return data["choices"][0]["message"]["content"]
-
-
-# -------------------------------
-# CHART
-# -------------------------------
-
-def chart(df):
-
-    plt.figure(figsize=(10, 5))
-
-    plt.plot(df["close"], label="Price")
-
-    plt.plot(df["ema20"], label="EMA20")
-
-    plt.plot(df["ema50"], label="EMA50")
-
-    plt.legend()
-
-    file = "chart.png"
-
-    plt.savefig(file)
-
-    plt.close()
-
-    return file
-
-
-# -------------------------------
-# TELEGRAM COMMANDS
-# -------------------------------
-
+# =========================
+# telegram command
+# =========================
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await update.message.reply_text(
-        "Crypto AI Bot Ready\n\nUse /analyze"
+        "ربات تحلیل تکنیکال آماده است.\n\n"
+        "مثال:\n"
+        "/btc\n"
+        "/eth"
     )
 
 
-async def analyze(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def btc(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
-    candles = get_klines()
-
-    df = indicators(candles)
-
-    structure = market_structure(df)
-
-    signal = generate_signal(structure)
-
-    analysis = ai_summary(structure)
-
-    img = chart(df)
+    data = analyze("BTCUSDT")
 
     msg = (
-        f"BTC Analysis\n"
-        f"Trend: {structure['trend']}\n"
-        f"RSI: {structure['rsi']}\n"
-        f"Momentum: {structure['momentum']}\n"
-        f"Signal: {signal}\n\n"
-        f"AI Summary:\n{analysis}"
+        f"BTC Analysis\n\n"
+        f"Price: {data['price']:.2f}\n"
+        f"Trend: {data['trend']}\n"
+        f"RSI: {data['rsi']:.2f}\n"
+        f"MACD: {data['macd']:.4f}"
     )
 
-    await update.message.reply_photo(
-        open(img, "rb"),
-        caption=msg
+    await update.message.reply_text(msg)
+
+
+async def eth(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+    data = analyze("ETHUSDT")
+
+    msg = (
+        f"ETH Analysis\n\n"
+        f"Price: {data['price']:.2f}\n"
+        f"Trend: {data['trend']}\n"
+        f"RSI: {data['rsi']:.2f}\n"
+        f"MACD: {data['macd']:.4f}"
     )
 
-
-# -------------------------------
-# MAIN
-# -------------------------------
-
-def main():
-
-    app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
-
-    app.add_handler(CommandHandler("start", start))
-
-    app.add_handler(CommandHandler("analyze", analyze))
-
-    print("Bot Started...")
-
-    app.run_polling()
+    await update.message.reply_text(msg)
 
 
-if __name__ == "__main__":
-    main()
+# =========================
+# run bot
+# =========================
+app = ApplicationBuilder().token(TOKEN).build()
+
+app.add_handler(CommandHandler("start", start))
+app.add_handler(CommandHandler("btc", btc))
+app.add_handler(CommandHandler("eth", eth))
+
+print("BOT STARTED")
+
+app.run_polling()
