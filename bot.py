@@ -61,13 +61,10 @@ def indicators(candles):
     df["ema50"] = ta.ema(df["close"], length=50)
 
     macd = ta.macd(df["close"])
-
     df["macd"] = macd["MACD_12_26_9"]
 
     bb = ta.bbands(df["close"])
-
     df["bb_upper"] = bb["BBU_20_2.0"]
-
     df["bb_lower"] = bb["BBL_20_2.0"]
 
     return df
@@ -84,26 +81,21 @@ def market_structure(df):
     ema20 = last["ema20"]
     ema50 = last["ema50"]
 
-    if ema20 > ema50:
-        trend = "bullish"
-    else:
-        trend = "bearish"
+    trend = "bullish" if ema20 > ema50 else "bearish"
 
     rsi = last["rsi"]
 
     if rsi > 70:
         momentum = "overbought"
-
     elif rsi < 30:
         momentum = "oversold"
-
     else:
         momentum = "neutral"
 
     return {
         "trend": trend,
         "momentum": momentum,
-        "rsi": round(rsi,2)
+        "rsi": round(rsi, 2)
     }
 
 
@@ -117,11 +109,9 @@ def generate_signal(data):
     momentum = data["momentum"]
 
     if trend == "bullish" and momentum != "overbought":
-
         return "BUY"
 
     if trend == "bearish" and momentum != "oversold":
-
         return "SELL"
 
     return "NEUTRAL"
@@ -140,15 +130,13 @@ def ai_summary(structure):
         "Content-Type": "application/json"
     }
 
-    prompt = f"""
-    Analyze crypto market data.
-
-    Trend: {structure['trend']}
-    RSI: {structure['rsi']}
-    Momentum: {structure['momentum']}
-
-    Provide short professional analysis.
-    """
+    prompt = (
+        "Analyze the crypto market.\n"
+        f"Trend: {structure['trend']}\n"
+        f"RSI: {structure['rsi']}\n"
+        f"Momentum: {structure['momentum']}\n"
+        "Give short professional analysis."
+    )
 
     payload = {
         "model": "llama-3.1-8b-instant",
@@ -170,7 +158,7 @@ def ai_summary(structure):
 
 def chart(df):
 
-    plt.figure(figsize=(10,5))
+    plt.figure(figsize=(10, 5))
 
     plt.plot(df["close"], label="Price")
 
@@ -214,5 +202,37 @@ async def analyze(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     img = chart(df)
 
-    msg = f"""
-BTC Analysis
+    msg = (
+        f"BTC Analysis\n"
+        f"Trend: {structure['trend']}\n"
+        f"RSI: {structure['rsi']}\n"
+        f"Momentum: {structure['momentum']}\n"
+        f"Signal: {signal}\n\n"
+        f"AI Summary:\n{analysis}"
+    )
+
+    await update.message.reply_photo(
+        open(img, "rb"),
+        caption=msg
+    )
+
+
+# -------------------------------
+# MAIN
+# -------------------------------
+
+def main():
+
+    app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
+
+    app.add_handler(CommandHandler("start", start))
+
+    app.add_handler(CommandHandler("analyze", analyze))
+
+    print("Bot Started...")
+
+    app.run_polling()
+
+
+if __name__ == "__main__":
+    main()
