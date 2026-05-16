@@ -1,5 +1,6 @@
 import requests
 import os
+print("DEBUG: Bot starting...")
 
 API_KEY = os.getenv("NOBITEX_API_KEY")
 
