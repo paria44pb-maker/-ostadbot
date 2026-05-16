@@ -1,0 +1,8 @@
+async def callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+
+    data = query.data
+
+    if data == "top":
+        await top_crypto(query, context)
