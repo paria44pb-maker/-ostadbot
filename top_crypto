@@ -1,48 +1,31 @@
-import requests
-
 async def top_crypto(query, context):
-    """ دریافت لیست ارزهای برتر از نوبیتکس (با مدیریت خطا و سازگار با CallbackQuery) """
-
-    # اگر از callback صدا زده شد (که در مورد تو همینطوره)
-    if hasattr(query, "message"):
-        msg = query.message
-    else:
-        # اگر از MessageHandler صدا زده شد
-        msg = query.message
 
     await query.answer()
+    msg = query.message
 
-    url = "https://api.nobitex.ir/market/stats"
+    url = "https://farhad-proxy.vercel.app/api/nobitex-proxy?endpoint=market/stats"
 
     try:
-        response = requests.get(url, timeout=10)
+        response = requests.get(url, timeout=15)
         data = response.json()
-
     except Exception as e:
-        print("Nobitex Error:", e)
-        await msg.reply_text("❌ خطا در اتصال به نوبیتکس (احتمال بلاک بودن IP Railway)")
+        print("Proxy Error:", e)
+        await msg.reply_text("❌ خطا در ارتباط پراکسی نوبیتکس")
         return
 
-    # بررسی صحت داده
     if not data or "stats" not in data:
-        await msg.reply_text("❌ داده‌ای از نوبیتکس دریافت نشد.")
+        await msg.reply_text("❌ نوبیتکس پاسخی برنگرداند.")
         return
 
     stats = data["stats"]
 
-    # ایجاد لیست مرتب‌شده ۱۰ ارز برتر (بر اساس volume)
-    try:
-        sorted_list = sorted(
-            stats.items(),
-            key=lambda x: float(x[1].get("dayVolume", 0)),
-            reverse=True
-        )[:10]
-    except Exception as e:
-        print("Sorting Error:", e)
-        await msg.reply_text("❌ خطا در پردازش داده‌های بازار.")
-        return
+    sorted_list = sorted(
+        stats.items(),
+        key=lambda x: float(x[1].get("dayVolume", 0)),
+        reverse=True
+    )[:10]
 
-    result = "🔥 **۱۰ ارز برتر نوبیتکس بر اساس حجم معاملات** 🔥\n\n"
+    result = "🔥 ۱۰ ارز برتر بازار (از نوبیتکس) 🔥\n\n"
 
     for symbol, info in sorted_list:
         price = info.get("latest", "—")
