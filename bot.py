@@ -7,50 +7,40 @@ from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
 TOKEN = "YOUR_TELEGRAM_BOT_TOKEN"
 
 
-# ------------------------------
-# دریافت دیتا از Binance
-# ------------------------------
+# ------------------------------------------
+# Binance Data
+# ------------------------------------------
 def get_data(symbol="BTCUSDT", interval="1h", limit=150):
-    url = (
-        f"https://api.binance.com/api/v3/klines?"
-        f"symbol={symbol}&interval={interval}&limit={limit}"
-    )
-
+    url = f"https://api.binance.com/api/v3/klines?symbol={symbol}&interval={interval}&limit={limit}"
     data = requests.get(url).json()
 
     df = pd.DataFrame(
         data,
         columns=[
-            "time", "open", "high", "low", "close", "volume",
-            "close_time", "qav", "num_trades",
-            "taker_base_vol", "taker_quote_vol", "ignore"
+            "time","open","high","low","close","volume",
+            "close_time","qav","num_trades",
+            "taker_base_vol","taker_quote_vol","ignore"
         ]
     )
 
     df["close"] = df["close"].astype(float)
-
     return df
 
 
-# ------------------------------
-# اندیکاتورها (نسخه‌ی دستی)
-# ------------------------------
+# ------------------------------------------
+# Indicators
+# ------------------------------------------
 def EMA(series, period):
     return series.ewm(span=period, adjust=False).mean()
 
-
 def RSI(series, period=14):
     delta = series.diff()
-
     gain = np.where(delta > 0, delta, 0)
     loss = np.where(delta < 0, -delta, 0)
-
     gain = pd.Series(gain).rolling(period).mean()
     loss = pd.Series(loss).rolling(period).mean()
-
     rs = gain / loss
     return 100 - (100 / (1 + rs))
-
 
 def MACD(series):
     ema12 = EMA(series, 12)
@@ -58,7 +48,6 @@ def MACD(series):
     macd = ema12 - ema26
     signal = EMA(macd, 9)
     return macd, signal
-
 
 def BBANDS(series, period=20):
     sma = series.rolling(period).mean()
@@ -68,9 +57,9 @@ def BBANDS(series, period=20):
     return upper, lower
 
 
-# ------------------------------
-# تحلیل تکنیکال
-# ------------------------------
+# ------------------------------------------
+# Analyze
+# ------------------------------------------
 def analyze(symbol):
     df = get_data(symbol)
     close = df["close"]
@@ -79,7 +68,6 @@ def analyze(symbol):
     ema50 = EMA(close, 50)
     rsi = RSI(close)
     macd, signal = MACD(close)
-    upper, lower = BBANDS(close)
 
     price = close.iloc[-1]
 
@@ -94,17 +82,16 @@ def analyze(symbol):
         "price": price,
         "trend": trend,
         "rsi": rsi.iloc[-1],
-        "macd": macd.iloc[-1],
+        "macd": macd.iloc[-1]
     }
 
 
-# ------------------------------
-# دستورات تلگرام
-# ------------------------------
+# ------------------------------------------
+# Telegram Commands
+# ------------------------------------------
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "سلام فرهاد! ربات تحلیل تکنیکال آماده‌ست.\n\n"
-        "دستورات:\n"
+        "سلام فرهاد! ربات آماده است.\n"
         "/btc\n"
         "/eth"
     )
@@ -112,16 +99,37 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def btc(update: Update, context: ContextTypes.DEFAULT_TYPE):
     data = analyze("BTCUSDT")
-    await update.message.reply_text(
-        f"BTC/USDT تحلیل:\n\n"
+    msg = (
+        f"BTC تحلیل:\n\n"
         f"قیمت: {data['price']:.2f}\n"
         f"Trend: {data['trend']}\n"
         f"RSI: {data['rsi']:.2f}\n"
         f"MACD: {data['macd']:.4f}"
     )
+    await update.message.reply_text(msg)
 
 
 async def eth(update: Update, context: ContextTypes.DEFAULT_TYPE):
     data = analyze("ETHUSDT")
-    await update.message.reply_text(
-        f"ETH/USDT تحلیل:\n\n"
+    msg = (
+        f"ETH تحلیل:\n\n"
+        f"قیمت: {data['price']:.2f}\n"
+        f"Trend: {data['trend']}\n"
+        f"RSI: {data['rsi']:.2f}\n"
+        f"MACD: {data['macd']:.4f}"
+    )
+    await update.message.reply_text(msg)
+
+
+# ------------------------------------------
+# Run Bot
+# ------------------------------------------
+app = ApplicationBuilder().token(TOKEN).build()
+
+app.add_handler(CommandHandler("start", start))
+app.add_handler(CommandHandler("btc", btc))
+app.add_handler(CommandHandler("eth", eth))
+
+print("BOT IS RUNNING...")
+
+app.run_polling()
