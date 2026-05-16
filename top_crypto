@@ -1,18 +1,52 @@
-async def top_crypto(update: Update, context: ContextTypes.DEFAULT_TYPE):
+import requests
 
-    msg_obj = update.message if update.message else update.callback_query.message
+async def top_crypto(query, context):
+    """ دریافت لیست ارزهای برتر از نوبیتکس (با مدیریت خطا و سازگار با CallbackQuery) """
 
-    data = requests.get(
-        "https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=10&page=1"
-    ).json()
+    # اگر از callback صدا زده شد (که در مورد تو همینطوره)
+    if hasattr(query, "message"):
+        msg = query.message
+    else:
+        # اگر از MessageHandler صدا زده شد
+        msg = query.message
 
-    msg = "🔥 10 ارز برتر بازار\n\n"
+    await query.answer()
 
-    for coin in data:
+    url = "https://api.nobitex.ir/market/stats"
 
-        name = coin["name"]
-        price = coin["current_price"]
+    try:
+        response = requests.get(url, timeout=10)
+        data = response.json()
 
-        msg += f"{name} : {price}$\n"
+    except Exception as e:
+        print("Nobitex Error:", e)
+        await msg.reply_text("❌ خطا در اتصال به نوبیتکس (احتمال بلاک بودن IP Railway)")
+        return
 
-    await msg_obj.reply_text(msg)
+    # بررسی صحت داده
+    if not data or "stats" not in data:
+        await msg.reply_text("❌ داده‌ای از نوبیتکس دریافت نشد.")
+        return
+
+    stats = data["stats"]
+
+    # ایجاد لیست مرتب‌شده ۱۰ ارز برتر (بر اساس volume)
+    try:
+        sorted_list = sorted(
+            stats.items(),
+            key=lambda x: float(x[1].get("dayVolume", 0)),
+            reverse=True
+        )[:10]
+    except Exception as e:
+        print("Sorting Error:", e)
+        await msg.reply_text("❌ خطا در پردازش داده‌های بازار.")
+        return
+
+    result = "🔥 **۱۰ ارز برتر نوبیتکس بر اساس حجم معاملات** 🔥\n\n"
+
+    for symbol, info in sorted_list:
+        price = info.get("latest", "—")
+        volume = info.get("dayVolume", "—")
+        result += f"• {symbol.upper()} → قیمت: {price} — حجم: {volume}\n"
+
+    await msg.reply_text(result)
