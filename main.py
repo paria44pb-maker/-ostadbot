@@ -1,35 +1,37 @@
-import requests
-import os
-print("DEBUG: Bot starting...")
+# ---------------- MAIN
+def main():
 
-API_KEY = os.getenv("NOBITEX_API_KEY")
+    print("Booting Crypto Bot...")
 
-headers = {
-    "Authorization": f"Token {API_KEY}",
-    "Content-Type": "application/json"
-}
-
-BASE_URL = "https://185.xxx.xxx.xxx"   # IP واقعی که پیدا کردی
-
-def get_wallet():
+    if not TELEGRAM_TOKEN:
+        print("FATAL ERROR: TELEGRAM_TOKEN is not set in environment variables")
+        return
 
     try:
 
-        url = f"{BASE_URL}/users/wallets/balance"
-
-        r = requests.post(
-            url,
-            headers=headers,
-            timeout=20,
-            verify=False
+        app = (
+            ApplicationBuilder()
+            .token(TELEGRAM_TOKEN)
+            .build()
         )
 
-        print("STATUS:", r.status_code)
-        print(r.text)
+        # Handlers
+        app.add_handler(CommandHandler("start", start))
+        app.add_handler(CallbackQueryHandler(callback))
+        app.add_handler(MessageHandler(filters.VOICE, ai_voice))
+        app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, ai_chat))
+
+        print("Handlers registered successfully")
+        print("Bot is starting polling...")
+
+        app.run_polling(
+            drop_pending_updates=True,
+            allowed_updates=Update.ALL_TYPES
+        )
 
     except Exception as e:
+        print("CRITICAL ERROR IN MAIN:", e)
 
-        print("❌ Connection Error:", e)
 
-
-get_wallet()
+if __name__ == "__main__":
+    main()
