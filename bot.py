@@ -17,7 +17,6 @@ GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 
 conversation_memory = []
 
-
 # ---------------- GROQ CHAT
 def groq_chat(messages):
 
@@ -34,9 +33,12 @@ def groq_chat(messages):
         "temperature": 0.5
     }
 
-    r = requests.post(url, json=payload, headers=headers)
-
-    return r.json()
+    try:
+        r = requests.post(url, json=payload, headers=headers, timeout=20)
+        return r.json()
+    except Exception as e:
+        print("GROQ CHAT ERROR:", e)
+        return {}
 
 
 # ---------------- TEXT TO SPEECH
@@ -55,17 +57,21 @@ def groq_tts(text):
         "voice": "male"
     }
 
-    r = requests.post(url, json=payload, headers=headers)
+    try:
+        r = requests.post(url, json=payload, headers=headers, timeout=30)
 
-    if r.status_code == 200:
+        if r.status_code == 200:
 
-        temp = tempfile.NamedTemporaryFile(delete=False, suffix=".mp3")
+            temp = tempfile.NamedTemporaryFile(delete=False, suffix=".mp3")
 
-        temp.write(r.content)
+            temp.write(r.content)
 
-        temp.close()
+            temp.close()
 
-        return temp.name
+            return temp.name
+
+    except Exception as e:
+        print("TTS ERROR:", e)
 
     return None
 
@@ -87,9 +93,12 @@ def groq_whisper(audio_bytes):
         "model": "whisper-large-v3-turbo"
     }
 
-    r = requests.post(url, headers=headers, files=files, data=data)
-
-    return r.json().get("text")
+    try:
+        r = requests.post(url, headers=headers, files=files, data=data, timeout=40)
+        return r.json().get("text")
+    except Exception as e:
+        print("WHISPER ERROR:", e)
+        return None
 
 
 # ---------------- PRICE
@@ -98,7 +107,8 @@ async def crypto_price(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
 
         nob = requests.get(
-            "https://api.nobitex.ir/market/stats"
+            "https://api.nobitex.ir/market/stats",
+            timeout=10
         ).json()["stats"]
 
         btc = nob.get("btc-rls", {}).get("latest", "-")
@@ -108,7 +118,8 @@ async def crypto_price(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ton = nob.get("ton-rls", {}).get("latest", "-")
 
         cg = requests.get(
-            "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,ethereum,tether,ripple,the-open-network&vs_currencies=usd"
+            "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,ethereum,tether,ripple,the-open-network&vs_currencies=usd",
+            timeout=10
         ).json()
 
         btc_usd = cg["bitcoin"]["usd"]
@@ -139,12 +150,17 @@ TON : {ton_usd} $
 
         if update.message:
             await update.message.reply_text(msg)
+
         elif update.callback_query:
             await update.callback_query.message.reply_text(msg)
 
-    except:
+    except Exception as e:
+
+        print("PRICE ERROR:", e)
+
         if update.message:
             await update.message.reply_text("خطا در دریافت قیمت بازار")
+
         elif update.callback_query:
             await update.callback_query.message.reply_text("خطا در دریافت قیمت بازار")
 
@@ -152,35 +168,47 @@ TON : {ton_usd} $
 # ---------------- TOP 10
 async def top_crypto(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
-    data = requests.get(
-        "https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=10&page=1"
-    ).json()
+    try:
 
-    msg = "🔥 10 ارز برتر بازار\n\n"
+        data = requests.get(
+            "https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=10&page=1",
+            timeout=10
+        ).json()
 
-    for coin in data:
+        msg = "🔥 10 ارز برتر بازار\n\n"
 
-        name = coin["name"]
+        for coin in data:
 
-        price = coin["current_price"]
+            name = coin["name"]
 
-        msg += f"{name} : {price}$\n"
+            price = coin["current_price"]
 
-    await update.message.reply_text(msg)
+            msg += f"{name} : {price}$\n"
+
+        await update.message.reply_text(msg)
+
+    except Exception as e:
+
+        print("TOP10 ERROR:", e)
+
+        await update.message.reply_text("خطا در دریافت داده بازار")
 
 
 # ---------------- MARKET ANALYSIS
 async def market_analysis(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
-    data = requests.get(
-        "https://api.coingecko.com/api/v3/global"
-    ).json()
+    try:
 
-    cap = data["data"]["total_market_cap"]["usd"]
+        data = requests.get(
+            "https://api.coingecko.com/api/v3/global",
+            timeout=10
+        ).json()
 
-    btc_dom = data["data"]["market_cap_percentage"]["btc"]
+        cap = data["data"]["total_market_cap"]["usd"]
 
-    msg = f"""
+        btc_dom = data["data"]["market_cap_percentage"]["btc"]
+
+        msg = f"""
 🧠 تحلیل سریع بازار
 
 ارزش کل بازار:
@@ -188,11 +216,15 @@ async def market_analysis(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 Dominance BTC:
 {btc_dom:.2f} %
-
-دامیننس بالا یعنی پول بیشتر در بیت‌کوین است.
 """
 
-    await update.message.reply_text(msg)
+        await update.message.reply_text(msg)
+
+    except Exception as e:
+
+        print("ANALYSIS ERROR:", e)
+
+        await update.message.reply_text("خطا در تحلیل بازار")
 
 
 # ---------------- START
@@ -290,15 +322,15 @@ async def callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if q.data == "price":
 
-        await crypto_price(q, context)
+        await crypto_price(update, context)
 
     elif q.data == "top":
 
-        await top_crypto(q, context)
+        await top_crypto(update, context)
 
     elif q.data == "analysis":
 
-        await market_analysis(q, context)
+        await market_analysis(update, context)
 
     elif q.data == "voice":
 
@@ -311,6 +343,12 @@ async def callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # ---------------- MAIN
 def main():
+
+    if not TELEGRAM_TOKEN:
+        print("ERROR: TELEGRAM_TOKEN not set")
+        return
+
+    print("Bot starting...")
 
     app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
 
