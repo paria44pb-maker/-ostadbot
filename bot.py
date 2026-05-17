@@ -22,7 +22,7 @@ from telegram.ext import (
     Application, CommandHandler, CallbackQueryHandler, MessageHandler,
     filters, ContextTypes, ConversationHandler
 )
-import talib
+#import talib
 import requests
 from groq import AsyncGroq
 import pyotp
