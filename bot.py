@@ -437,64 +437,65 @@ class GroqAnalyst:
     def __init__(self):
         self.client = AsyncGroq(api_key=GROQ_API_KEY) if GROQ_API_KEY else None
 
-    async def analyze_market(
-        self,
-        symbol: str,
-        technical_data: Dict,
-        price_data: Dict,
-        news_data: Optional[str] = None
-    ) -> Dict:
-        """تحلیل پیشرفته بازار با هوش مصنوعی Groq"""
-        if not self.client:
-            return {"error": "GROQ_API_KEY تنظیم نشده است"}
+    async def analyze_market(self, symbol: str, technical_data: Dict, price_data: Dict, news_data: Optional[str] = None) -> Dict:
+    """تحلیل پیشرفته بازار با هوش مصنوعی Groq"""
+    
+    # اگر کلاینت Groq موجود نباشد، تحلیل ساده برگردان
+    if not self.client:
+        return {
+            "signal": "HOLD",
+            "confidence": 50,
+            "technical_view": "تحلیل هوشمند غیرفعال است (GROQ_API_KEY تنظیم نشده)",
+            "risk_assessment": "متوسط",
+            "key_levels": {
+                "resistance": ["قیمت فعلی +5%", "قیمت فعلی +10%"],
+                "support": ["قیمت فعلی -5%", "قیمت فعلی -10%"]
+            },
+            "recommendation": "لطفا از بخش تحلیل تکنیکال استفاده کنید یا GROQ_API_KEY را تنظیم نمایید",
+            "ai_analysis_summary": "هوش مصنوعی در دسترس نیست - ربات در حالت ساده کار می‌کند"
+        }
+    
+    # اگر کلاینت موجود باشد، تحلیل پیشرفته انجام بده
+    prompt = f"""
+    شما یک تحلیلگر حرفه‌ای بازار ارزهای دیجیتال هستید. لطفاً بر اساس داده‌های زیر یک تحلیل کامل ارائه دهید:
 
-        prompt = f"""
-        شما یک تحلیلگر حرفه‌ای بازار ارزهای دیجیتال هستید. لطفاً بر اساس داده‌های زیر یک تحلیل کامل ارائه دهید:
+    نماد: {symbol}
+    قیمت فعلی: ${price_data.get('price', 'نامشخص')}
+    تغییر 24h: {price_data.get('change', 'نامشخص')}%
+    حجم معاملات: ${price_data.get('volume', 'نامشخص')}
 
-        نماد: {symbol}
-        قیمت فعلی: ${price_data.get('price', 'نامشخص')}
-        تغییر 24h: {price_data.get('change', 'نامشخص')}%
-        حجم معاملات: ${price_data.get('volume', 'نامشخص')}
+    داده‌های تکنیکال:
+    - RSI(14): {technical_data.get('rsi_14', 'نامشخص')}
+    - MACD: {technical_data.get('macd', 'نامشخص')}
 
-        داده‌های تکنیکال:
-        - RSI(14): {technical_data.get('rsi_14', 'نامشخص')}
-        - MACD: {technical_data.get('macd', 'نامشخص')}
-        - Signal: {technical_data.get('macd_signal', 'نامشخص')}
-        - SMA20: {technical_data.get('sma_20', 'نامشخص')}
-        - SMA50: {technical_data.get('sma_50', 'نامشخص')}
-        - باند بالایی بولینگر: {technical_data.get('bb_upper', 'نامشخص')}
-        - باند پایینی بولینگر: {technical_data.get('bb_lower', 'نامشخص')}
+    لطفاً پاسخ خود را در قالب JSON با کلیدهای زیر ارائه دهید:
+    {{
+        "signal": "BUY/SELL/HOLD",
+        "confidence": 0-100,
+        "technical_view": "تحلیل تکنیکال",
+        "risk_assessment": "ارزیابی ریسک",
+        "recommendation": "توصیه نهایی معاملاتی"
+    }}
+    """
 
-        {"اخبار مرتبط: " + news_data if news_data else ""}
-
-        لطفاً پاسخ خود را در قالب JSON با کلیدهای زیر ارائه دهید:
-        {{
-            "signal": "BUY/SELL/HOLD",
-            "confidence": 0-100,
-            "technical_view": "تحلیل تکنیکال",
-            "risk_assessment": "ارزیابی ریسک",
-            "key_levels": {{
-                "resistance": ["مقاومت اول", "مقاومت دوم"],
-                "support": ["حمایت اول", "حمایت دوم"]
-            }},
-            "recommendation": "توصیه نهایی معاملاتی",
-            "ai_analysis_summary": "خلاصه تحلیل هوش مصنوعی"
-        }}
-        """
-
-        try:
-            completion = await self.client.chat.completions.create(
-                model="mixtral-8x7b-32768",
-                messages=[{"role": "user", "content": prompt}],
-                temperature=0.3,
-                max_tokens=1500,
-                response_format={"type": "json_object"}
-            )
-            result = json.loads(completion.choices[0].message.content)
-            return result
-        except Exception as e:
-            logger.error(f"خطا در تحلیل با Groq: {e}")
-            return {"error": str(e), "signal": "HOLD", "confidence": 0}
+    try:
+        completion = await self.client.chat.completions.create(
+            model="mixtral-8x7b-32768",
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.3,
+            max_tokens=1000
+        )
+        result = json.loads(completion.choices[0].message.content)
+        return result
+    except Exception as e:
+        logger.error(f"خطا در تحلیل با Groq: {e}")
+        return {
+            "signal": "HOLD",
+            "confidence": 30,
+            "technical_view": "خطا در ارتباط با AI",
+            "risk_assessment": "بالا",
+            "recommendation": "به دلیل خطا، معامله انجام ندهید"
+        } "HOLD", "confidence": 0}
 
 # ==================== حافظه و یادگیری ====================
 class MemoryManager:
