@@ -49,7 +49,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     try:
         completion = client.chat.completions.create(
-            model="mixtral-8x7b-32768",
+            "model": "llama3-70b-8192",
             messages=[{"role": "user", "content": user_message}],
             temperature=0.7,
             max_tokens=1024
