@@ -25,39 +25,38 @@ def save_memory(memory):
 personalities = {
     "رسمی": {
         "emoji": "👔",
-        "prompt": "تو یک دستیار رسمی و حرفه‌ای هستی. پاسخ‌هایت کامل، دقیق و محترمانه باشد. حداقل ۵ خط پاسخ بده."
+        "prompt": "تو یک دستیار رسمی و حرفه‌ای هستی."
     },
     "شوخ‌طبع": {
         "emoji": "😄",
-        "prompt": "تو یک دستیار شوخ و بامزه هستی. با خنده و جوک پاسخ بده. پاسخ‌هات مفصل و حداقل ۵ خط باشه."
+        "prompt": "تو یک دستیار شوخ و بامزه هستی."
     },
     "خشک و زننده": {
         "emoji": "🗿",
-        "prompt": "تو یک دستیار خشک و بی‌احساس هستی. پاسخ‌هات کامل ولی تند و بدون احساس باشه."
+        "prompt": "تو یک دستیار خشک و بی‌احساس هستی."
     },
     "علمی": {
         "emoji": "🔬",
-        "prompt": "تو یک دانشمند هستی. پاسخ‌هایت بسیار مفصل، با جزئیات علمی، مثال و استناد به داده‌ها باشد. حداقل ۷ خط."
+        "prompt": "تو یک دانشمند و محقق هستی."
     },
     "صمیمی": {
         "emoji": "🤗",
-        "prompt": "تو یک دوست صمیمی هستی. با لحن گرم و دلنشین پاسخ بده. توضیحات کامل و مفصل بده."
+        "prompt": "تو یک دوست صمیمی و مهربان هستی."
     },
     "فیلسوف": {
         "emoji": "🧠",
-        "prompt": "تو یک فیلسوف عمیق هستی. پاسخ‌هایت طولانی، فلسفی و همراه با سوالات عمیق باشد."
+        "prompt": "تو یک فیلسوف عمیق هستی."
     },
     "معلم": {
         "emoji": "📚",
-        "prompt": "تو یک معلم صبور هستی. پاسخ‌ها رو قدم به قدم، با مثال و توضیحات کامل بده. طوری که یک دانش‌آموز هم بفهمد."
+        "prompt": "تو یک معلم صبور هستی."
     },
     "سرسخت": {
         "emoji": "⚡",
-        "prompt": "تو یک فرد سرسخت و قاطع هستی. پاسخ‌هایت محکم، کامل و با اعتماد به نفس بالا باشد."
+        "prompt": "تو یک فرد سرسخت و قاطع هستی."
     }
 }
 
-# ========== منوی اصلی ==========
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     personality = context.user_data.get("personality", "رسمی")
     keyboard = [
@@ -69,19 +68,18 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton("❓ راهنما", callback_data="help")],
     ]
     await update.message.reply_text(
-        "🌟 **ربات هوشمند Groq با حافظه و شخصیت** 🌟\n\n"
+        "🌟 **ربات هوشمند Groq** 🌟\n\n"
         "✨ **قابلیت‌ها:**\n"
-        "• ۸ شخصیت مختلف برای AI\n"
+        "• ۸ شخصیت مختلف\n"
         "• حافظه دائمی\n"
-        "• پاسخ‌های مفصل و کامل\n"
-        "• حالت دانشجویی با تست چهار جوابی\n\n"
+        "• تشخیص هوشمند طول پاسخ (ساده→کوتاه، عمیق→مفصل)\n"
+        "• حالت دانشجویی با تست\n\n"
         f"🎭 شخصیت فعلی: **{personality}** {personalities[personality]['emoji']}\n\n"
         "از منوی زیر انتخاب کن 👇",
         parse_mode="Markdown",
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
 
-# ========== منوی انتخاب شخصیت ==========
 async def personality_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = []
     for name, data in personalities.items():
@@ -90,17 +88,8 @@ async def personality_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     current = context.user_data.get("personality", "رسمی")
     await update.callback_query.edit_message_text(
-        f"🎭 **انتخاب شخصیت هوش مصنوعی** 🎭\n\n"
-        f"شخصیت فعلی: **{current}** {personalities[current]['emoji']}\n\n"
-        "شخصیت مورد نظرت رو انتخاب کن:\n\n"
-        "👔 رسمی - پاسخ‌های حرفه‌ای\n"
-        "😄 شوخ‌طبع - با خنده و جوک\n"
-        "🗿 خشک و زننده - بی‌احساس\n"
-        "🔬 علمی - دقیق و جزئی‌نگر\n"
-        "🤗 صمیمی - گرم و مهربان\n"
-        "🧠 فیلسوف - عمیق و فلسفی\n"
-        "📚 معلم - آموزشی و صبور\n"
-        "⚡ سرسخت - قاطع و محکم",
+        f"🎭 **انتخاب شخصیت** 🎭\n\nشخصیت فعلی: **{current}** {personalities[current]['emoji']}\n\n"
+        "👔 رسمی | 😄 شوخ | 🗿 خشک | 🔬 علمی | 🤗 صمیمی | 🧠 فیلسوف | 📚 معلم | ⚡ سرسخت",
         parse_mode="Markdown",
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
@@ -116,32 +105,27 @@ async def set_personality(update: Update, context: ContextTypes.DEFAULT_TYPE, pe
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
 
-# ========== منوی گفتگو ==========
 async def chat_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     personality = context.user_data.get("personality", "رسمی")
     await update.callback_query.edit_message_text(
-        f"💬 **حالت گفتگو فعال شد!** 💬\n\n"
-        f"شخصیت فعلی: **{personality}** {personalities[personality]['emoji']}\n\n"
-        "📝 هر سوالی بپرسی، با همون شخصیت و پاسخ مفصل جواب میدم.\n"
-        "🧠 حافظه دارم!\n\n"
-        "**سوالتو بپرس...**",
+        f"💬 **گفتگو فعال شد!**\n\nشخصیت: **{personality}** {personalities[personality]['emoji']}\n\n"
+        "🧠 **نکته:** سوال ساده بپرسی → جواب کوتاه\n"
+        "سوال تخصصی یا «توضیح بده» بگی → جواب مفصل\n\n"
+        "سوالت رو بپرس...",
         parse_mode="Markdown",
         reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="back")]])
     )
     context.user_data["chat_mode"] = True
     context.user_data["student_mode"] = False
 
-# ========== حالت دانشجویی ==========
 async def student_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.callback_query.edit_message_text(
-        "📚 **حالت دانشجویی فعال شد!** 📚\n\n"
-        "این حالت برای یادگیری و آموزش طراحی شده:\n\n"
-        "• میتونی هر موضوعی که میخوای یاد بگیری رو بپرسی\n"
-        "• من برات یه درس کامل با توضیحات مفصل میدم\n"
-        "• بعد از درس، یه تست چهار جوابی میگیرم\n"
-        "• نمره نهایی بهت اعلام میشه\n\n"
-        "**لطفاً موضوع مورد نظرت رو بگو...**\n(مثل: برنامه نویسی پایتون، تاریخ ایران، ریاضی، اقتصاد، بیت‌کوین و...)\n\n"
-        "⚠️ برای برگشت /start بزن",
+        "📚 **حالت دانشجویی** 📚\n\n"
+        "• موضوع مورد نظرت رو بگو (مثل: پایتون، تاریخ، ریاضی، بیت‌کوین)\n"
+        "• برات درس کامل میدم\n"
+        "• بعدش ۵ سوال چهارگزینه‌ای میگیرم\n"
+        "• نمره نهایی رو میبینی\n\n"
+        "**موضوع رو بنویس...**",
         parse_mode="Markdown",
         reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="back")]])
     )
@@ -149,7 +133,7 @@ async def student_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data["chat_mode"] = False
     context.user_data["waiting_for_topic"] = True
 
-# ========== پاسخ معمولی با Groq (مفصل) ==========
+# ========== هسته اصلی: تشخیص هوشمند طول پاسخ ==========
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_message = update.message.text
     user_id = str(update.effective_user.id)
@@ -159,29 +143,28 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if context.user_data.get("waiting_for_topic", False):
             context.user_data["topic"] = user_message
             context.user_data["waiting_for_topic"] = False
-            await update.message.reply_text(f"📖 **در حال آماده کردن درس درباره {user_message}...** ⏳")
+            await update.message.reply_text(f"📖 **آماده‌سازی درس درباره {user_message}...** ⏳")
             await teach_topic(update, context, user_message)
         else:
-            # دریافت پاسخ سوال تست
-            answer = user_message.strip()
+            answer = user_message.strip().upper()
             correct = context.user_data.get("correct_answer", "")
             if answer == correct:
                 score = context.user_data.get("score", 0) + 1
                 context.user_data["score"] = score
-                await update.message.reply_text(f"✅ **پاسخ صحیح!** 🎉\n\nنمره فعلی: {score}/5")
+                await update.message.reply_text(f"✅ صحیح! نمره: {score}/5")
                 await ask_next_question(update, context)
             else:
-                await update.message.reply_text(f"❌ **پاسخ اشتباه!**\n\nپاسخ صحیح: {correct}\n\nنمره فعلی: {context.user_data.get('score', 0)}/5")
+                await update.message.reply_text(f"❌ اشتباه! پاسخ صحیح: {correct}\nنمره: {context.user_data.get('score', 0)}/5")
                 await ask_next_question(update, context)
         return
     
-    # حالت عادی گفتگو
+    # حالت عادی
     if not context.user_data.get("chat_mode", False):
-        await update.message.reply_text("⚠️ اول /start رو بزن و بعد گزینه «گفتگو با هوش مصنوعی» رو انتخاب کن.")
+        await update.message.reply_text("⚠️ اول /start و بعد «گفتگو با هوش مصنوعی» رو انتخاب کن.")
         return
     
     personality = context.user_data.get("personality", "رسمی")
-    system_prompt = context.user_data.get("system_prompt", personalities["رسمی"]["prompt"])
+    system_prompt = context.user_data.get("system_prompt", "تو یک دستیار هستی.")
     
     memory = load_memory()
     user_history = memory.get(user_id, [])
@@ -190,14 +173,36 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     for item in user_history[-5:]:
         chat_history += f"کاربر: {item['user']}\nAI: {item['ai']}\n"
     
+    # 🔥 تشخیص هوشمند طول پاسخ 🔥
+    length_instruction = ""
+    msg_lower = user_message.lower()
+    
+    # کلمات کلیدی برای پاسخ مفصل
+    deep_words = ["توضیح بده", "تحلیل کن", "چرا", "چطور", "مفصل", "کامل", "راهنمایی کن", "یاد بده", "معنی", "تاریخچه", "مقایسه", "فرق", "مزایا", "معایب"]
+    # کلمات کلیدی برای پاسخ کوتاه
+    short_words = ["سلام", "خوبی", "چطوری", "هی", "اوکی", "باشه", "مرسی", "ممنون", "بله", "نه", "اسمت", "کی هستی"]
+    
+    is_deep = any(word in msg_lower for word in deep_words) or len(user_message.split()) > 8
+    is_short = any(word in msg_lower for word in short_words) and len(user_message.split()) < 4
+    
+    if is_short and not is_deep:
+        length_instruction = "پاسخ بسیار کوتاه و مستقیم بده. حداکثر ۱ خط."
+    elif is_deep:
+        length_instruction = "پاسخ مفصل و کامل بده. حداقل ۵ خط. مثال بزن. جزئیات بده."
+    else:
+        length_instruction = "پاسخ معمولی و متوسط بده. حدود ۲ تا ۳ خط."
+    
     full_prompt = f"""{system_prompt}
+شخصیت تو: {personality}
 
-تاریخچه گفتگوهای قبلی با این کاربر:
+{length_instruction}
+
+تاریخچه گفتگو:
 {chat_history}
 
-حالا کاربر این پیام را فرستاده: "{user_message}"
+سوال کاربر: "{user_message}"
 
-پاسخ بده (پاسخ بسیار مفصل و کامل باشد. حداقل ۵ خط. مثال بزن. توضیحات کامل بده.):"""
+پاسخ بده (بدون تکرار اسم شخصیت در ابتدای پاسخ):"""
     
     await update.message.reply_chat_action("typing")
     
@@ -207,6 +212,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     try:
         import httpx
+        max_tokens = 300 if is_short else 1200 if is_deep else 600
+        
         async with httpx.AsyncClient(timeout=60) as client:
             response = await client.post(
                 "https://api.groq.com/openai/v1/chat/completions",
@@ -214,7 +221,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 json={
                     "model": "llama-3.3-70b-versatile",
                     "messages": [{"role": "user", "content": full_prompt}],
-                    "max_tokens": 1500,
+                    "max_tokens": max_tokens,
                     "temperature": 0.7
                 }
             )
@@ -222,7 +229,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if response.status_code == 200:
                 ai_response = response.json()["choices"][0]["message"]["content"]
                 
-                user_history.append({"user": user_message, "ai": ai_response})
+                user_history.append({"user": user_message, "ai": ai_response[:200]})
                 if len(user_history) > 20:
                     user_history = user_history[-20:]
                 memory[user_id] = user_history
@@ -230,21 +237,17 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 
                 await update.message.reply_text(ai_response, parse_mode="Markdown")
             else:
-                await update.message.reply_text(f"❌ خطای {response.status_code}: مشکل در ارتباط با AI. لطفاً دوباره تلاش کن.")
+                await update.message.reply_text(f"❌ خطا: {response.status_code}")
     except Exception as e:
         await update.message.reply_text(f"❌ خطا: {str(e)}")
 
-# ========== تدریس و تست دانشجویی ==========
+# ========== توابع دانشجویی ==========
 async def teach_topic(update: Update, context: ContextTypes.DEFAULT_TYPE, topic: str):
-    prompt = f"""تو یک استاد حرفه‌ای هستی. میخواهی درباره موضوع "{topic}" به یک دانشجو آموزش بدی.
-
-لطفاً یک درس کامل و مفصل بنویس شامل:
-1. مقدمه و توضیح کلی درباره موضوع (حداقل ۵ خط)
-2. مفاهیم اصلی و کلیدی (با مثال)
-3. نکات مهم و کاربردی
-4. جمع‌بندی
-
-پاسخ بسیار مفصل و کامل باشد. حداقل ۱۵ خط."""
+    prompt = f"""درباره "{topic}" یک درس مفصل بنویس (حداقل ۱۰ خط):
+1. مقدمه
+2. مفاهیم اصلی با مثال
+3. نکات مهم
+4. جمع‌بندی"""
     
     try:
         import httpx
@@ -263,29 +266,23 @@ async def teach_topic(update: Update, context: ContextTypes.DEFAULT_TYPE, topic:
             if response.status_code == 200:
                 lesson = response.json()["choices"][0]["message"]["content"]
                 await update.message.reply_text(f"📚 **درس {topic}** 📚\n\n{lesson}", parse_mode="Markdown")
-                
-                # بعد از درس، سوال تست بپرس
                 await ask_quiz_question(update, context, topic)
             else:
-                await update.message.reply_text("❌ خطا در آماده‌سازی درس. دوباره تلاش کن.")
+                await update.message.reply_text("❌ خطا در آماده‌سازی درس.")
                 context.user_data["student_mode"] = False
     except Exception as e:
         await update.message.reply_text(f"❌ خطا: {str(e)}")
         context.user_data["student_mode"] = False
 
 async def ask_quiz_question(update: Update, context: ContextTypes.DEFAULT_TYPE, topic: str):
-    prompt = f"""درباره موضوع "{topic}" یک سوال چهارگزینه‌ای طراحی کن.
-سوال باید مفهومی و نسبتاً سخت باشه.
-
-فرمت پاسخ دقیقاً به این شکل باشه:
-سوال: [متن سوال]
-گزینه A: [متن]
-گزینه B: [متن]
-گزینه C: [متن]
-گزینه D: [متن]
-پاسخ صحیح: [حرف گزینه]
-
-فقط همین فرمت رو برگردون، هیچ توضیح اضافه نده."""
+    prompt = f"""درباره "{topic}" یک سوال چهارگزینه‌ای سخت طراحی کن.
+فرمت دقیق:
+سوال: [متن]
+A: [گزینه]
+B: [گزینه]
+C: [گزینه]
+D: [گزینه]
+پاسخ: [حرف]"""
     
     try:
         import httpx
@@ -303,26 +300,20 @@ async def ask_quiz_question(update: Update, context: ContextTypes.DEFAULT_TYPE, 
             
             if response.status_code == 200:
                 quiz = response.json()["choices"][0]["message"]["content"]
-                
-                # استخراج پاسخ صحیح
                 lines = quiz.split("\n")
                 correct = ""
                 for line in lines:
-                    if line.startswith("پاسخ صحیح:"):
-                        correct = line.replace("پاسخ صحیح:", "").strip()
+                    if line.startswith("پاسخ:"):
+                        correct = line.replace("پاسخ:", "").strip()
                         break
                 
                 context.user_data["correct_answer"] = correct
                 context.user_data["score"] = 0
                 context.user_data["question_count"] = 0
                 
-                await update.message.reply_text(
-                    f"📝 **تست چهارگزینه‌ای - {topic}** 📝\n\n{quiz}\n\n"
-                    "لطفاً پاسخ خود را به صورت حرف A, B, C یا D وارد کن.",
-                    parse_mode="Markdown"
-                )
+                await update.message.reply_text(f"📝 **تست - {topic}** 📝\n\n{quiz}\n\nپاسخت رو با A, B, C یا D بفرست:")
             else:
-                await update.message.reply_text("❌ خطا در ساخت سوال. دوباره تلاش کن.")
+                await update.message.reply_text("❌ خطا در ساخت سوال.")
                 context.user_data["student_mode"] = False
     except Exception as e:
         await update.message.reply_text(f"❌ خطا: {str(e)}")
@@ -335,12 +326,9 @@ async def ask_next_question(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if count >= 5:
         score = context.user_data.get("score", 0)
         await update.message.reply_text(
-            f"🎉 **پایان آزمون!** 🎉\n\n"
-            f"نمره نهایی شما: {score} از ۵\n"
-            f"درصد موفقیت: {score*20}%\n\n"
-            f"{'🔥 عالی! ادامه بده!' if score >= 4 else '📚 خوب بود، دوباره تلاش کن!'}\n\n"
-            "برای شروع درس جدید، دوباره گزینه «حالت دانشجویی» رو انتخاب کن.",
-            parse_mode="Markdown"
+            f"🎉 **پایان آزمون!** 🎉\n\nنمره: {score} از 5 ({score*20}%)\n\n"
+            f"{'🔥 عالی!' if score >= 4 else '📚 دوباره تلاش کن!'}\n"
+            "برای درس جدید، دوباره «حالت دانشجویی» رو انتخاب کن."
         )
         context.user_data["student_mode"] = False
         return
@@ -355,12 +343,12 @@ async def show_history(update: Update, context: ContextTypes.DEFAULT_TYPE):
     history = memory.get(user_id, [])
     
     if not history:
-        text = "📜 **حافظه خالی است**\n\nهنوز هیچ گفتگویی نکردی."
+        text = "📜 حافظه خالی است"
     else:
-        text = "📜 **تاریخچه گفتگوها** 📜\n\n"
+        text = "📜 **تاریخچه** 📜\n\n"
         for i, item in enumerate(history[-5:], 1):
-            text += f"{i}. شما: {item['user'][:60]}\n   🤖 AI: {item['ai'][:60]}\n\n"
-        text += f"\n📊 مجموع گفتگوها: {len(history)}"
+            text += f"{i}. شما: {item['user'][:50]}\n   🤖: {item['ai'][:50]}\n\n"
+        text += f"\n📊 مجموع: {len(history)}"
     
     keyboard = [[InlineKeyboardButton("🔙 بازگشت", callback_data="back")]]
     await update.callback_query.edit_message_text(text, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(keyboard))
@@ -371,22 +359,23 @@ async def clear_memory(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if user_id in memory:
         del memory[user_id]
         save_memory(memory)
-    text = "🗑 **حافظه پاک شد!**"
     keyboard = [[InlineKeyboardButton("🔙 بازگشت", callback_data="back")]]
-    await update.callback_query.edit_message_text(text, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(keyboard))
+    await update.callback_query.edit_message_text("🗑 حافظه پاک شد!", reply_markup=InlineKeyboardMarkup(keyboard))
 
 async def help_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    text = "❓ **راهنما** ❓\n\n"
-    text += "🎭 **شخصیت‌ها:** از منوی انتخاب شخصیت، لحن AI رو عوض کن.\n\n"
-    text += "🧠 **گفتگو:** هر سوالی بپرس، پاسخ مفصل میگیری.\n\n"
-    text += "📚 **حالت دانشجویی:** یه موضوع انتخاب کن، درس کامل میگیری و بعد تست چهار جوابی.\n\n"
-    text += "📜 **حافظه:** تاریخچه گفتگوها ذخیره میشه.\n\n"
-    text += "⚠️ برای شروع دوباره /start رو بزن."
+    text = "❓ **راهنما** ❓\n\n" + \
+           "🎭 شخصیت‌ها: لحن AI رو عوض کن\n" + \
+           "🧠 گفتگو: سوال بپرس\n" + \
+           "📚 دانشجویی: درس + تست\n" + \
+           "🧠 تشخیص هوشمند:\n" + \
+           "   • سوال ساده (سلام، خوبی) → جواب کوتاه\n" + \
+           "   • سوال تخصصی (توضیح بده، چرا) → جواب مفصل\n" + \
+           "   • سوال معمولی → جواب متوسط\n\n" + \
+           "برای شروع /start"
     
     keyboard = [[InlineKeyboardButton("🔙 بازگشت", callback_data="back")]]
     await update.callback_query.edit_message_text(text, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(keyboard))
 
-# ========== هندلر دکمه‌ها ==========
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -418,7 +407,7 @@ def main():
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CallbackQueryHandler(button_handler))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-    print("🤖 ربات هوشمند با حالت دانشجویی روشن شد...")
+    print("🤖 ربات هوشمند با تشخیص طول پاسخ روشن شد...")
     app.run_polling()
 
 if __name__ == "__main__":
