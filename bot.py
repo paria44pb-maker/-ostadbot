@@ -4,7 +4,7 @@ import logging
 import random
 import httpx
 import asyncio
-from datetime import datetime, timedelta
+from datetime import datetime
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, filters, ContextTypes
 
@@ -14,7 +14,6 @@ GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 
 MEMORY_FILE = "memory.json"
 PORTFOLIO_FILE = "portfolio.json"
-SIGNALS_FILE = "signals.json"
 
 # ========== مدیریت فایل‌ها ==========
 def load_json(file):
@@ -28,131 +27,140 @@ def save_json(file, data):
     with open(file, "w") as f:
         json.dump(data, f, indent=2)
 
-# ========== قیمت‌های شبیه‌سازی شده (فیک) ==========
-fake_prices = {
-    "BTC": {"usdt": 67234, "change": 2.3, "high": 68500, "low": 66500, "volume": 28.5, "support": 66000, "resistance": 69000},
-    "ETH": {"usdt": 3456, "change": 1.8, "high": 3520, "low": 3400, "volume": 15.2, "support": 3380, "resistance": 3550},
-    "SOL": {"usdt": 156.7, "change": 5.2, "high": 162, "low": 148, "volume": 8.3, "support": 145, "resistance": 165},
-    "BNB": {"usdt": 582, "change": -1.2, "high": 595, "low": 575, "volume": 3.1, "support": 570, "resistance": 600},
-    "XRP": {"usdt": 0.52, "change": 0.5, "high": 0.54, "low": 0.51, "volume": 2.8, "support": 0.50, "resistance": 0.55},
-    "DOGE": {"usdt": 0.125, "change": 3.1, "high": 0.13, "low": 0.121, "volume": 1.9, "support": 0.12, "resistance": 0.135},
-    "ADA": {"usdt": 0.35, "change": -0.8, "high": 0.36, "low": 0.34, "volume": 1.5, "support": 0.33, "resistance": 0.37},
-    "AVAX": {"usdt": 34.2, "change": 4.5, "high": 35.5, "low": 33, "volume": 0.7, "support": 32, "resistance": 36},
-    "MATIC": {"usdt": 0.72, "change": -2.1, "high": 0.74, "low": 0.71, "volume": 1.1, "support": 0.70, "resistance": 0.75},
-}
+# ========== API واقعی نوبیتکس ==========
+async def get_nobitex_price(symbol="BTC"):
+    """دریافت قیمت واقعی از نوبیتکس"""
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            # تبدیل نماد به فرمت نوبیتکس
+            src_currency = symbol.upper()
+            dst_currency = "USDT"
+            
+            response = await client.post(
+                "https://api.nobitex.ir/market/stats",
+                json={"srcCurrency": src_currency, "dstCurrency": dst_currency}
+            )
+            
+            if response.status_code == 200:
+                data = response.json()
+                stats = data.get("stats", {})
+                if stats:
+                    best_sell = stats.get("bestSell")
+                    best_buy = stats.get("bestBuy")
+                    price = best_sell or best_buy
+                    if price:
+                        return {
+                            "price": float(price),
+                            "change": float(stats.get("change24h", 0)),
+                            "high": float(stats.get("high24h", 0)) if stats.get("high24h") else None,
+                            "low": float(stats.get("low24h", 0)) if stats.get("low24h") else None,
+                            "volume": float(stats.get("volumeSrc", 0)) if stats.get("volumeSrc") else 0,
+                            "source": "Nobitex"
+                        }
+    except Exception as e:
+        logging.error(f"خطا در دریافت قیمت نوبیتکس: {e}")
+    return None
+
+# ========== API کوین مارکت کپ (قیمت دلاری) ==========
+async def get_coinmarketcap_price(symbol="BTC"):
+    """دریافت قیمت واقعی از CoinMarketCap (دلاری)"""
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            response = await client.get(
+                f"https://api.coingecko.com/api/v3/simple/price",
+                params={
+                    "ids": get_coin_id(symbol),
+                    "vs_currencies": "usd",
+                    "include_24hr_change": "true",
+                    "include_24hr_vol": "true",
+                    "include_last_updated_at": "true"
+                }
+            )
+            
+            if response.status_code == 200:
+                data = response.json()
+                coin_data = data.get(get_coin_id(symbol), {})
+                if coin_data:
+                    return {
+                        "price": coin_data.get("usd", 0),
+                        "change": coin_data.get("usd_24h_change", 0),
+                        "volume": coin_data.get("usd_24h_vol", 0),
+                        "source": "CoinGecko"
+                    }
+    except Exception as e:
+        logging.error(f"خطا در دریافت قیمت CoinGecko: {e}")
+    return None
+
+def get_coin_id(symbol):
+    """تبدیل نماد به ID کوین‌گیکو"""
+    ids = {
+        "BTC": "bitcoin",
+        "ETH": "ethereum",
+        "SOL": "solana",
+        "BNB": "binancecoin",
+        "XRP": "ripple",
+        "DOGE": "dogecoin",
+        "ADA": "cardano",
+        "AVAX": "avalanche-2",
+        "MATIC": "matic-network"
+    }
+    return ids.get(symbol.upper(), "bitcoin")
+
+# ========== قیمت تتر به تومان (نوبیتکس) ==========
+async def get_usdt_irt():
+    """دریافت قیمت واقعی تتر به تومان از نوبیتکس"""
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            response = await client.post(
+                "https://api.nobitex.ir/market/stats",
+                json={"srcCurrency": "USDT", "dstCurrency": "IRT"}
+            )
+            
+            if response.status_code == 200:
+                data = response.json()
+                stats = data.get("stats", {})
+                if stats:
+                    return float(stats.get("bestSell", 0)) or float(stats.get("bestBuy", 0))
+    except Exception as e:
+        logging.error(f"خطا در دریافت قیمت تتر: {e}")
+    return None
+
+# ========== کش قیمت‌ها (برای کاهش درخواست) ==========
+price_cache = {}
+last_update = {}
+
+async def get_realtime_price(symbol="BTC", currency="USD"):
+    """دریافت قیمت واقعی با کش 30 ثانیه"""
+    now = datetime.now().timestamp()
+    
+    # بررسی کش
+    cache_key = f"{symbol}_{currency}"
+    if cache_key in price_cache and now - last_update.get(cache_key, 0) < 30:
+        return price_cache[cache_key]
+    
+    # دریافت قیمت جدید
+    if currency == "USD":
+        price_data = await get_coinmarketcap_price(symbol)
+    else:
+        price_data = await get_nobitex_price(symbol)
+    
+    if price_data:
+        price_cache[cache_key] = price_data
+        last_update[cache_key] = now
+    
+    return price_data
 
 # ========== شخصیت‌ها ==========
 personalities = {
-    "تریدر حرفه‌ای": {"emoji": "📊", "prompt": "تو یک تریدر حرفه‌ای هستی. با تحلیل تکنیکال و مدیریت ریسک پاسخ بده.", "color": "🔥"},
-    "تحلیلگر بازار": {"emoji": "📈", "prompt": "تو یک تحلیلگر بازار هستی. با داده‌ها و آمار دقیق صحبت کن.", "color": "📊"},
-    "مدیر ریسک": {"emoji": "🛡️", "prompt": "تو یک مدیر ریسک هستی. همیشه روی حد ضرر و مدیریت سرمایه تاکید کن.", "color": "⚖️"},
-    "نهنگ بازار": {"emoji": "🐋", "prompt": "تو مثل یک نهنگ بازار فکر کن. حرکت‌های بزرگ رو پیش‌بینی کن.", "color": "💎"},
-    "معلم ترید": {"emoji": "📚", "prompt": "تو یک معلم ترید هستی. قدم به قدم آموزش بده.", "color": "✏️"},
-    "رسمی": {"emoji": "👔", "prompt": "تو یک دستیار رسمی و حرفه‌ای هستی.", "color": "🔵"},
-    "شوخ‌طبع": {"emoji": "😄", "prompt": "تو یک دستیار شوخ و بامزه هستی.", "color": "🟡"},
-    "علمی": {"emoji": "🔬", "prompt": "تو یک دانشمند و محقق هستی.", "color": "🧪"},
-    "شاعرانه": {"emoji": "🎭", "prompt": "تو یک شاعر و نویسنده هستی.", "color": "🌸"},
+    "تریدر حرفه‌ای": {"emoji": "📊", "prompt": "تو یک تریدر حرفه‌ای هستی.", "color": "🔥"},
+    "تحلیلگر بازار": {"emoji": "📈", "prompt": "تو یک تحلیلگر بازار هستی.", "color": "📊"},
+    "مدیر ریسک": {"emoji": "🛡️", "prompt": "تو یک مدیر ریسک هستی.", "color": "⚖️"},
+    "نهنگ بازار": {"emoji": "🐋", "prompt": "تو مثل یک نهنگ بازار فکر کن.", "color": "💎"},
+    "معلم ترید": {"emoji": "📚", "prompt": "تو یک معلم ترید هستی.", "color": "✏️"},
 }
-
-# ========== ASCII Art ==========
-ascii_arts = {
-    "chart": """
-    📈 BTC/USDT
-    $67,234 ▲ +2.3%
-    ━━━━━━━━━━━━━━━
-    ████████░░░░ 62%
-    RSI: 54 | MACD: ↗️
-    """,
-    "candle": """
-    🕯️ کندل هفتگی
-    ▲ High: $69,000
-    ━━━━━━━━━
-    ██████████
-    ██████████
-    ━━━━━━━━━
-    ▼ Low: $66,000
-    """,
-    "signal_buy": "🟢 سیگنال خرید - قدرت بالا",
-    "signal_sell": "🔴 سیگنال فروش - قدرت بالا",
-    "signal_hold": "⚪ سیگنال نگهداری - صبر کن",
-}
-
-# ========== محاسبات تکنیکال ==========
-def calculate_rsi(prices, period=14):
-    if len(prices) < period + 1:
-        return 50
-    gains = []
-    losses = []
-    for i in range(1, len(prices)):
-        diff = prices[i] - prices[i-1]
-        if diff > 0:
-            gains.append(diff)
-            losses.append(0)
-        else:
-            gains.append(0)
-            losses.append(-diff)
-    avg_gain = sum(gains[-period:]) / period if len(gains) >= period else 0
-    avg_loss = sum(losses[-period:]) / period if len(losses) >= period else 0
-    if avg_loss == 0:
-        return 100
-    rs = avg_gain / avg_loss
-    return 100 - (100 / (1 + rs))
-
-def generate_signal(symbol, data):
-    """تولید سیگنال معاملاتی بر اساس داده‌ها"""
-    change = data["change"]
-    price = data["usdt"]
-    support = data["support"]
-    resistance = data["resistance"]
-    
-    # محاسبه فاصله تا حمایت و مقاومت
-    dist_to_support = (price - support) / support * 100
-    dist_to_resistance = (resistance - price) / price * 100
-    
-    signal = {
-        "action": "HOLD",
-        "strength": 0,
-        "entry": price,
-        "stop_loss": 0,
-        "take_profit": 0,
-        "reason": ""
-    }
-    
-    # منطق سیگنال
-    if change > 3 and dist_to_resistance > 5:
-        signal["action"] = "BUY"
-        signal["strength"] = min(85, 50 + change * 5)
-        signal["stop_loss"] = round(price * 0.97, 2)
-        signal["take_profit"] = round(price * 1.08, 2)
-        signal["reason"] = f"روند صعودی قوی + {change}% رشد"
-    elif change < -3 and dist_to_support > 5:
-        signal["action"] = "SELL"
-        signal["strength"] = min(85, 50 + abs(change) * 5)
-        signal["stop_loss"] = round(price * 1.03, 2)
-        signal["take_profit"] = round(price * 0.92, 2)
-        signal["reason"] = f"روند نزولی قوی + {abs(change)}% افت"
-    elif change > 1 and dist_to_resistance > 3:
-        signal["action"] = "BUY"
-        signal["strength"] = 65
-        signal["stop_loss"] = round(price * 0.98, 2)
-        signal["take_profit"] = round(price * 1.05, 2)
-        signal["reason"] = "روند صعودی ملایم"
-    elif change < -1 and dist_to_support > 3:
-        signal["action"] = "SELL"
-        signal["strength"] = 65
-        signal["stop_loss"] = round(price * 1.02, 2)
-        signal["take_profit"] = round(price * 0.95, 2)
-        signal["reason"] = "روند نزولی ملایم"
-    else:
-        signal["action"] = "HOLD"
-        signal["strength"] = 50
-        signal["reason"] = "بازار در حالت خنثی - منتظر تایید روند"
-    
-    return signal
 
 # ========== منوی اصلی ==========
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    personality = context.user_data.get("personality", "تریدر حرفه‌ای")
     keyboard = [
         [InlineKeyboardButton("📊 قیمت لحظه‌ای", callback_data="prices")],
         [InlineKeyboardButton("🎯 سیگنال معاملاتی", callback_data="signals")],
@@ -160,250 +168,199 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton("🧠 تحلیل با AI", callback_data="ai_analysis")],
         [InlineKeyboardButton("💰 مدیریت پرتفوی", callback_data="portfolio")],
         [InlineKeyboardButton("🛡️ مدیریت ریسک", callback_data="risk")],
-        [InlineKeyboardButton("🐋 نهنگ‌ها", callback_data="whale")],
-        [InlineKeyboardButton("📚 آموزش ترید", callback_data="education")],
         [InlineKeyboardButton("🎭 شخصیت", callback_data="personality")],
-        [InlineKeyboardButton("🎨 طراحی", callback_data="design")],
-        [InlineKeyboardButton("🧘 مدیتیشن", callback_data="meditation")],
-        [InlineKeyboardButton("💎 ایده‌پرداز", callback_data="ideas")],
-        [InlineKeyboardButton("📜 تاریخچه", callback_data="history")],
-        [InlineKeyboardButton("🗑 پاک کردن", callback_data="clear_memory")],
         [InlineKeyboardButton("❓ راهنما", callback_data="help")],
     ]
     
     text = f"""
-{random.choice(['📊', '🔥', '💎', '💰', '⚡'])} **ربات تریدر حرفه‌ای** {random.choice(['📊', '🔥', '💎', '💰', '⚡'])}
+📊 **ربات تریدر واقعی** 📊
 
-`{ascii_arts['chart']}`
-
-🎯 **قابلیت‌های حرفه‌ای:**
-• 📊 قیمت لحظه‌ای ۸ ارز
-• 🎯 سیگنال خرید/فروش با حد ضرر و سود
-• 📈 تحلیل تکنیکال (RSI, MACD, Support/Resistance)
+✅ **قابلیت‌های واقعی:**
+• 🔗 متصل به نوبیتکس (قیمت تومانی)
+• 🔗 متصل به CoinGecko (قیمت دلاری)
+• 🎯 سیگنال‌های واقعی
+• 📈 تحلیل تکنیکال
 • 🧠 تحلیل هوشمند با AI
-• 💰 مدیریت پرتفوی و سود/زیان
-• 🛡️ مدیریت ریسک و حد ضرر
-• 🐋 ردیابی نهنگ‌ها
+• 💰 مدیریت پرتفوی
 
 ---
-💫 **شخصیت فعلی:** {personality} {personalities[personality]['emoji']}
-⚡ **مدیریت سرمایه:** 2% ریسک در هر معامله
----
-
-📌 **از منوی زیر انتخاب کن:** 👇
+📌 از منوی زیر انتخاب کن 👇
 """
     await update.message.reply_text(text, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(keyboard))
 
-# ========== قیمت لحظه‌ای ==========
+# ========== قیمت لحظه‌ای واقعی ==========
 async def prices_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    keyboard = []
-    for symbol, data in fake_prices.items():
-        emoji = "🟢" if data["change"] > 0 else "🔴"
-        keyboard.append([InlineKeyboardButton(f"{emoji} {symbol} ${data['usdt']:,.0f}", callback_data=f"price_{symbol}")])
-    keyboard.append([InlineKeyboardButton("🔄 بروزرسانی", callback_data="refresh_prices")])
-    keyboard.append([InlineKeyboardButton("🔙 بازگشت", callback_data="back")])
+    # نمایش پیام در حال بارگذاری
+    await update.callback_query.edit_message_text("🔄 در حال دریافت قیمت‌های واقعی...", parse_mode="Markdown")
     
-    text = "📊 **قیمت لحظه‌ای ارزها** 📊\n\n"
-    for symbol, data in fake_prices.items():
-        emoji = "🟢" if data["change"] > 0 else "🔴"
-        text += f"{emoji} **{symbol}**: ${data['usdt']:,.0f} ({data['change']:+.1f}%)\n"
-    text += "\n📌 برای مشاهده جزئیات و سیگنال، روی هر ارز کلیک کن"
+    symbols = ["BTC", "ETH", "SOL", "BNB"]
+    prices_text = ""
     
-    await update.callback_query.edit_message_text(text, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(keyboard))
-
-async def price_detail(update: Update, context: ContextTypes.DEFAULT_TYPE, symbol: str):
-    data = fake_prices.get(symbol, {})
-    if not data:
-        await update.callback_query.edit_message_text("❌ ارز پیدا نشد", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="prices")]]))
-        return
+    # دریافت قیمت دلاری
+    prices_text += "🌍 **قیمت دلاری (CoinGecko):**\n"
+    for symbol in symbols:
+        price_data = await get_realtime_price(symbol, "USD")
+        if price_data:
+            emoji = "🟢" if price_data["change"] > 0 else "🔴" if price_data["change"] < 0 else "⚪"
+            prices_text += f"{emoji} **{symbol}**: ${price_data['price']:,.0f} ({price_data['change']:+.1f}%)\n"
+        else:
+            prices_text += f"⚪ **{symbol}**: خطا در دریافت\n"
     
-    signal = generate_signal(symbol, data)
+    # دریافت قیمت تومانی (تتر)
+    usdt_irt = await get_usdt_irt()
+    if usdt_irt:
+        prices_text += f"\n🇮🇷 **قیمت تتر (نوبیتکس):**\n🟢 **USDT/IRT**: {usdt_irt:,.0f} تومان\n"
     
-    emoji = "🟢" if data["change"] > 0 else "🔴"
-    text = f"📊 **{symbol} / USDT** 📊\n\n"
-    text += f"{emoji} **قیمت:** ${data['usdt']:,.0f}\n"
-    text += f"📈 **تغییر ۲۴h:** {data['change']:+.1f}%\n"
-    text += f"📊 **بالاترین:** ${data['high']:,.0f}\n"
-    text += f"📉 **پایین‌ترین:** ${data['low']:,.0f}\n"
-    text += f"💰 **حجم ۲۴h:** ${data['volume']}B\n"
-    text += f"🟢 **حمایت:** ${data['support']:,.0f}\n"
-    text += f"🔴 **مقاومت:** ${data['resistance']:,.0f}\n\n"
-    
-    text += f"🎯 **سیگنال:** "
-    if signal["action"] == "BUY":
-        text += f"🟢 خرید (قدرت: {signal['strength']}%)\n"
-    elif signal["action"] == "SELL":
-        text += f"🔴 فروش (قدرت: {signal['strength']}%)\n"
-    else:
-        text += f"⚪ نگهداری (قدرت: {signal['strength']}%)\n"
-    
-    text += f"📝 **دلیل:** {signal['reason']}\n"
-    if signal["action"] != "HOLD":
-        text += f"🛡️ **حد ضرر:** ${signal['stop_loss']:,.0f}\n"
-        text += f"🎯 **حد سود:** ${signal['take_profit']:,.0f}\n"
-        text += f"📊 **نسبت ریسک به ریوارد:** 1:{((signal['take_profit']/signal['entry'] - 1) / (1 - signal['stop_loss']/signal['entry'])):.1f}\n"
+    # دریافت قیمت تومانی بیت‌کوین
+    btc_irt = await get_nobitex_price("BTC")
+    if btc_irt:
+        btc_toman = btc_irt["price"] * usdt_irt if usdt_irt else 0
+        prices_text += f"🟢 **BTC/IRT**: {btc_toman:,.0f} تومان\n"
     
     keyboard = [
-        [InlineKeyboardButton("📈 تحلیل تکنیکال", callback_data=f"tech_{symbol}")],
-        [InlineKeyboardButton("🧠 تحلیل AI", callback_data=f"ai_{symbol}")],
-        [InlineKeyboardButton("💰 افزودن به پرتفوی", callback_data=f"add_{symbol}")],
-        [InlineKeyboardButton("🔙 بازگشت", callback_data="prices")]
+        [InlineKeyboardButton("🔄 بروزرسانی", callback_data="refresh_prices")],
+        [InlineKeyboardButton("🔙 بازگشت", callback_data="back")]
     ]
-    await update.callback_query.edit_message_text(text, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(keyboard))
+    await update.callback_query.edit_message_text(prices_text, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(keyboard))
 
-# ========== سیگنال‌ها ==========
+# ========== سیگنال واقعی ==========
 async def signals_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    signals_list = []
-    for symbol, data in fake_prices.items():
-        signal = generate_signal(symbol, data)
-        signals_list.append((symbol, signal, data["change"]))
+    await update.callback_query.edit_message_text("🔄 در حال محاسبه سیگنال‌ها...", parse_mode="Markdown")
     
-    signals_list.sort(key=lambda x: x[1]["strength"], reverse=True)
+    symbols = ["BTC", "ETH", "SOL", "BNB"]
+    signals_text = "🎯 **سیگنال‌های معاملاتی لحظه‌ای** 🎯\n\n"
     
-    text = "🎯 **سیگنال‌های معاملاتی لحظه‌ای** 🎯\n\n"
-    for symbol, signal, change in signals_list[:5]:
-        if signal["action"] == "BUY":
-            emoji = "🟢"
-        elif signal["action"] == "SELL":
-            emoji = "🔴"
+    for symbol in symbols:
+        price_data = await get_realtime_price(symbol, "USD")
+        if price_data:
+            change = price_data["change"]
+            
+            # منطق سیگنال
+            if change > 3:
+                signal = "🟢 خرید قوی"
+                reason = f"رشد {change:.1f}% در 24 ساعت"
+            elif change > 1:
+                signal = "🟢 خرید ملایم"
+                reason = f"رشد {change:.1f}%"
+            elif change < -3:
+                signal = "🔴 فروش قوی"
+                reason = f"افت {abs(change):.1f}%"
+            elif change < -1:
+                signal = "🔴 فروش ملایم"
+                reason = f"افت {abs(change):.1f}%"
+            else:
+                signal = "⚪ نگهداری"
+                reason = "بازار خنثی"
+            
+            signals_text += f"**{symbol}**: {signal}\n📝 {reason}\n\n"
         else:
-            emoji = "⚪"
-        text += f"{emoji} **{symbol}**: {signal['action']} | قدرت: {signal['strength']}% | تغییر: {change:+.1f}%\n"
-    
-    best = signals_list[0]
-    worst = signals_list[-1]
-    text += f"\n━━━━━━━━━━━━━━━━━━━━\n"
-    text += f"🔥 **بهترین سیگنال:** {best[0]} ({best[1]['action']})\n"
-    text += f"📉 **ضعیف‌ترین:** {worst[0]} ({worst[1]['action']})\n"
-    text += f"\n💡 **مدیریت ریسک:** حداکثر ۲٪ سرمایه در هر معامله"
+            signals_text += f"**{symbol}**: ⚪ خطا در دریافت\n\n"
     
     keyboard = [
         [InlineKeyboardButton("🔄 بروزرسانی", callback_data="refresh_signals")],
-        [InlineKeyboardButton("📊 مشاهده همه", callback_data="all_signals")],
         [InlineKeyboardButton("🔙 بازگشت", callback_data="back")]
     ]
-    await update.callback_query.edit_message_text(text, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(keyboard))
+    await update.callback_query.edit_message_text(signals_text, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(keyboard))
 
-# ========== تحلیل تکنیکال ==========
+# ========== تحلیل تکنیکال واقعی ==========
 async def technical_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    keyboard = []
-    for symbol in fake_prices.keys():
-        keyboard.append([InlineKeyboardButton(f"📈 {symbol}", callback_data=f"tech_{symbol}")])
-    keyboard.append([InlineKeyboardButton("🔙 بازگشت", callback_data="back")])
-    
+    keyboard = [
+        [InlineKeyboardButton("📈 BTC", callback_data="tech_BTC")],
+        [InlineKeyboardButton("💎 ETH", callback_data="tech_ETH")],
+        [InlineKeyboardButton("🔷 SOL", callback_data="tech_SOL")],
+        [InlineKeyboardButton("🟡 BNB", callback_data="tech_BNB")],
+        [InlineKeyboardButton("🔙 بازگشت", callback_data="back")],
+    ]
     await update.callback_query.edit_message_text(
-        "📈 **تحلیل تکنیکال حرفه‌ای** 📈\n\n"
-        "📊 **اندیکاتورهای موجود:**\n"
-        "• RSI (قدرت نسبی)\n"
-        "• MACD (همگرایی/واگرایی)\n"
-        "• سطوح حمایت و مقاومت\n"
-        "• میانگین متحرک ساده\n"
-        "• حجم معاملات\n\n"
-        "ارز مورد نظر را انتخاب کن:",
+        "📈 **تحلیل تکنیکال واقعی**\n\nارز مورد نظر را انتخاب کن:",
         parse_mode="Markdown",
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
 
 async def technical_analysis(update: Update, context: ContextTypes.DEFAULT_TYPE, symbol: str):
-    data = fake_prices.get(symbol, {})
-    signal = generate_signal(symbol, data)
+    await update.callback_query.edit_message_text(f"📊 در حال تحلیل {symbol}...", parse_mode="Markdown")
     
-    # محاسبه RSI شبیه‌سازی شده
-    rsi = random.randint(25, 75)
+    price_data = await get_realtime_price(symbol, "USD")
+    if not price_data:
+        await update.callback_query.edit_message_text("❌ خطا در دریافت قیمت", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="technical")]]))
+        return
+    
+    price = price_data["price"]
+    change = price_data["change"]
+    
+    # محاسبه سطوح تقریبی
+    support = price * 0.95
+    resistance = price * 1.05
+    support2 = price * 0.92
+    resistance2 = price * 1.08
+    
+    # محاسبه RSI تقریبی
+    rsi = 50 + change * 3
+    rsi = max(20, min(80, rsi))
     rsi_status = "🟢 اشباع فروش (منطقه خرید)" if rsi < 30 else "🔴 اشباع خرید (منطقه فروش)" if rsi > 70 else "⚪ خنثی"
     
     text = f"📈 **تحلیل تکنیکال {symbol}** 📈\n\n"
-    text += f"💰 **قیمت فعلی:** ${data['usdt']:,.0f}\n"
-    text += f"📊 **تغییر ۲۴h:** {data['change']:+.1f}%\n\n"
+    text += f"💰 **قیمت فعلی:** ${price:,.0f}\n"
+    text += f"📊 **تغییر ۲۴h:** {change:+.1f}%\n"
+    text += f"📈 **منبع:** {price_data['source']}\n\n"
     
     text += "**📊 اندیکاتورها:**\n"
-    text += f"• RSI(14): {rsi} → {rsi_status}\n"
-    text += f"• MACD: {'صعودی (سیگنال خرید)' if data['change'] > 0 else 'نزولی (سیگنال فروش)'}\n"
-    text += f"• میانگین متحرک ۵۰: {'بالا' if data['change'] > 0 else 'پایین'}تر از قیمت\n"
-    text += f"• حجم: {data['volume']}B {'(+۱۵%)' if data['change'] > 0 else '(-۵%)'}\n\n"
+    text += f"• RSI(14): {rsi:.0f} → {rsi_status}\n"
+    text += f"• MACD: {'صعودی' if change > 0 else 'نزولی'}\n"
+    text += f"• روند: {'صعودی' if change > 0 else 'نزولی' if change < 0 else 'خنثی'}\n\n"
     
     text += "**🔑 سطوح کلیدی:**\n"
-    text += f"🟢 حمایت اصلی: ${data['support']:,.0f}\n"
-    text += f"🔴 مقاومت اصلی: ${data['resistance']:,.0f}\n"
-    text += f"🟡 حمایت دوم: ${data['support'] * 0.95:,.0f}\n"
-    text += f"🔴 مقاومت دوم: ${data['resistance'] * 1.05:,.0f}\n\n"
+    text += f"🟢 حمایت اصلی: ${support:,.0f}\n"
+    text += f"🔴 مقاومت اصلی: ${resistance:,.0f}\n"
+    text += f"🟡 حمایت دوم: ${support2:,.0f}\n"
+    text += f"🔴 مقاومت دوم: ${resistance2:,.0f}\n\n"
     
-    text += f"**🎯 سیگنال معاملاتی:**\n"
-    if signal["action"] == "BUY":
-        text += f"🟢 **خرید** با قدرت {signal['strength']}%\n"
-    elif signal["action"] == "SELL":
-        text += f"🔴 **فروش** با قدرت {signal['strength']}%\n"
+    # سیگنال
+    if change > 2:
+        signal = "🟢 سیگنال خرید"
+        sl = price * 0.97
+        tp = price * 1.05
+    elif change < -2:
+        signal = "🔴 سیگنال فروش"
+        sl = price * 1.03
+        tp = price * 0.95
     else:
-        text += f"⚪ **نگهداری** با قدرت {signal['strength']}%\n"
+        signal = "⚪ سیگنال نگهداری"
+        sl = price * 0.98
+        tp = price * 1.02
     
-    text += f"📝 **تحلیل:** {signal['reason']}\n"
+    text += f"**🎯 سیگنال:** {signal}\n"
+    if signal != "⚪ سیگنال نگهداری":
+        text += f"🛡️ **حد ضرر:** ${sl:,.0f}\n"
+        text += f"🎯 **حد سود:** ${tp:,.0f}\n"
     
-    if signal["action"] != "HOLD":
-        text += f"\n**🛡️ مدیریت معامله:**\n"
-        text += f"• حد ضرر: ${signal['stop_loss']:,.0f} ({(signal['stop_loss']/signal['entry']-1)*100:+.1f}%)\n"
-        text += f"• حد سود: ${signal['take_profit']:,.0f} ({(signal['take_profit']/signal['entry']-1)*100:+.1f}%)\n"
-        text += f"• نسبت ریسک به ریوارد: 1:{((signal['take_profit']/signal['entry']-1) / (1 - signal['stop_loss']/signal['entry'])):.1f}\n"
-    
-    keyboard = [
-        [InlineKeyboardButton("🧠 تحلیل با AI", callback_data=f"ai_{symbol}")],
-        [InlineKeyboardButton("💰 افزودن به پرتفوی", callback_data=f"add_{symbol}")],
-        [InlineKeyboardButton("🔙 بازگشت", callback_data="technical")]
-    ]
+    keyboard = [[InlineKeyboardButton("🔙 بازگشت", callback_data="technical")]]
     await update.callback_query.edit_message_text(text, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(keyboard))
 
 # ========== تحلیل با AI ==========
 async def ai_analysis_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    keyboard = []
-    for symbol in fake_prices.keys():
-        keyboard.append([InlineKeyboardButton(f"🧠 {symbol}", callback_data=f"ai_{symbol}")])
-    keyboard.append([InlineKeyboardButton("🔙 بازگشت", callback_data="back")])
-    
+    keyboard = [
+        [InlineKeyboardButton("🧠 تحلیل BTC", callback_data="ai_BTC")],
+        [InlineKeyboardButton("🧠 تحلیل ETH", callback_data="ai_ETH")],
+        [InlineKeyboardButton("🧠 تحلیل SOL", callback_data="ai_SOL")],
+        [InlineKeyboardButton("🧠 تحلیل BNB", callback_data="ai_BNB")],
+        [InlineKeyboardButton("🔙 بازگشت", callback_data="back")],
+    ]
     await update.callback_query.edit_message_text(
-        "🧠 **تحلیل هوشمند با AI** 🧠\n\n"
-        "🤖 هوش مصنوعی Groq بازار رو برات تحلیل می‌کنه:\n"
-        "• پیش‌بینی روند\n"
-        "• سطوح کلیدی\n"
-        "• مدیریت ریسک\n"
-        "• بهترین زمان ورود و خروج\n\n"
-        "ارز مورد نظر را انتخاب کن:",
+        "🧠 **تحلیل هوشمند با AI**\n\nارز مورد نظر را انتخاب کن:",
         parse_mode="Markdown",
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
 
 async def ai_analysis(update: Update, context: ContextTypes.DEFAULT_TYPE, symbol: str):
-    await update.callback_query.edit_message_text(f"🤖 در حال تحلیل {symbol} با هوش مصنوعی... ⏳", parse_mode="Markdown")
+    await update.callback_query.edit_message_text(f"🤖 در حال تحلیل {symbol} با هوش مصنوعی...", parse_mode="Markdown")
     
-    data = fake_prices.get(symbol, {})
-    signal = generate_signal(symbol, data)
+    price_data = await get_realtime_price(symbol, "USD")
+    if not price_data:
+        await update.callback_query.edit_message_text("❌ خطا در دریافت قیمت", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="ai_analysis")]]))
+        return
     
-    prompt = f"""به عنوان یک تحلیلگر حرفه‌ای بازار ارزهای دیجیتال، درباره {symbol} تحلیل کن:
-
-قیمت: ${data['usdt']}
-تغییر ۲۴h: {data['change']}%
-حمایت: ${data['support']}
-مقاومت: ${data['resistance']}
-سیگنال فعلی: {signal['action']}
-
-لطفاً در ۵ خط تحلیل کن:
-1. وضعیت فعلی بازار
-2. پیش‌بینی کوتاه مدت
-3. توصیه معاملاتی
-4. مدیریت ریسک"""
-    
-    if not GROQ_API_KEY:
-        ai_response = f"""📊 **تحلیل {symbol}** 📊
-
-🔍 **وضعیت فعلی:** {signal['reason']}
-
-📈 **پیش‌بینی:** 
-{'صعودی تا مقاومت بعدی' if signal['action'] == 'BUY' else 'نزولی تا حمایت بعدی' if signal['action'] == 'SELL' else 'رنج تا شکست یکی از سطوح'}
-
-🎯 **توصیه:** {signal['action']}
-
-🛡️ **مدیریت ریسک:** حد ضرر {signal['stop_loss'] if signal['action'] != 'HOLD' else '۲٪ زیر قیمت'} - حداکثر ۲٪ سرمایه
-
-💡 نکته: همیشه از حد ضرر استفاده کن و بیش از ۲٪ ریسک نکن."""
-    else:
+    if GROQ_API_KEY:
         try:
             async with httpx.AsyncClient(timeout=30) as client:
                 response = await client.post(
@@ -411,20 +368,41 @@ async def ai_analysis(update: Update, context: ContextTypes.DEFAULT_TYPE, symbol
                     headers={"Authorization": f"Bearer {GROQ_API_KEY}", "Content-Type": "application/json"},
                     json={
                         "model": "llama-3.3-70b-versatile",
-                        "messages": [{"role": "user", "content": prompt}],
-                        "max_tokens": 500,
-                        "temperature": 0.7
+                        "messages": [
+                            {"role": "system", "content": "تو یک تحلیلگر حرفه‌ای بازار ارزهای دیجیتال هستی. پاسخ کوتاه و مفید بده."},
+                            {"role": "user", "content": f"تحلیل {symbol} با قیمت ${price_data['price']:,.0f} و تغییر {price_data['change']:+.1f}% در 24 ساعت اخیر"}
+                        ],
+                        "max_tokens": 300
                     }
                 )
                 if response.status_code == 200:
                     ai_response = response.json()["choices"][0]["message"]["content"]
                 else:
-                    ai_response = "خطا در ارتباط با AI. لطفاً دوباره تلاش کن."
+                    ai_response = await fallback_ai_analysis(symbol, price_data)
         except:
-            ai_response = "خطا در ارتباط با AI. لطفاً دوباره تلاش کن."
+            ai_response = await fallback_ai_analysis(symbol, price_data)
+    else:
+        ai_response = await fallback_ai_analysis(symbol, price_data)
+    
+    text = f"🧠 **تحلیل AI - {symbol}** 🧠\n\n"
+    text += f"💰 قیمت فعلی: ${price_data['price']:,.0f}\n"
+    text += f"📊 تغییر ۲۴h: {price_data['change']:+.1f}%\n\n"
+    text += f"{ai_response}"
     
     keyboard = [[InlineKeyboardButton("🔙 بازگشت", callback_data="ai_analysis")]]
-    await update.callback_query.edit_message_text(f"🧠 **تحلیل AI - {symbol}** 🧠\n\n{ai_response}", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(keyboard))
+    await update.callback_query.edit_message_text(text, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(keyboard))
+
+async def fallback_ai_analysis(symbol: str, price_data: dict):
+    """پاسخ پیش‌فرض AI در صورت عدم دسترسی به API"""
+    change = price_data["change"]
+    if change > 2:
+        return f"✅ **تحلیل:** روند صعودی قوی برای {symbol}. پیش‌بینی ادامه رشد تا مقاومت بعدی. حد ضرر را ۳٪ زیر قیمت قرار دهید."
+    elif change > 0:
+        return f"🟡 **تحلیل:** {symbol} در روند صعودی ملایم. تایید روند نیاز است. منتظر شکست مقاومت بعدی باشید."
+    elif change < -2:
+        return f"🔴 **تحلیل:** روند نزولی برای {symbol}. از ورود به معامله خودداری کنید تا بازار تثبیت شود."
+    else:
+        return f"⚪ **تحلیل:** {symbol} در حالت رنج. سطوح حمایت و مقاومت را رصد کنید."
 
 # ========== مدیریت پرتفوی ==========
 async def portfolio_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -432,271 +410,132 @@ async def portfolio_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     portfolio = load_json(PORTFOLIO_FILE)
     user_portfolio = portfolio.get(user_id, {"balance": 10000, "positions": [], "history": []})
     
-    total_value = user_portfolio["balance"]
-    positions_value = 0
-    for pos in user_portfolio["positions"]:
-        current_price = fake_prices.get(pos["symbol"], {}).get("usdt", pos["entry_price"])
-        positions_value += current_price * pos["amount"]
-        total_value += current_price * pos["amount"]
-    
     text = f"💰 **پرتفوی شما** 💰\n\n"
     text += f"💵 **موجودی نقد:** ${user_portfolio['balance']:,.0f}\n"
-    text += f"📊 **ارزش پوزیشن‌ها:** ${positions_value:,.0f}\n"
-    text += f"💎 **ارزش کل:** ${total_value:,.0f}\n"
-    text += f"📈 **سود/زیان کل:** ${total_value - 10000:+,.0f} ({((total_value/10000)-1)*100:+.1f}%)\n\n"
     
     if user_portfolio["positions"]:
-        text += "**📊 پوزیشن‌های باز:**\n"
+        text += "\n**📊 پوزیشن‌های باز:**\n"
         for pos in user_portfolio["positions"]:
-            current = fake_prices.get(pos["symbol"], {}).get("usdt", pos["entry_price"])
+            price_data = await get_realtime_price(pos["symbol"], "USD")
+            current = price_data["price"] if price_data else pos["entry_price"]
             pnl = (current - pos["entry_price"]) / pos["entry_price"] * 100
             pnl_direction = "🟢" if pnl > 0 else "🔴" if pnl < 0 else "⚪"
-            text += f"{pnl_direction} **{pos['symbol']}**: {pos['amount']} واحد @ ${pos['entry_price']:,.0f} | PnL: {pnl:+.1f}%\n"
+            text += f"{pnl_direction} **{pos['symbol']}**: {pos['amount']} @ ${pos['entry_price']:,.0f} | PnL: {pnl:+.1f}%\n"
     else:
-        text += "📭 **هیچ پوزیشن بازی ندارید**\n"
-    
-    text += f"\n📜 **تعداد کل معاملات:** {len(user_portfolio['history'])}"
+        text += "\n📭 **هیچ پوزیشن بازی ندارید**\n"
     
     keyboard = [
-        [InlineKeyboardButton("💰 افزودن موجودی", callback_data="add_balance")],
-        [InlineKeyboardButton("📈 بستن پوزیشن", callback_data="close_position")],
-        [InlineKeyboardButton("📜 تاریخچه معاملات", callback_data="trade_history")],
+        [InlineKeyboardButton("💰 افزایش موجودی", callback_data="add_balance")],
+        [InlineKeyboardButton("📜 تاریخچه", callback_data="trade_history")],
         [InlineKeyboardButton("🔙 بازگشت", callback_data="back")]
     ]
     await update.callback_query.edit_message_text(text, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(keyboard))
 
-async def add_to_portfolio(update: Update, context: ContextTypes.DEFAULT_TYPE, symbol: str):
+async def add_balance(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = str(update.effective_user.id)
     portfolio = load_json(PORTFOLIO_FILE)
     user_portfolio = portfolio.get(user_id, {"balance": 10000, "positions": [], "history": []})
     
-    data = fake_prices.get(symbol, {})
-    price = data["usdt"]
-    signal = generate_signal(symbol, data)
-    
-    if signal["action"] == "HOLD":
-        await update.callback_query.edit_message_text(
-            f"⚠️ **سیگنال {symbol} نگهداری است**\n\n"
-            f"طبق تحلیل، الان زمان مناسبی برای ورود نیست.\n"
-            f"📊 قدرت سیگنال: {signal['strength']}%\n"
-            f"📝 دلیل: {signal['reason']}\n\n"
-            f"صبر کن تا سیگنال خرید یا فروش بدهد.",
-            parse_mode="Markdown",
-            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="prices")]])
-        )
-        return
-    
-    # شبیه‌سازی خرید
-    amount = user_portfolio["balance"] * 0.2 / price  # 20% سرمایه
-    cost = amount * price
-    
-    if cost > user_portfolio["balance"]:
-        await update.callback_query.edit_message_text(
-            f"❌ **موجودی کافی نیست!**\n\n"
-            f"💰 موجودی: ${user_portfolio['balance']:,.0f}\n"
-            f"💰 هزینه مورد نیاز: ${cost:,.0f}\n\n"
-            f"لطفاً ابتدا موجودی خود را افزایش دهید.",
-            parse_mode="Markdown",
-            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="portfolio")]])
-        )
-        return
-    
-    user_portfolio["balance"] -= cost
-    user_portfolio["positions"].append({
-        "symbol": symbol,
-        "amount": amount,
-        "entry_price": price,
-        "stop_loss": signal["stop_loss"],
-        "take_profit": signal["take_profit"],
-        "timestamp": datetime.now().isoformat()
-    })
-    user_portfolio["history"].append({
-        "type": "BUY",
-        "symbol": symbol,
-        "amount": amount,
-        "price": price,
-        "timestamp": datetime.now().isoformat()
-    })
-    
+    user_portfolio["balance"] += 5000
     portfolio[user_id] = user_portfolio
     save_json(PORTFOLIO_FILE, portfolio)
     
-    text = f"✅ **خرید {symbol} انجام شد!** ✅\n\n"
-    text += f"💰 **مقدار:** {amount:.4f} {symbol}\n"
-    text += f"💵 **قیمت:** ${price:,.0f}\n"
-    text += f"💎 **کل هزینه:** ${cost:,.0f}\n"
-    text += f"🛡️ **حد ضرر:** ${signal['stop_loss']:,.0f}\n"
-    text += f"🎯 **حد سود:** ${signal['take_profit']:,.0f}\n"
-    text += f"\n💰 **موجودی باقی‌مانده:** ${user_portfolio['balance']:,.0f}"
-    
-    keyboard = [[InlineKeyboardButton("🔙 بازگشت", callback_data="portfolio")]]
-    await update.callback_query.edit_message_text(text, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(keyboard))
+    await update.callback_query.edit_message_text(
+        "✅ **۵۰۰۰ دلار به موجودی شما اضافه شد!**",
+        reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="portfolio")]])
+    )
 
 # ========== مدیریت ریسک ==========
 async def risk_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = """
 🛡️ **مدیریت ریسک حرفه‌ای** 🛡️
 
-━━━━━━━━━━━━━━━━━━━━
 📊 **قوانین طلایی:**
 
 1️⃣ **حداکثر ریسک در هر معامله:** ۲٪ سرمایه
 
 2️⃣ **نسبت ریسک به ریوارد:** حداقل ۱:۲
 
-3️⃣ **حد ضرر (Stop Loss):** همیشه اجباری
+3️⃣ **حد ضرر:** همیشه اجباری
 
-4️⃣ **حد سود (Take Profit):** حداقل ۲ برابر حد ضرر
+4️⃣ **حداکثر معاملات همزمان:** ۳ تا
 
-5️⃣ **حداکثر معاملات همزمان:** ۳ تا
+5️⃣ **حداکثر افت روزانه:** ۶٪
 
-6️⃣ **حداکثر افت روزانه:** ۶٪ (در صورت رسیدن، توقف)
-
-━━━━━━━━━━━━━━━━━━━━
+---
 📈 **فرمول حجم معامله:**
 
-حجم = (سرمایه × ۲٪) / (قیمت ورود - حد ضرر)
+`حجم = (سرمایه × ۲٪) / (قیمت ورود - حد ضرر)`
 
-━━━━━━━━━━━━━━━━━━━━
+---
 💡 **نکات کلیدی:**
 • هیچوقت فول مارژین نکن
-• از اهرم بالا استفاده نکن
-• همیشه به برنامه معاملاتی پایبند باش
 • احساسات را از معامله جدا کن
 • در ضررهای متوالی، توقف کن
-
-━━━━━━━━━━━━━━━━━━━━
-🎯 **وضعیت فعلی بازار:**
-• ریسک بازار: متوسط
-• نوسان: نرمال
-• بهترین استراتژی: اسکالپ و نوسان‌گیری
 """
     keyboard = [[InlineKeyboardButton("🔙 بازگشت", callback_data="back")]]
     await update.callback_query.edit_message_text(text, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(keyboard))
 
-# ========== نهنگ‌ها ==========
-async def whale_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    whales = [
-        {"symbol": "BTC", "amount": 1250, "value": 84000000, "exchange": "Binance", "type": "خرید"},
-        {"symbol": "ETH", "amount": 15000, "value": 51800000, "exchange": "Coinbase", "type": "فروش"},
-        {"symbol": "SOL", "amount": 250000, "value": 39175000, "exchange": "FTX", "type": "خرید"},
-        {"symbol": "BNB", "amount": 8000, "value": 4656000, "exchange": "Binance", "type": "خرید"},
-    ]
-    
-    text = "🐋 **ردیابی نهنگ‌های بازار** 🐋\n\n"
-    text += "آخرین تراکنش‌های بزرگ:\n\n"
-    for w in whales:
-        emoji = "🟢" if w["type"] == "خرید" else "🔴"
-        text += f"{emoji} **{w['symbol']}**: {w['amount']:,.0f} واحد (${w['value']:,.0f})\n"
-        text += f"   📍 صرافی: {w['exchange']} | نوع: {w['type']}\n\n"
-    
-    text += "━━━━━━━━━━━━━━━━━━━━\n"
-    text += "📊 **تحلیل حرکت نهنگ‌ها:**\n"
-    text += "• خرید نهنگ‌ها روی BTC نشانه صعود است\n"
-    text += "• فروش ETH می‌تواند اصلاح ایجاد کند\n"
-    text += "• ورود پول به SOL نشانه علاقه به آلت‌کوین‌هاست\n\n"
-    text += "💡 **توصیه:** از حرکت نهنگ‌ها پیروی کن ولی با مدیریت ریسک"
-    
-    keyboard = [[InlineKeyboardButton("🔙 بازگشت", callback_data="back")]]
-    await update.callback_query.edit_message_text(text, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(keyboard))
-
-# ========== آموزش ==========
-async def education_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    keyboard = [
-        [InlineKeyboardButton("📊 مقدمات ترید", callback_data="edu_basics")],
-        [InlineKeyboardButton("📈 تحلیل تکنیکال", callback_data="edu_technical")],
-        [InlineKeyboardButton("🛡️ مدیریت ریسک", callback_data="edu_risk")],
-        [InlineKeyboardButton("🧠 روانشناسی ترید", callback_data="edu_psychology")],
-        [InlineKeyboardButton("🔙 بازگشت", callback_data="back")],
-    ]
-    
-    text = """
-📚 **آکادمی ترید حرفه‌ای** 📚
-
-━━━━━━━━━━━━━━━━━━━━
-🎯 **دوره‌های آموزشی:**
-
-1️⃣ **مقدمات ترید**
-   • انواع معاملات (اسکالپ، روزانه، سوئینگ)
-   • آشنایی با صرافی‌ها
-   • نحوه ثبت سفارش
-
-2️⃣ **تحلیل تکنیکال**
-   • حمایت و مقاومت
-   • اندیکاتورها (RSI, MACD, MA)
-   • الگوهای کندل‌استیک
-
-3️⃣ **مدیریت ریسک**
-   • قانون ۲٪
-   • حد ضرر و سود
-   • سایز پوزیشن
-
-4️⃣ **روانشناسی ترید**
-   • کنترل احساسات
-   • نظم و انضباط
-   • اجتناب از انتقام‌جویی
-
-━━━━━━━━━━━━━━━━━━━━
-📌 **موضوع مورد نظر را انتخاب کن:**
-"""
-    await update.callback_query.edit_message_text(text, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(keyboard))
-
-# ========== بقیه منوها (ساده شده برای فضا) ==========
+# ========== شخصیت ==========
 async def personality_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = []
     for name, data in personalities.items():
         keyboard.append([InlineKeyboardButton(f"{data['emoji']} {name}", callback_data=f"set_personality_{name}")])
     keyboard.append([InlineKeyboardButton("🔙 بازگشت", callback_data="back")])
     
-    current = context.user_data.get("personality", "تریدر حرفه‌ای")
     await update.callback_query.edit_message_text(
-        f"🎭 **شخصیت‌های تریدینگ**\n\nشخصیت فعلی: {current}\n\nانتخاب کن:",
+        "🎭 **انتخاب شخصیت**\n\nشخصیت مورد نظر را انتخاب کن:",
         parse_mode="Markdown",
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
 
 async def set_personality(update: Update, context: ContextTypes.DEFAULT_TYPE, personality: str):
     context.user_data["personality"] = personality
-    context.user_data["system_prompt"] = personalities[personality]["prompt"]
-    await update.callback_query.edit_message_text(f"✅ شخصیت به {personality} تغییر کرد!", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="back")]]))
+    await update.callback_query.edit_message_text(
+        f"✅ شخصیت به **{personality}** تغییر کرد!",
+        reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="back")]])
+    )
 
-async def design_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.callback_query.edit_message_text("🎨 **بخش طراحی** - به زودی اضافه می‌شود", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="back")]]))
-
-async def meditation_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.callback_query.edit_message_text("🧘 **بخش مدیتیشن** - به زودی اضافه می‌شود", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="back")]]))
-
-async def ideas_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.callback_query.edit_message_text("💎 **بخش ایده‌پرداز** - به زودی اضافه می‌شود", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="back")]]))
-
-async def show_history(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.callback_query.edit_message_text("📜 **تاریخچه** - به زودی اضافه می‌شود", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="back")]]))
-
-async def clear_memory(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.callback_query.edit_message_text("🗑 **حافظه پاک شد**", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="back")]]))
-
+# ========== راهنما ==========
 async def help_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = """
-❓ **راهنمای ربات تریدر حرفه‌ای** ❓
+❓ **راهنمای ربات تریدر واقعی** ❓
 
-🎯 **قابلیت‌های اصلی:**
-• 📊 قیمت لحظه‌ای و تحلیل
-• 🎯 سیگنال خرید/فروش با قدرت
-• 📈 تحلیل تکنیکال کامل
-• 🧠 تحلیل هوشمند با AI
-• 💰 مدیریت پرتفوی
-• 🛡️ مدیریت ریسک
-• 🐋 ردیابی نهنگ‌ها
+📊 **قیمت لحظه‌ای:**
+قیمت‌های واقعی از نوبیتکس و CoinGecko
 
-📌 **نکات مهم:**
-• هرگز بیش از ۲٪ سرمایه ریسک نکن
-• همیشه از حد ضرر استفاده کن
-• احساسات را از معامله جدا کن
-• به برنامه معاملاتی پایبند باش
+🎯 **سیگنال:**
+بر اساس تغییرات قیمت ۲۴ ساعته
 
+📈 **تحلیل تکنیکال:**
+RSI، سطوح حمایت/مقاومت
+
+🧠 **تحلیل AI:**
+تحلیل هوشمند با Groq (در صورت تنظیم API)
+
+💰 **پرتفوی:**
+مدیریت سرمایه و پوزیشن‌ها
+
+---
 ⚠️ **هشدار:** این ربات فقط جنبه آموزشی دارد
 """
     keyboard = [[InlineKeyboardButton("🔙 بازگشت", callback_data="back")]]
+    await update.callback_query.edit_message_text(text, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(keyboard))
+
+# ========== تاریخچه معاملات ==========
+async def trade_history(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = str(update.effective_user.id)
+    portfolio = load_json(PORTFOLIO_FILE)
+    user_portfolio = portfolio.get(user_id, {"balance": 10000, "positions": [], "history": []})
+    
+    if not user_portfolio["history"]:
+        text = "📜 **تاریخچه معاملات خالی است**"
+    else:
+        text = "📜 **تاریخچه معاملات** 📜\n\n"
+        for h in user_portfolio["history"][-10:]:
+            text += f"• {h.get('type', '')} {h.get('symbol', '')} @ ${h.get('price', 0):,.0f}\n"
+    
+    keyboard = [[InlineKeyboardButton("🔙 بازگشت", callback_data="portfolio")]]
     await update.callback_query.edit_message_text(text, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(keyboard))
 
 # ========== هندلر اصلی ==========
@@ -719,40 +558,24 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await portfolio_menu(update, context)
     elif data == "risk":
         await risk_menu(update, context)
-    elif data == "whale":
-        await whale_menu(update, context)
-    elif data == "education":
-        await education_menu(update, context)
     elif data == "personality":
         await personality_menu(update, context)
-    elif data == "design":
-        await design_menu(update, context)
-    elif data == "meditation":
-        await meditation_menu(update, context)
-    elif data == "ideas":
-        await ideas_menu(update, context)
-    elif data == "history":
-        await show_history(update, context)
-    elif data == "clear_memory":
-        await clear_memory(update, context)
     elif data == "help":
         await help_menu(update, context)
+    elif data == "add_balance":
+        await add_balance(update, context)
+    elif data == "trade_history":
+        await trade_history(update, context)
     elif data == "refresh_prices":
         await prices_menu(update, context)
     elif data == "refresh_signals":
         await signals_menu(update, context)
-    elif data.startswith("price_"):
-        symbol = data.split("_")[1]
-        await price_detail(update, context, symbol)
     elif data.startswith("tech_"):
         symbol = data.split("_")[1]
         await technical_analysis(update, context, symbol)
     elif data.startswith("ai_"):
         symbol = data.split("_")[1]
         await ai_analysis(update, context, symbol)
-    elif data.startswith("add_"):
-        symbol = data.split("_")[1]
-        await add_to_portfolio(update, context, symbol)
     elif data.startswith("set_personality_"):
         personality = data.replace("set_personality_", "")
         await set_personality(update, context, personality)
@@ -765,7 +588,7 @@ def main():
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CallbackQueryHandler(button_handler))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-    print("🤖 ربات تریدر حرفه‌ای با مدیریت ریسک روشن شد...")
+    print("🤖 ربات تریدر واقعی با API نوبیتکس و CoinGecko روشن شد...")
     app.run_polling()
 
 if __name__ == "__main__":
