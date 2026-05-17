@@ -37,11 +37,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# ==================== ثابت‌های ربات ====================
-TELEGRAM_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-GROQ_API_KEY = os.getenv("GROQ_API_KEY")
-
-# پیکربندی صرافی‌ها
+# ==================== تنظیمات صرافی‌ها ====================
 EXCHANGES_CONFIG = {
     "binance": {
         "class": ccxt.binance,
@@ -57,11 +53,6 @@ EXCHANGES_CONFIG = {
         "password": os.getenv("KUCOIN_PASSPHRASE"),
         "enableRateLimit": True,
     },
-    "nobitex": {
-        "class": ccxt.nobitex,
-        "apiKey": os.getenv("NOBITEX_API_KEY"),
-        "enableRateLimit": True,
-    },
     "okx": {
         "class": ccxt.okx,
         "apiKey": os.getenv("OKX_API_KEY"),
@@ -71,16 +62,8 @@ EXCHANGES_CONFIG = {
     }
 }
 
-# لیست ارزهای تحت پوشش (به‌روز برای سال ۲۰۲۶)
-SYMBOLS = [
-    "BTC/USDT", "ETH/USDT", "BNB/USDT", "SOL/USDT", "XRP/USDT",
-    "ADA/USDT", "DOGE/USDT", "TRX/USDT", "TON/USDT", "DOT/USDT",
-    "MATIC/USDT", "SHIB/USDT", "LTC/USDT", "AVAX/USDT", "UNI/USDT"
-]
-
-# لیست صرافی‌های داخلی (با مدیریت ویژه)
-IRANIAN_EXCHANGES = ["nobitex"]
-
+# نوبیتکس را جداگانه مدیریت می‌کنیم (در CCXT نیست)
+NOBITEX_ENABLED = True if os.getenv("NOBITEX_API_KEY") else False
 # ==================== توابع ابزاری ====================
 def safe_decimal(value: Any) -> Decimal:
     """تبدیل مقادیر مختلف به Decimal با هندل کردن خطا"""
