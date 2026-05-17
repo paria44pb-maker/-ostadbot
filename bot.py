@@ -61,6 +61,7 @@ personalities = {
 
 # ========== منوی اصلی ==========
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    personality = context.user_data.get("personality", "رسمی")
     keyboard = [
         [InlineKeyboardButton("🎭 انتخاب شخصیت AI", callback_data="personality")],
         [InlineKeyboardButton("🧠 گفتگو با هوش مصنوعی", callback_data="chat")],
@@ -74,7 +75,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "• ۸ شخصیت مختلف برای AI\n"
         "• حافظه دائمی (چیزی که گفتی یادش میاد)\n"
         "• پاسخ‌های سریع و هوشمند\n\n"
-        f"🎭 شخصیت فعلی: **رسمی** 👔\n\n"
+        f"🎭 شخصیت فعلی: **{personality}** {personalities[personality]['emoji']}\n\n"
         "از منوی زیر انتخاب کن 👇",
         parse_mode="Markdown",
         reply_markup=InlineKeyboardMarkup(keyboard)
@@ -126,14 +127,13 @@ async def chat_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"شخصیت فعلی: **{personality}** {personalities[personality]['emoji']}\n\n"
         "📝 هر چی بپرسی با همین لحن جواب می‌دم.\n"
         "🧠 حافظه دارم! چیزایی که قبلاً گفتی رو یادم میاد.\n\n"
-        "⚠️ فقط دقت کن: پیام‌هات خیلی طولانی نباشه.\n\n"
         "**سوالتو بپرس...**",
         parse_mode="Markdown",
         reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="back")]])
     )
     context.user_data["chat_mode"] = True
 
-# ========== پاسخ با Groq و حافظه ==========
+# ========== پاسخ با Groq و حافظه (مدل اصلاح شده) ==========
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.user_data.get("chat_mode", False):
         await update.message.reply_text("⚠️ اول /start رو بزن و بعد گزینه «گفتگو با هوش مصنوعی» رو انتخاب کن.")
@@ -144,16 +144,13 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     personality = context.user_data.get("personality", "رسمی")
     system_prompt = context.user_data.get("system_prompt", personalities["رسمی"]["prompt"])
     
-    # بارگذاری حافظه کاربر
     memory = load_memory()
     user_history = memory.get(user_id, [])
     
-    # آخرین ۵ گفتگو رو نگه دار (برای حافظه)
     chat_history = ""
     for item in user_history[-5:]:
         chat_history += f"کاربر: {item['user']}\nAI: {item['ai']}\n"
     
-    # ساخت پرامپت کامل
     full_prompt = f"""{system_prompt}
 
 تاریخچه گفتگوهای قبلی با این کاربر:
@@ -163,7 +160,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 پاسخ بده (کوتاه و مفید باش، حداکثر ۳ خط):"""
     
-    # ارسال به Groq
     await update.message.reply_chat_action("typing")
     
     if not GROQ_API_KEY:
@@ -177,7 +173,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "https://api.groq.com/openai/v1/chat/completions",
                 headers={"Authorization": f"Bearer {GROQ_API_KEY}", "Content-Type": "application/json"},
                 json={
-                    "model": "llama3-70b-8192",
+                    "model": "llama-3.3-70b-versatile",
                     "messages": [{"role": "user", "content": full_prompt}],
                     "max_tokens": 300,
                     "temperature": 0.7
@@ -187,18 +183,16 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if response.status_code == 200:
                 ai_response = response.json()["choices"][0]["message"]["content"]
                 
-                # ذخیره در حافظه
                 user_history.append({"user": user_message, "ai": ai_response})
                 if len(user_history) > 20:
                     user_history = user_history[-20:]
                 memory[user_id] = user_history
                 save_memory(memory)
                 
-                # ارسال پاسخ با شخصیت
                 emoji = personalities[personality]["emoji"]
                 await update.message.reply_text(f"{emoji} **{personality}:** {ai_response}", parse_mode="Markdown")
             else:
-                await update.message.reply_text(f"❌ خطا: {response.status_code}")
+                await update.message.reply_text(f"❌ خطای {response.status_code}: مشکل در ارتباط با AI. لطفاً دوباره تلاش کن.")
     except Exception as e:
         await update.message.reply_text(f"❌ خطا: {str(e)}")
 
