@@ -475,9 +475,7 @@ class GroqAnalyst:
         "technical_view": "تحلیل تکنیکال",
         "risk_assessment": "ارزیابی ریسک",
         "recommendation": "توصیه نهایی معاملاتی"
-    }}
-    """
-
+    
     try:
         completion = await self.client.chat.completions.create(
             model="mixtral-8x7b-32768",
