@@ -1,3 +1,9 @@
+import matplotlib
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
+import mplfinance as mpf
+import pandas as pd
+import numpy as np
 import os
 import json
 import logging
