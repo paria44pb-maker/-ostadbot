@@ -1,5 +1,6 @@
 import os
 import logging
+import httpx
 from datetime import datetime
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
@@ -9,39 +10,54 @@ logger = logging.getLogger(__name__)
 
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 
-# ========== ارزها ==========
-symbols = ["BTC", "ETH", "SOL", "BNB", "XRP", "ADA", "DOGE"]
-
-# قیمت‌های دمو (برای زمانی که API در دسترس نیست)
-demo_prices = {
-    "BTC": {"price": 67234, "change": 2.3},
-    "ETH": {"price": 3456, "change": 1.8},
-    "SOL": {"price": 156.7, "change": 5.2},
-    "BNB": {"price": 582, "change": -1.2},
-    "XRP": {"price": 0.52, "change": 0.5},
-    "ADA": {"price": 0.35, "change": -0.8},
-    "DOGE": {"price": 0.125, "change": 3.1},
+# ========== ارزهای تحت پوشش ==========
+CRYPTOCURRENCIES = {
+    "BTC": {"name": "بیت‌کوین", "coin_id": "bitcoin", "emoji": "👑"},
+    "ETH": {"name": "اتریوم", "coin_id": "ethereum", "emoji": "💎"},
+    "SOL": {"name": "سولانا", "coin_id": "solana", "emoji": "⚡"},
+    "BNB": {"name": "بایننس", "coin_id": "binancecoin", "emoji": "🟡"},
+    "XRP": {"name": "ریپل", "coin_id": "ripple", "emoji": "💧"},
+    "ADA": {"name": "کاردانو", "coin_id": "cardano", "emoji": "🌿"},
+    "DOGE": {"name": "داوج", "coin_id": "dogecoin", "emoji": "🐕"},
+    "AVAX": {"name": "آوالانچ", "coin_id": "avalanche-2", "emoji": "❄️"},
+    "DOT": {"name": "پولکادات", "coin_id": "polkadot", "emoji": "🔗"},
+    "MATIC": {"name": "پالیگان", "coin_id": "matic-network", "emoji": "🟣"},
+    "LINK": {"name": "چین لینک", "coin_id": "chainlink", "emoji": "🔗"},
+    "ATOM": {"name": "کازماس", "coin_id": "cosmos", "emoji": "🌌"},
 }
 
-# ========== دکمه‌های منوی اصلی ==========
-def get_main_keyboard():
-    keyboard = [
-        [InlineKeyboardButton("✨ سیگنال لحظه‌ای", callback_data="signals")],
-        [InlineKeyboardButton("📊 قیمت ارزها", callback_data="prices")],
-        [InlineKeyboardButton("🎯 تحلیل تکنیکال", callback_data="analysis")],
-        [InlineKeyboardButton("📈 روند بازار", callback_data="trends")],
-        [InlineKeyboardButton("🏆 بهترین‌ها", callback_data="best")],
-        [InlineKeyboardButton("🛡️ مدیریت ریسک", callback_data="risk")],
-        [InlineKeyboardButton("💬 پشتیبانی", callback_data="support")],
-        [InlineKeyboardButton("❓ راهنما", callback_data="help")],
-    ]
-    return InlineKeyboardMarkup(keyboard)
-
-def get_back_keyboard():
-    return InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="back")]])
+# ========== API واقعی CoinGecko ==========
+async def get_crypto_price(coin_id):
+    """دریافت قیمت واقعی از CoinGecko"""
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            response = await client.get(
+                "https://api.coingecko.com/api/v3/simple/price",
+                params={
+                    "ids": coin_id,
+                    "vs_currencies": "usd",
+                    "include_24hr_change": "true"
+                }
+            )
+            if response.status_code == 200:
+                data = response.json()
+                coin_data = data.get(coin_id, {})
+                if coin_data:
+                    return {
+                        "price": coin_data.get("usd", 0),
+                        "change": coin_data.get("usd_24h_change", 0),
+                        "success": True
+                    }
+                else:
+                    return {"success": False, "error": "داده‌ای یافت نشد"}
+            else:
+                return {"success": False, "error": f"HTTP {response.status_code}"}
+    except Exception as e:
+        logger.error(f"Error: {e}")
+        return {"success": False, "error": str(e)}
 
 # ========== تولید سیگنال ==========
-def get_signal(price, change):
+def generate_signal(price, change):
     if change > 3:
         return "🟢🟢 خرید قوی", 90
     elif change > 1:
@@ -52,6 +68,22 @@ def get_signal(price, change):
         return "🔴 فروش", 70
     else:
         return "⚪ نگهداری", 50
+
+# ========== دکمه‌ها ==========
+def get_main_keyboard():
+    keyboard = [
+        [InlineKeyboardButton("✨ سیگنال لحظه‌ای", callback_data="signals")],
+        [InlineKeyboardButton("📊 قیمت ارزها", callback_data="prices")],
+        [InlineKeyboardButton("🎯 تحلیل تکنیکال", callback_data="analysis")],
+        [InlineKeyboardButton("📈 روند بازار", callback_data="trends")],
+        [InlineKeyboardButton("🏆 بهترین‌ها", callback_data="best")],
+        [InlineKeyboardButton("🛡️ مدیریت ریسک", callback_data="risk")],
+        [InlineKeyboardButton("❓ راهنما", callback_data="help")],
+    ]
+    return InlineKeyboardMarkup(keyboard)
+
+def get_back_keyboard():
+    return InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="back")]])
 
 # ========== هندلرها ==========
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -65,10 +97,10 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 ✨━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━✨
 
 ┌─────────────────────────────────┐
-│  👑 پوشش ۷ ارز دیجیتال برتر     │
+│  👑 پوشش ۱۲ ارز دیجیتال برتر    │
 │  📊 سیگنال خرید/فروش لحظه‌ای    │
 │  🎯 دقت ۸۵-۹۵٪                  │
-│  ⚡ بروزرسانی خودکار            │
+│  ⚡ داده واقعی از CoinGecko      │
 └─────────────────────────────────┘
 
 📌 *از منوی زیر انتخاب کن*
@@ -81,19 +113,32 @@ async def signals_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     
+    await query.edit_message_text("🔄 دریافت سیگنال‌های لحظه‌ای...")
+    
     text = "✨━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━✨\n"
     text += "          📡 *سیگنال‌های لحظه‌ای* 📡\n"
     text += "✨━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━✨\n\n"
     
-    for symbol in symbols:
-        data = demo_prices.get(symbol, {"price": 0, "change": 0})
-        signal, conf = get_signal(data["price"], data["change"])
-        arrow = "📈" if data["change"] > 0 else "📉" if data["change"] < 0 else "➖"
-        text += f"┌ {symbol}\n"
-        text += f"├ 💰 ${data['price']:,.0f}\n"
-        text += f"├ {arrow} {data['change']:+.1f}%\n"
-        text += f"├ {signal} ({conf}%)\n"
-        text += f"└─────────────────────────\n\n"
+    error_count = 0
+    
+    for symbol, info in CRYPTOCURRENCIES.items():
+        data = await get_crypto_price(info["coin_id"])
+        
+        if data["success"] and data["price"] > 0:
+            signal, conf = generate_signal(data["price"], data["change"])
+            arrow = "📈" if data["change"] > 0 else "📉" if data["change"] < 0 else "➖"
+            text += f"{info['emoji']} *{symbol}*\n"
+            text += f"┌─────────────────────────\n"
+            text += f"├ 💰 ${data['price']:,.0f}\n"
+            text += f"├ {arrow} {data['change']:+.1f}%\n"
+            text += f"├ {signal} ({conf}%)\n"
+            text += f"└─────────────────────────\n\n"
+        else:
+            error_count += 1
+            text += f"❌ *{symbol}*: {data.get('error', 'خطا در دریافت')}\n\n"
+    
+    if error_count > 0:
+        text += "⚠️ برخی از ارزها در دسترس نیستند. لطفاً دوباره تلاش کن.\n"
     
     text += "✨━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━✨\n"
     text += f"🕐 {datetime.now().strftime('%H:%M:%S')}"
@@ -104,14 +149,20 @@ async def prices_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     
+    await query.edit_message_text("🔄 دریافت قیمت‌های لحظه‌ای...")
+    
     text = "✨━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━✨\n"
     text += "           💰 *قیمت لحظه‌ای* 💰\n"
     text += "✨━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━✨\n\n"
     
-    for symbol in symbols:
-        data = demo_prices.get(symbol, {"price": 0, "change": 0})
-        emoji = "🟢" if data["change"] > 0 else "🔴" if data["change"] < 0 else "⚪"
-        text += f"{emoji} *{symbol}*: ${data['price']:,.0f} ({data['change']:+.1f}%)\n"
+    for symbol, info in CRYPTOCURRENCIES.items():
+        data = await get_crypto_price(info["coin_id"])
+        
+        if data["success"] and data["price"] > 0:
+            emoji = "🟢" if data["change"] > 0 else "🔴" if data["change"] < 0 else "⚪"
+            text += f"{emoji} *{symbol}*: ${data['price']:,.0f} ({data['change']:+.1f}%)\n"
+        else:
+            text += f"❌ *{symbol}*: {data.get('error', 'خطا')}\n"
     
     text += "\n✨━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━✨"
     
@@ -122,8 +173,8 @@ async def analysis_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.answer()
     
     keyboard = []
-    for symbol in symbols:
-        keyboard.append([InlineKeyboardButton(f"📊 {symbol}", callback_data=f"analyze_{symbol}")])
+    for symbol, info in CRYPTOCURRENCIES.items():
+        keyboard.append([InlineKeyboardButton(f"{info['emoji']} {symbol}", callback_data=f"analyze_{symbol}")])
     keyboard.append([InlineKeyboardButton("🔙 بازگشت", callback_data="back")])
     
     text = """
@@ -144,8 +195,24 @@ async def analyze_coin(update: Update, context: ContextTypes.DEFAULT_TYPE, symbo
     query = update.callback_query
     await query.answer()
     
-    data = demo_prices.get(symbol, {"price": 0, "change": 0})
-    signal, conf = get_signal(data["price"], data["change"])
+    info = CRYPTOCURRENCIES[symbol]
+    
+    await query.edit_message_text(f"🔄 تحلیل {symbol}...")
+    
+    data = await get_crypto_price(info["coin_id"])
+    
+    if not data["success"] or data["price"] == 0:
+        text = f"""
+❌ *خطا در تحلیل {symbol}*
+
+{data.get('error', 'لطفاً دوباره تلاش کن')}
+
+✨━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━✨
+"""
+        await query.edit_message_text(text, parse_mode="Markdown", reply_markup=get_back_keyboard())
+        return
+    
+    signal, conf = generate_signal(data["price"], data["change"])
     
     rsi = 50 + (data["change"] * 2)
     rsi = max(25, min(75, rsi))
@@ -155,7 +222,7 @@ async def analyze_coin(update: Update, context: ContextTypes.DEFAULT_TYPE, symbo
     
     text = f"""
 ✨━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━✨
-      📊 *تحلیل {symbol}* 📊
+      📊 *تحلیل {info['emoji']} {symbol}* 📊
 ✨━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━✨
 
 💰 **قیمت:** ${data['price']:,.0f}
@@ -172,7 +239,8 @@ async def analyze_coin(update: Update, context: ContextTypes.DEFAULT_TYPE, symbo
 🔴 مقاومت: ${resistance:,.0f}
 
 🛡️ **حد ضرر:** ${data['price'] * 0.97:,.0f}
-🎯 **هدف:** ${data['price'] * 1.05:,.0f}
+🎯 **هدف اول:** ${data['price'] * 1.04:,.0f}
+🎯 **هدف دوم:** ${data['price'] * 1.08:,.0f}
 
 ✨━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━✨
 """
@@ -182,14 +250,18 @@ async def trends_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     
+    await query.edit_message_text("🔄 تحلیل روند بازار...")
+    
     gainers = []
     losers = []
     
-    for symbol, data in demo_prices.items():
-        if data["change"] > 0:
-            gainers.append((symbol, data))
-        else:
-            losers.append((symbol, data))
+    for symbol, info in CRYPTOCURRENCIES.items():
+        data = await get_crypto_price(info["coin_id"])
+        if data["success"] and data["price"] > 0:
+            if data["change"] > 0:
+                gainers.append((symbol, data))
+            else:
+                losers.append((symbol, data))
     
     gainers.sort(key=lambda x: x[1]["change"], reverse=True)
     losers.sort(key=lambda x: x[1]["change"])
@@ -198,13 +270,19 @@ async def trends_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text += "          📈 *روند بازار* 📈\n"
     text += "✨━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━✨\n\n"
     
-    text += "🟢 **در حال رشد:**\n"
-    for symbol, data in gainers[:3]:
-        text += f"└ {symbol}: +{data['change']:.1f}% → ${data['price']:,.0f}\n"
+    if gainers:
+        text += "🟢 **در حال رشد:**\n"
+        for symbol, data in gainers[:5]:
+            text += f"├ {symbol}: +{data['change']:.1f}% → ${data['price']:,.0f}\n"
+    else:
+        text += "🟢 در حال رشد: - \n"
     
-    text += f"\n🔴 **در حال ریزش:**\n"
-    for symbol, data in losers[:3]:
-        text += f"└ {symbol}: {data['change']:.1f}% → ${data['price']:,.0f}\n"
+    if losers:
+        text += f"\n🔴 **در حال ریزش:**\n"
+        for symbol, data in losers[:5]:
+            text += f"├ {symbol}: {data['change']:.1f}% → ${data['price']:,.0f}\n"
+    else:
+        text += f"\n🔴 در حال ریزش: -\n"
     
     text += "\n✨━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━✨"
     
@@ -214,20 +292,31 @@ async def best_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     
-    coins = [(symbol, data) for symbol, data in demo_prices.items()]
+    await query.edit_message_text("🔄 در حال یافتن بهترین‌ها...")
+    
+    coins = []
+    
+    for symbol, info in CRYPTOCURRENCIES.items():
+        data = await get_crypto_price(info["coin_id"])
+        if data["success"] and data["price"] > 0:
+            coins.append((symbol, data))
+    
     coins.sort(key=lambda x: x[1]["change"], reverse=True)
     
     text = "✨━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━✨\n"
     text += "          🏆 *برترین‌های امروز* 🏆\n"
     text += "✨━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━✨\n\n"
     
-    text += "🥇 **بیشترین رشد:**\n"
-    for symbol, data in coins[:3]:
-        text += f"├ {symbol}: +{data['change']:.1f}%\n"
-    
-    text += f"\n📉 **بیشترین ریزش:**\n"
-    for symbol, data in coins[-3:][::-1]:
-        text += f"├ {symbol}: {data['change']:.1f}%\n"
+    if coins:
+        text += "🥇 **بیشترین رشد:**\n"
+        for symbol, data in coins[:5]:
+            text += f"├ {symbol}: +{data['change']:.1f}% (${data['price']:,.0f})\n"
+        
+        text += f"\n📉 **بیشترین ریزش:**\n"
+        for symbol, data in coins[-5:][::-1]:
+            text += f"├ {symbol}: {data['change']:.1f}% (${data['price']:,.0f})\n"
+    else:
+        text += "❌ خطا در دریافت داده‌ها\n"
     
     text += "\n✨━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━✨"
     
@@ -262,30 +351,6 @@ async def risk_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
 """
     await query.edit_message_text(text, parse_mode="Markdown", reply_markup=get_back_keyboard())
 
-async def support_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    
-    text = """
-✨━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━✨
-          💬 *پشتیبانی* 💬
-✨━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━✨
-
-📧 **ارتباط با ما:**
-┌─────────────────────────────
-├ 📱 تلگرام: @CryptoSupport
-├ 📧 ایمیل: support@luxurybot.com
-└─────────────────────────────
-
-⏰ **پاسخگویی:** ۲۴ ساعته
-
-💡 **سوالات متداول:**
-در بخش راهنما مشاهده کنید
-
-✨━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━✨
-"""
-    await query.edit_message_text(text, parse_mode="Markdown", reply_markup=get_back_keyboard())
-
 async def help_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -309,9 +374,9 @@ async def help_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
 • حمایت/مقاومت: سطوح کلیدی
 
 💡 **نکات:**
-• منبع داده: CoinGecko
+• منبع داده: CoinGecko (واقعی)
 • دقت: ۸۵-۹۵٪
-• بروزرسانی: هر درخواست
+• بدون داده دمو
 
 ✨━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━✨
 ⚠️ فقط جنبه آموزشی - مسئولیت با شماست
@@ -341,8 +406,6 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await best_menu(update, context)
     elif data == "risk":
         await risk_menu(update, context)
-    elif data == "support":
-        await support_menu(update, context)
     elif data == "help":
         await help_menu(update, context)
     elif data.startswith("analyze_"):
@@ -356,7 +419,7 @@ def main():
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CallbackQueryHandler(button_handler))
     
-    logger.info("🚀 ربات لوکس با موفقیت روشن شد...")
+    logger.info("🚀 ربات لوکس با API واقعی روشن شد...")
     print("✅ ربات در حال اجراست...")
     
     app.run_polling(allowed_updates=Update.ALL_TYPES)
