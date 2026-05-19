@@ -1,12 +1,10 @@
 import os
-import json
 import logging
 import hmac
 import hashlib
 from flask import Flask, request, jsonify
 import threading
 import numpy as np
-import pandas as pd
 from datetime import datetime
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, filters, ContextTypes
@@ -17,7 +15,6 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 WEBHOOK_SECRET = os.getenv("WEBHOOK_SECRET", "your-secret-key-here")
 
 # ========== Flask Webhook Server ==========
@@ -38,7 +35,7 @@ def tradingview_webhook():
         if not data:
             return jsonify({"error": "No data"}), 400
         
-        logger.info(f"📡 Signal received: {data}")
+        logger.info(f"Signal received: {data}")
         
         signature = request.headers.get('X-Signature', '')
         if WEBHOOK_SECRET and WEBHOOK_SECRET != "your-secret-key-here":
@@ -57,7 +54,6 @@ def tradingview_webhook():
             "strategy": data.get("strategy", "unknown"),
             "timeframe": data.get("timeframe", "1h"),
             "timestamp": datetime.now().isoformat(),
-            "raw": data
         }
         
         action_lower = str(signal["action"]).lower()
@@ -90,17 +86,22 @@ async def send_signal_to_telegram(signal):
         return
     
     emoji = "🟢" if signal["action"] == "BUY" else "🔴" if signal["action"] == "SELL" else "⚪"
-    text = f"{emoji} **TradingView Signal** {emoji}\n\n"
-    text += f"**Symbol:** {signal['symbol']}\n"
-    text += f"**Action:** {signal['action']}\n"
-    text += f"**Price:** ${signal['price']:,.0f}\n" if signal['price'] else "**Price:** N/A\n"
-    text += f"**Strategy:** {signal['strategy']}\n"
-    text += f"**Timeframe:** {signal['timeframe']}\n"
+    text = f"{emoji} TradingView Signal {emoji}\n\n"
+    text += f"Symbol: {signal['symbol']}\n"
+    text += f"Action: {signal['action']}\n"
+    if signal['price']:
+        try:
+            price_val = float(signal['price'])
+            text += f"Price: ${price_val:,.0f}\n"
+        except:
+            text += f"Price: {signal['price']}\n"
+    text += f"Strategy: {signal['strategy']}\n"
+    text += f"Timeframe: {signal['timeframe']}\n"
     
     try:
         chat_id = os.getenv("TELEGRAM_CHAT_ID")
         if chat_id:
-            await bot_instance.application.bot.send_message(chat_id=chat_id, text=text, parse_mode="Markdown")
+            await bot_instance.application.bot.send_message(chat_id=chat_id, text=text)
     except Exception as e:
         logger.error(f"Send error: {e}")
 
@@ -125,92 +126,102 @@ class TradingBot:
             [InlineKeyboardButton("❓ Help", callback_data="help")],
         ]
         
-        text = "🔥 **Crypto Trading Bot + TradingView** 🔥\n\n"
-        text += "**Features:**\n"
-        text += "• Live prices from Binance\n"
-        text += "• TradingView webhook integration\n"
-        text += "• Technical analysis (RSI)\n"
-        text += "• Portfolio management\n\n"
+        text = "🔥 Crypto Trading Bot + TradingView 🔥\n\n"
+        text += "Features:\n"
+        text += "- Live prices from Binance\n"
+        text += "- TradingView webhook integration\n"
+        text += "- Technical analysis (RSI)\n"
+        text += "- Portfolio management\n\n"
         text += "Select an option:"
         
-        await update.message.reply_text(text, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(keyboard))
+        await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
     
     async def tv_signals_menu(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not signal_queue:
-            text = "📡 **TradingView Signals**\n\nNo signals received yet.\n\n"
-            text += "**Setup in TradingView:**\n"
+            text = "📡 TradingView Signals\n\n"
+            text += "No signals received yet.\n\n"
+            text += "Setup in TradingView:\n"
             text += "1. Create Alert\n"
-            text += "2. Webhook URL: `https://your-app/webhook/tradingview`\n"
-            text += "3. Message format:\n```json\n{\n    \"symbol\": \"BTCUSDT\",\n    \"action\": \"buy\",\n    \"price\": {{close}}\n}\n```"
+            text += "2. Webhook URL: https://your-app/webhook/tradingview\n"
+            text += "3. Send JSON with symbol, action, price"
         else:
-            text = "📡 **TradingView Signals**\n\n"
+            text = "📡 TradingView Signals\n\n"
             for sig in signal_queue[-10:]:
                 emoji = "🟢" if sig["action"] == "BUY" else "🔴" if sig["action"] == "SELL" else "⚪"
-                text += f"{emoji} **{sig['symbol']}** - {sig['action']}"
+                text += f"{emoji} {sig['symbol']} - {sig['action']}"
                 if sig['price']:
-                    text += f" @ ${sig['price']:,.0f}\n"
+                    try:
+                        price_val = float(sig['price'])
+                        text += f" @ ${price_val:,.0f}\n"
+                    except:
+                        text += f" @ {sig['price']}\n"
                 else:
                     text += "\n"
-                text += f"   📈 {sig['strategy']} | {sig['timeframe']}\n"
-                text += f"   🕐 {sig['timestamp'][:19]}\n\n"
+                text += f"   Strategy: {sig['strategy']} | {sig['timeframe']}\n"
+                text += f"   Time: {sig['timestamp'][:19]}\n\n"
         
         keyboard = [[InlineKeyboardButton("🔙 Back", callback_data="back")]]
-        await update.callback_query.edit_message_text(text, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(keyboard))
+        await update.callback_query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
     
     async def webhook_settings_menu(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         domain = os.getenv("RAILWAY_PUBLIC_DOMAIN", "your-domain")
-        text = "⚙️ **Webhook Settings** ⚙️\n\n"
-        text += f"**URL:** `https://{domain}/webhook/tradingview`\n\n"
-        text += f"**Secret Key:** `{WEBHOOK_SECRET}`\n\n"
-        text += "**JSON Message Format:**\n```json\n{\n    \"symbol\": \"BTCUSDT\",\n    \"action\": \"buy\",\n    \"price\": {{close}},\n    \"strategy\": \"MyStrategy\"\n}\n```\n"
-        text += "**Variables you can use:**\n"
-        text += "• `{{close}}` - Closing price\n"
-        text += "• `{{open}}` - Opening price\n"
-        text += "• `{{high}}` - High price\n"
-        text += "• `{{low}}` - Low price\n"
-        text += "• `{{volume}}` - Volume"
+        text = "⚙️ Webhook Settings ⚙️\n\n"
+        text += f"URL: https://{domain}/webhook/tradingview\n\n"
+        text += f"Secret Key: {WEBHOOK_SECRET}\n\n"
+        text += "JSON Format:\n"
+        text += '{\n'
+        text += '    "symbol": "BTCUSDT",\n'
+        text += '    "action": "buy",\n'
+        text += '    "price": 50000,\n'
+        text += '    "strategy": "MyStrategy"\n'
+        text += '}\n\n'
+        text += "Variables: close, open, high, low, volume"
         
         keyboard = [[InlineKeyboardButton("🔙 Back", callback_data="back")]]
-        await update.callback_query.edit_message_text(text, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(keyboard))
+        await update.callback_query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
     
     async def prices_menu(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        await update.callback_query.edit_message_text("Fetching prices...", parse_mode="Markdown")
+        await update.callback_query.edit_message_text("🔄 Fetching prices...")
         
         symbols = ["BTC", "ETH", "SOL", "BNB"]
-        text = "📊 **Live Prices** 📊\n\n"
+        text = "📊 Live Prices 📊\n\n"
         
         for symbol in symbols:
             data = await self.get_price(symbol)
             if data:
                 emoji = "🟢" if data['change'] > 0 else "🔴" if data['change'] < 0 else "⚪"
-                text += f"{emoji} **{symbol}/USDT**: ${data['price']:,.0f} ({data['change']:+.1f}%)\n\n"
+                text += f"{emoji} {symbol}/USDT: ${data['price']:,.0f} ({data['change']:+.1f}%)\n\n"
             else:
-                text += f"⚪ **{symbol}**: Error\n\n"
+                text += f"⚪ {symbol}: Error\n\n"
         
         keyboard = [
             [InlineKeyboardButton("🔄 Refresh", callback_data="refresh_prices")],
             [InlineKeyboardButton("🔙 Back", callback_data="back")]
         ]
-        await update.callback_query.edit_message_text(text, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(keyboard))
+        await update.callback_query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
     
     async def signals_menu(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        await update.callback_query.edit_message_text("Calculating signals...", parse_mode="Markdown")
+        await update.callback_query.edit_message_text("🔄 Calculating signals...")
         
-        text = "🎯 **Trading Signals** 🎯\n\n"
-        text += "**From TradingView:**\n"
+        text = "🎯 Trading Signals 🎯\n\n"
+        text += "From TradingView:\n"
         
         if signal_queue:
             for sig in signal_queue[-3:]:
                 emoji = "🟢" if sig["action"] == "BUY" else "🔴" if sig["action"] == "SELL" else "⚪"
                 text += f"{emoji} {sig['symbol']}: {sig['action']}"
                 if sig['price']:
-                    text += f" @ ${sig['price']:,.0f}\n"
+                    try:
+                        price_val = float(sig['price'])
+                        text += f" @ ${price_val:,.0f}\n"
+                    except:
+                        text += f" @ {sig['price']}\n"
                 else:
                     text += "\n"
         else:
             text += "No signals yet\n"
         
-        text += "\n**From API:**\n"
+        text += "\nFrom API:\n"
         symbols = ["BTC", "ETH", "SOL"]
         for symbol in symbols:
             data = await self.get_price(symbol)
@@ -227,7 +238,7 @@ class TradingBot:
             [InlineKeyboardButton("🔄 Refresh", callback_data="refresh_signals")],
             [InlineKeyboardButton("🔙 Back", callback_data="back")]
         ]
-        await update.callback_query.edit_message_text(text, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(keyboard))
+        await update.callback_query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
     
     async def technical_menu(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         keyboard = []
@@ -235,80 +246,78 @@ class TradingBot:
             keyboard.append([InlineKeyboardButton(f"📈 {symbol}", callback_data=f"tech_{symbol}")])
         keyboard.append([InlineKeyboardButton("🔙 Back", callback_data="back")])
         
-        text = "📈 **Technical Analysis**\n\nSelect a symbol:"
-        await update.callback_query.edit_message_text(text, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(keyboard))
+        await update.callback_query.edit_message_text("📈 Technical Analysis\n\nSelect a symbol:", reply_markup=InlineKeyboardMarkup(keyboard))
     
     async def technical_analysis(self, update: Update, context: ContextTypes.DEFAULT_TYPE, symbol: str):
-        await update.callback_query.edit_message_text(f"Analyzing {symbol}...", parse_mode="Markdown")
+        await update.callback_query.edit_message_text(f"📊 Analyzing {symbol}...")
         
         data = await self.get_price(symbol)
         if not data:
-            text = "Error fetching data"
+            text = "❌ Error fetching data"
         else:
             rsi = self.calculate_rsi([data['price']] * 20)
             support = data['price'] * 0.95
             resistance = data['price'] * 1.05
             
-            text = f"📈 **{symbol} Analysis** 📈\n\n"
-            text += f"**Price:** ${data['price']:,.0f}\n"
-            text += f"**24h Change:** {data['change']:+.1f}%\n\n"
-            text += f"**RSI(14):** {rsi:.0f} - "
+            text = f"📈 Technical Analysis - {symbol} 📈\n\n"
+            text += f"Price: ${data['price']:,.0f}\n"
+            text += f"24h Change: {data['change']:+.1f}%\n\n"
+            text += f"RSI(14): {rsi:.0f} - "
             if rsi < 30:
                 text += "Oversold (Buy Zone)\n"
             elif rsi > 70:
                 text += "Overbought (Sell Zone)\n"
             else:
                 text += "Neutral\n"
-            text += f"**Support:** ${support:,.0f}\n"
-            text += f"**Resistance:** ${resistance:,.0f}\n"
+            text += f"Support: ${support:,.0f}\n"
+            text += f"Resistance: ${resistance:,.0f}\n"
         
         keyboard = [[InlineKeyboardButton("🔙 Back", callback_data="technical")]]
-        await update.callback_query.edit_message_text(text, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(keyboard))
+        await update.callback_query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
     
     async def portfolio_menu(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        text = "💰 **Portfolio** 💰\n\n"
-        text += "**Account Stats:**\n"
-        text += "• Balance: $10,000\n"
-        text += "• Total P&L: $0 (0%)\n"
-        text += "• Win Rate: 0%\n"
-        text += "• Total Trades: 0\n\n"
-        text += "**Open Positions:**\n"
-        text += "No open positions\n\n"
-        text += "Tip: Set up TradingView webhook to auto-trade"
+        text = "💰 Portfolio 💰\n\n"
+        text += "Account Stats:\n"
+        text += "- Balance: $10,000\n"
+        text += "- Total P&L: $0 (0%)\n"
+        text += "- Win Rate: 0%\n"
+        text += "- Total Trades: 0\n\n"
+        text += "Open Positions:\n"
+        text += "No open positions"
         
         keyboard = [[InlineKeyboardButton("🔙 Back", callback_data="back")]]
-        await update.callback_query.edit_message_text(text, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(keyboard))
+        await update.callback_query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
     
     async def risk_menu(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        text = "🛡️ **Risk Management** 🛡️\n\n"
-        text += "**Golden Rules:**\n"
+        text = "🛡️ Risk Management 🛡️\n\n"
+        text += "Golden Rules:\n"
         text += "1. Max risk per trade: 2%\n"
         text += "2. Risk/Reward ratio: 1:2 minimum\n"
         text += "3. Stop loss: Always required\n"
         text += "4. Max open positions: 3\n"
         text += "5. Max daily drawdown: 6%\n\n"
-        text += "**Position Size Formula:**\n"
-        text += "`Size = (Capital × 2%) / (Entry - StopLoss)`"
+        text += "Position Size Formula:\n"
+        text += "Size = (Capital * 2%) / (Entry - StopLoss)"
         
         keyboard = [[InlineKeyboardButton("🔙 Back", callback_data="back")]]
-        await update.callback_query.edit_message_text(text, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(keyboard))
+        await update.callback_query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
     
     async def help_menu(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        text = "❓ **Help Guide** ❓\n\n"
-        text += "**Features:**\n"
-        text += "• Live prices from Binance\n"
-        text += "• TradingView webhook integration\n"
-        text += "• Technical analysis with RSI\n"
-        text += "• Portfolio tracking\n"
-        text += "• Risk management rules\n\n"
-        text += "**TradingView Setup:**\n"
+        text = "❓ Help Guide ❓\n\n"
+        text += "Features:\n"
+        text += "- Live prices from Binance\n"
+        text += "- TradingView webhook integration\n"
+        text += "- Technical analysis with RSI\n"
+        text += "- Portfolio tracking\n"
+        text += "- Risk management rules\n\n"
+        text += "TradingView Setup:\n"
         text += "1. Create an Alert\n"
         text += "2. Set Webhook URL from Settings\n"
         text += "3. Send JSON with symbol, action, price\n\n"
-        text += "⚠️ **Disclaimer:** Educational only. Trade at your own risk."
+        text += "Disclaimer: Educational only. Trade at your own risk."
         
         keyboard = [[InlineKeyboardButton("🔙 Back", callback_data="back")]]
-        await update.callback_query.edit_message_text(text, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(keyboard))
+        await update.callback_query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
     
     async def get_price(self, symbol="BTC"):
         try:
@@ -370,7 +379,8 @@ class TradingBot:
         elif data == "refresh_signals":
             await self.signals_menu(update, context)
         elif data.startswith("tech_"):
-            await self.technical_analysis(update, context, data.split("_")[1])
+            symbol = data.split("_")[1]
+            await self.technical_analysis(update, context, symbol)
     
     async def handle_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Please use the menu buttons or /start")
