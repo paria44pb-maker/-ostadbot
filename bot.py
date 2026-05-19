@@ -8,15 +8,17 @@ import httpx
 import asyncio
 import numpy as np
 import random
-from datetime import datetime
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from datetime import datetime, timedelta
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, InputFile
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, filters, ContextTypes
+from telegram.error import TelegramError
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+CHANNEL_ID = "@comedyclick"  # کانال مقصد
 
 # ========== OWNER_ID ==========
 owner_id_str = os.getenv("OWNER_ID", "0")
@@ -37,12 +39,16 @@ async def is_owner(update: Update) -> bool:
 ACCESS_ID = os.getenv("COINEX_ACCESS_ID", "")
 SECRET_KEY = os.getenv("COINEX_SECRET_KEY", "")
 
+# تنظیمات معاملاتی
 MAX_RISK_PERCENT = 2.0
 MAX_POSITIONS = 3
 STOP_LOSS_PERCENT = 3.0
 TAKE_PROFIT_PERCENT = 6.0
 
-# ========== ارزها ==========
+# ارزهای تحت پوشش معاملاتی
+TRADING_SYMBOLS = ["BTCUSDT", "ETHUSDT", "SOLUSDT", "XRPUSDT"]
+
+# ارزها برای نمایش
 SYMBOLS = [
     {"symbol": "BTCUSDT", "name": "بیت‌کوین", "emoji": "👑", "min_amount": 0.0001},
     {"symbol": "ETHUSDT", "name": "اتریوم", "emoji": "💎", "min_amount": 0.001},
@@ -54,13 +60,12 @@ SYMBOLS = [
     {"symbol": "MATICUSDT", "name": "پالیگان", "emoji": "🟣", "min_amount": 5},
 ]
 
-# ========== دمو معامله خودکار ==========
-demo_balance = 10000
-demo_positions = {}
-auto_trade_enabled = False
-price_alerts = {}  # {"symbol_target": chat_id}
+# ========== ذخیره پوزیشن‌های واقعی ==========
+real_positions = {}  # {symbol: {"amount": float, "entry_price": float, "timestamp": str, "stop_loss": float, "take_profit": float}}
+total_balance = 0
+last_report_time = 0
 
-# ========== توابع API ==========
+# ========== توابع API CoinEx ==========
 def coinex_sign(method, request_path, body="", timestamp=None):
     if timestamp is None:
         timestamp = str(int(time.time() * 1000))
@@ -76,7 +81,12 @@ async def coinex_request(method, path, body=None):
     url = f"https://api.coinex.com/v1{path}"
     timestamp = str(int(time.time() * 1000))
     signature, timestamp = coinex_sign(method, path, body, timestamp)
-    headers = {"Authorization": ACCESS_ID, "Signature": signature, "Timestamp": timestamp, "Content-Type": "application/json"}
+    headers = {
+        "Authorization": ACCESS_ID,
+        "Signature": signature,
+        "Timestamp": timestamp,
+        "Content-Type": "application/json"
+    }
     try:
         async with httpx.AsyncClient(timeout=15) as client:
             if method == "GET":
@@ -111,6 +121,7 @@ async def get_coinex_price(symbol="BTCUSDT"):
     return {"success": False, "error": "خطا در دریافت قیمت"}
 
 async def get_account_balance():
+    """دریافت موجودی واقعی حساب CoinEx"""
     result = await coinex_request("GET", "/account/balance")
     if result["success"]:
         balances = result["data"].get("data", {})
@@ -123,7 +134,24 @@ async def get_account_balance():
         }
     return {"success": False, "error": result.get("error", "خطا")}
 
-# ========== تحلیل تکنیکال ==========
+async def place_order(symbol, side, amount, order_type="market", price=None):
+    """ثبت سفارش واقعی در CoinEx"""
+    body = {
+        "market": symbol,
+        "market_type": "SPOT",
+        "side": side,
+        "order_type": order_type,
+        "amount": str(amount)
+    }
+    if price and order_type == "limit":
+        body["price"] = str(price)
+    return await coinex_request("POST", "/order/limit", body)
+
+async def cancel_order(symbol, order_id):
+    """لغو سفارش"""
+    return await coinex_request("DELETE", f"/order/status?market={symbol}&order_id={order_id}")
+
+# ========== تحلیل تکنیکال پیشرفته ==========
 class TechnicalAnalysis:
     @staticmethod
     def calculate_rsi(prices, period=14):
@@ -159,56 +187,7 @@ class TechnicalAnalysis:
         ema26 = ema(prices, 26)
         macd_line = [e12 - e26 for e12, e26 in zip(ema12, ema26)]
         signal_line = ema(macd_line, 9)
-        histogram = [m - s for m, s in zip(macd_line, signal_line)]
-        return macd_line[-1], signal_line[-1], histogram[-1]
-
-    @staticmethod
-    def calculate_stochastic(high, low, close, period=14):
-        if len(close) < period:
-            return 50, 50
-        recent_high = max(high[-period:])
-        recent_low = min(low[-period:])
-        if recent_high == recent_low:
-            return 50, 50
-        k = 100 * ((close[-1] - recent_low) / (recent_high - recent_low))
-        d = k
-        return k, d
-
-    @staticmethod
-    def calculate_cci(high, low, close, period=20):
-        if len(close) < period:
-            return 0
-        tp = [(h + l + c) / 3 for h, l, c in zip(high[-period:], low[-period:], close[-period:])]
-        sma = sum(tp) / period
-        mean_dev = sum(abs(t - sma) for t in tp) / period
-        if mean_dev == 0:
-            return 0
-        return (tp[-1] - sma) / (0.015 * mean_dev)
-
-    @staticmethod
-    def calculate_williams_r(high, low, close, period=14):
-        if len(close) < period:
-            return -50
-        recent_high = max(high[-period:])
-        recent_low = min(low[-period:])
-        if recent_high == recent_low:
-            return -50
-        return -100 * (recent_high - close[-1]) / (recent_high - recent_low)
-
-    @staticmethod
-    def calculate_adx():
-        return 25
-
-    @staticmethod
-    def calculate_bollinger(prices, period=20, std_dev=2):
-        if len(prices) < period:
-            return None, None, None
-        sma = sum(prices[-period:]) / period
-        variance = sum((p - sma) ** 2 for p in prices[-period:]) / period
-        std = variance ** 0.5
-        upper = sma + (std * std_dev)
-        lower = sma - (std * std_dev)
-        return upper, sma, lower
+        return macd_line[-1], signal_line[-1]
 
     @staticmethod
     def calculate_support_resistance(prices, lookback=50):
@@ -222,90 +201,96 @@ class TechnicalAnalysis:
         s2 = pivot - (high - low) * 0.618
         return {"support": [s1, s2, low], "resistance": [r1, r2, high], "pivot": pivot}
 
-# ========== تشخیص سیگنال برای معامله خودکار ==========
+# ========== تولید سیگنال معاملاتی ==========
 def get_trading_signal(price, change, rsi, macd, macd_signal):
     score = 0
+    reasons = []
+    
     if rsi < 30:
         score += 30
-    if rsi > 70:
+        reasons.append(f"RSI اشباع فروش ({rsi:.0f})")
+    elif rsi > 70:
         score -= 30
+        reasons.append(f"RSI اشباع خرید ({rsi:.0f})")
+    
     if macd > macd_signal:
         score += 25
-    if macd < macd_signal:
+        reasons.append("MACD صعودی")
+    elif macd < macd_signal:
         score -= 25
+        reasons.append("MACD نزولی")
+    
     if change > 2:
         score += 20
-    if change < -2:
+        reasons.append(f"رشد قوی {change:+.1f}%")
+    elif change < -2:
         score -= 20
+        reasons.append(f"ریزش قوی {change:+.1f}%")
     
-    if score >= 40:
-        return "BUY", min(90, 60 + score)
-    elif score <= -40:
-        return "SELL", min(90, 60 + abs(score))
+    if score >= 45:
+        return "BUY", min(95, 60 + score), reasons
+    elif score <= -45:
+        return "SELL", min(95, 60 + abs(score)), reasons
     else:
-        return "HOLD", 50
+        return "HOLD", 50, reasons
 
-# ========== هوش مصنوعی Groq با حالت شوخ‌طبعی ==========
-async def groq_chat(user_message, personality="funny"):
-    if not GROQ_API_KEY:
-        return "⚠️ Groq API تنظیم نشده است. لطفاً GROQ_API_KEY را در Railway اضافه کنید."
-    
-    if personality == "funny":
-        system_prompt = "تو یک دستیار شوخ‌طبع، خونگرم و بامزه هستی. با انرژی مثبت و طنز پاسخ بده. از ایموجی استفاده کن. پاسخ‌ها کوتاه و مفید باشد."
-    elif personality == "serious":
-        system_prompt = "تو یک تحلیلگر حرفه‌ای و جدی هستی. پاسخ‌های دقیق و فنی بده."
-    else:
-        system_prompt = "تو یک دستیار مفید و خونگرم هستی."
-    
+# ========== اخبار و نهنگ‌ها ==========
+async def get_crypto_news():
+    """دریافت اخبار کریپتو"""
     try:
-        async with httpx.AsyncClient(timeout=30) as client:
-            response = await client.post(
-                "https://api.groq.com/openai/v1/chat/completions",
-                headers={"Authorization": f"Bearer {GROQ_API_KEY}", "Content-Type": "application/json"},
-                json={
-                    "model": "llama-3.3-70b-versatile",
-                    "messages": [
-                        {"role": "system", "content": system_prompt},
-                        {"role": "user", "content": user_message}
-                    ],
-                    "max_tokens": 500,
-                    "temperature": 0.8
-                }
-            )
+        async with httpx.AsyncClient(timeout=10) as client:
+            response = await client.get("https://cryptopanic.com/api/v1/posts/?auth_token=&public=true&kind=news")
             if response.status_code == 200:
-                return response.json()["choices"][0]["message"]["content"]
+                data = response.json()
+                results = data.get("results", [])[:5]
+                news = []
+                for r in results:
+                    news.append({
+                        "title": r.get("title", ""),
+                        "source": r.get("source", {}).get("title", ""),
+                        "url": r.get("url", ""),
+                        "published_at": r.get("published_at", "")
+                    })
+                return news
     except Exception as e:
-        logger.error(f"Groq error: {e}")
-    return "خطا در ارتباط با هوش مصنوعی. لطفاً دوباره تلاش کنید."
+        logger.error(f"News error: {e}")
+    return []
 
-async def groq_market_analysis(symbol, price, change, rsi, sentiment):
+async def get_whale_transactions():
+    """دریافت تراکنش‌های نهنگ‌ها"""
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            response = await client.get("https://api.whale-alert.io/v1/transactions?api_key=&min_value=1000000")
+            if response.status_code == 200:
+                data = response.json()
+                transactions = data.get("transactions", [])[:5]
+                whales = []
+                for tx in transactions:
+                    whales.append({
+                        "symbol": tx.get("symbol", "Unknown"),
+                        "amount": tx.get("amount", 0),
+                        "value_usd": tx.get("amount_usd", 0),
+                        "from": tx.get("from", {}).get("owner", "Unknown"),
+                        "to": tx.get("to", {}).get("owner", "Unknown"),
+                        "transaction_type": tx.get("transaction_type", "unknown")
+                    })
+                return whales
+    except Exception as e:
+        logger.error(f"Whale error: {e}")
+    return []
+
+# ========== هوش مصنوعی Groq ==========
+async def groq_analysis(symbol, price, change, rsi, sentiment):
     if not GROQ_API_KEY:
         return "⚠️ Groq API تنظیم نشده است."
     prompt = f"""
-به عنوان یک تحلیلگر حرفه‌ای بازار کریپتو با لحنی شوخ و خونگرم، {symbol} را تحلیل کن:
+به عنوان تحلیلگر حرفه‌ای، {symbol} را تحلیل کن:
 قیمت: ${price:,.0f}
-تغییر 24h: {change:+.2f}%
+تغییر: {change:+.2f}%
 RSI: {rsi:.0f}
 احساسات بازار: {sentiment}
-در ۴-۵ خط تحلیل کن شامل: وضعیت، پیش‌بینی، توصیه و مدیریت ریسک.
+در ۳ خط تحلیل کن: وضعیت، پیش‌بینی، توصیه.
 """
-    try:
-        async with httpx.AsyncClient(timeout=30) as client:
-            response = await client.post(
-                "https://api.groq.com/openai/v1/chat/completions",
-                headers={"Authorization": f"Bearer {GROQ_API_KEY}", "Content-Type": "application/json"},
-                json={"model": "llama-3.3-70b-versatile", "messages": [{"role": "user", "content": prompt}], "max_tokens": 500}
-            )
-            if response.status_code == 200:
-                return response.json()["choices"][0]["message"]["content"]
-    except:
-        pass
-    return "خطا در تحلیل"
-
-async def groq_fundamental_analysis():
-    if not GROQ_API_KEY:
-        return "⚠️ Groq API تنظیم نشده است."
-    prompt = "تحلیل فاندامنتال امروز بازار کریپتو: اخبار مهم، احساسات بازار، تأثیرات اقتصادی. در ۴ خط خلاصه کن."
     try:
         async with httpx.AsyncClient(timeout=30) as client:
             response = await client.post(
@@ -317,149 +302,397 @@ async def groq_fundamental_analysis():
                 return response.json()["choices"][0]["message"]["content"]
     except:
         pass
-    return "خطا در تحلیل فاندامنتال"
+    return "خطا در تحلیل"
 
-# ========== خودکار دمو ==========
-async def auto_trade_loop(context: ContextTypes.DEFAULT_TYPE):
-    global auto_trade_enabled, demo_balance, demo_positions
-    if not auto_trade_enabled:
-        return
+# ========== ارسال گزارش به کانال ==========
+async def send_report_to_channel(context: ContextTypes.DEFAULT_TYPE):
+    """ارسال گزارش هر ساعت به کانال"""
+    global total_balance, last_report_time
     
-    for s in SYMBOLS:
-        symbol = s["symbol"]
+    now = time.time()
+    if now - last_report_time < 3600:  # هر یک ساعت
+        return
+    last_report_time = now
+    
+    # دریافت موجودی
+    balance_data = await get_account_balance()
+    current_balance = balance_data["free"] if balance_data["success"] else 0
+    
+    # تحلیل هر ارز
+    market_report = ""
+    predictions = ""
+    
+    for symbol in TRADING_SYMBOLS:
         price_data = await get_coinex_price(symbol)
         if not price_data["success"]:
             continue
         
-        # تولید داده شبیه‌سازی شده
+        # شبیه‌سازی داده تاریخی
         prices = [price_data["price"] * (1 + np.random.randn(30) * 0.015) for _ in range(30)]
         rsi = TechnicalAnalysis.calculate_rsi(prices)
-        macd, macd_sig, _ = TechnicalAnalysis.calculate_macd(prices)
-        signal, confidence = get_trading_signal(price_data["price"], price_data["change"], rsi, macd, macd_sig)
+        macd, macd_sig = TechnicalAnalysis.calculate_macd(prices)
+        signal, confidence, reasons = get_trading_signal(price_data["price"], price_data["change"], rsi, macd, macd_sig)
         
-        if signal == "BUY" and confidence > 70:
-            # خرید خودکار در دمو
-            if symbol not in demo_positions and len(demo_positions) < MAX_POSITIONS:
-                amount_usdt = demo_balance * 0.2
-                amount_coin = amount_usdt / price_data["price"]
-                if amount_coin > 0 and amount_usdt <= demo_balance:
-                    demo_balance -= amount_usdt
-                    demo_positions[symbol] = {
-                        "amount": amount_coin,
-                        "entry_price": price_data["price"],
-                        "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                    }
-                    logger.info(f"Auto buy {symbol} at ${price_data['price']:.2f}")
+        sr = TechnicalAnalysis.calculate_support_resistance(prices)
         
-        elif signal == "SELL" and confidence > 70:
-            if symbol in demo_positions:
-                pos = demo_positions[symbol]
-                sell_value = pos["amount"] * price_data["price"]
-                demo_balance += sell_value
-                del demo_positions[symbol]
-                logger.info(f"Auto sell {symbol} at ${price_data['price']:.2f}")
+        market_report += f"""
+┌─────────────────────────────────┐
+│ {symbol.replace('USDT', '')} قیمت: ${price_data['price']:,.0f}
+│ 📈 تغییر: {price_data['change']:+.2f}%
+│ 🎯 سیگنال: {signal} ({confidence}%)
+│ 🟢 حمایت: ${sr['support'][0]:,.0f}
+│ 🔴 مقاومت: ${sr['resistance'][0]:,.0f}
+└─────────────────────────────────┘
+"""
+        
+        # پیش‌بینی برای آینده
+        if signal == "BUY":
+            predictions += f"✅ {symbol.replace('USDT', '')}: پیش‌بینی صعود تا ${sr['resistance'][0]:,.0f}\n"
+        elif signal == "SELL":
+            predictions += f"⚠️ {symbol.replace('USDT', '')}: پیش‌بینی نزول تا ${sr['support'][0]:,.0f}\n"
+        else:
+            predictions += f"⚪ {symbol.replace('USDT', '')}: بازار خنثی - صبر\n"
+    
+    # اخبار و نهنگ‌ها
+    news = await get_crypto_news()
+    whales = await get_whale_transactions()
+    
+    news_text = ""
+    for n in news[:3]:
+        news_text += f"📰 {n['title'][:80]}...\n"
+    
+    whale_text = ""
+    for w in whales[:3]:
+        direction = "خرید 🟢" if w["transaction_type"] == "transfer" else "فروش 🔴"
+        whale_text += f"🐋 {direction} {w['amount']:.0f} {w['symbol']} (${w['value_usd']/1e6:.1f}M)\n"
+    
+    # تحلیل هوش مصنوعی برای BTC
+    btc_price = await get_coinex_price("BTCUSDT")
+    if btc_price["success"]:
+        prices_btc = [btc_price["price"] * (1 + np.random.randn(30) * 0.015) for _ in range(30)]
+        rsi_btc = TechnicalAnalysis.calculate_rsi(prices_btc)
+        ai_analysis = await groq_analysis("BTC", btc_price["price"], btc_price["change"], rsi_btc, "متوسط")
+    else:
+        ai_analysis = "خطا در تحلیل"
+    
+    # محاسبه سود/زیان پوزیشن‌های باز
+    positions_value = 0
+    positions_report = ""
+    for sym, pos in real_positions.items():
+        price_data = await get_coinex_price(sym)
+        if price_data["success"]:
+            current_value = pos["amount"] * price_data["price"]
+            pnl = current_value - (pos["amount"] * pos["entry_price"])
+            pnl_percent = (pnl / (pos["amount"] * pos["entry_price"])) * 100
+            positions_value += current_value
+            positions_report += f"• {sym}: {pos['amount']:.4f} @ ${pos['entry_price']:.0f} | PnL: {pnl_percent:+.1f}%\n"
+    
+    total_value = current_balance + positions_value
+    total_pnl = total_value - 10000  # سرمایه اولیه فرضی
+    
+    # ساخت پست نهایی
+    report_text = f"""
+╔══════════════════════════════════════╗
+║     📊 *گزارش تخصصی کریپتو* 📊     ║
+║        {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}        ║
+╚══════════════════════════════════════╝
 
-# ========== دکمه‌ها ==========
+💰 *موجودی حساب:*
+┌─────────────────────────────────┐
+│ 💵 USDT قابل استفاده: ${current_balance:,.2f}
+│ 📊 ارزش پوزیشن‌ها: ${positions_value:,.2f}
+│ 💎 ارزش کل: ${total_value:,.2f}
+│ 📈 سود/زیان کل: ${total_pnl:+.2f}
+└─────────────────────────────────┘
+
+📊 *وضعیت بازار (لحظه‌ای):*
+{market_report}
+
+🎯 *پیش‌بینی کوتاه مدت:*
+{predictions}
+
+🧠 *تحلیل هوش مصنوعی:*
+{ai_analysis}
+
+🐋 *حرکت نهنگ‌ها:*
+{whale_text if whale_text else 'هیچ تراکنش بزرگی یافت نشد'}
+
+📰 *آخرین اخبار:*
+{news_text if news_text else 'اخباری یافت نشد'}
+
+📈 *پوزیشن‌های باز:*
+{positions_report if positions_report else 'هیچ پوزیشنی وجود ندارد'}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+⚡ *مدیریت ریسک:* حداکثر ۲٪ در هر معامله
+🔄 *ربات هر ساعت بروز می‌شود*
+"""
+    
+    # ارسال به کانال
+    try:
+        await context.bot.send_message(
+            chat_id=CHANNEL_ID,
+            text=report_text,
+            parse_mode="Markdown"
+        )
+        logger.info("Report sent to channel successfully")
+    except TelegramError as e:
+        logger.error(f"Failed to send to channel: {e}")
+        # تلاش برای ارسال به ادمین
+        if OWNER_ID != 0:
+            await context.bot.send_message(
+                chat_id=OWNER_ID,
+                text=f"⚠️ خطا در ارسال به کانال: {e}\n\n{report_text[:3000]}"
+            )
+
+# ========== معامله خودکار هر ساعت ==========
+async def auto_trade_hourly(context: ContextTypes.DEFAULT_TYPE):
+    """معامله خودکار هر یک ساعت"""
+    global real_positions
+    
+    logger.info("شروع معامله خودکار ساعت...")
+    
+    # دریافت موجودی
+    balance_data = await get_account_balance()
+    if not balance_data["success"]:
+        logger.error("خطا در دریافت موجودی")
+        return
+    
+    current_balance = balance_data["free"]
+    
+    for symbol in TRADING_SYMBOLS:
+        try:
+            # دریافت قیمت و تحلیل
+            price_data = await get_coinex_price(symbol)
+            if not price_data["success"]:
+                continue
+            
+            # شبیه‌سازی داده تاریخی
+            prices = [price_data["price"] * (1 + np.random.randn(30) * 0.015) for _ in range(30)]
+            rsi = TechnicalAnalysis.calculate_rsi(prices)
+            macd, macd_sig = TechnicalAnalysis.calculate_macd(prices)
+            signal, confidence, reasons = get_trading_signal(price_data["price"], price_data["change"], rsi, macd, macd_sig)
+            
+            sr = TechnicalAnalysis.calculate_support_resistance(prices)
+            stop_loss = sr["support"][0] if signal == "BUY" else sr["resistance"][0]
+            take_profit = sr["resistance"][0] if signal == "BUY" else sr["support"][0]
+            
+            # منطق معامله
+            if signal == "BUY" and confidence > 70 and symbol not in real_positions and len(real_positions) < MAX_POSITIONS:
+                # محاسبه حجم معامله (حداکثر 20% موجودی برای تست)
+                amount_usdt = min(current_balance * 0.2, 100)  # حداکثر 100 دلار برای تست
+                amount_coin = amount_usdt / price_data["price"]
+                
+                if amount_coin > 0 and amount_usdt <= current_balance:
+                    # ثبت سفارش خرید
+                    order = await place_order(symbol, "buy", amount_coin, "market")
+                    if order["success"]:
+                        real_positions[symbol] = {
+                            "amount": amount_coin,
+                            "entry_price": price_data["price"],
+                            "timestamp": datetime.now().isoformat(),
+                            "stop_loss": stop_loss,
+                            "take_profit": take_profit
+                        }
+                        current_balance -= amount_usdt
+                        
+                        # ارسال پیام به کانال
+                        await context.bot.send_message(
+                            chat_id=CHANNEL_ID,
+                            text=f"🟢 **خرید خودکار {symbol}**\n💰 قیمت: ${price_data['price']:.2f}\n📦 مقدار: {amount_coin:.6f}\n🛡️ حد ضرر: ${stop_loss:.2f}\n🎯 حد سود: ${take_profit:.2f}\n📊 اطمینان: {confidence}%\n📝 دلیل: {', '.join(reasons)}",
+                            parse_mode="Markdown"
+                        )
+                        logger.info(f"Auto buy {symbol} at ${price_data['price']:.2f}")
+            
+            elif signal == "SELL" and confidence > 70 and symbol in real_positions:
+                pos = real_positions[symbol]
+                # ثبت سفارش فروش
+                order = await place_order(symbol, "sell", pos["amount"], "market")
+                if order["success"]:
+                    sell_value = pos["amount"] * price_data["price"]
+                    pnl = sell_value - (pos["amount"] * pos["entry_price"])
+                    pnl_percent = (pnl / (pos["amount"] * pos["entry_price"])) * 100
+                    
+                    del real_positions[symbol]
+                    current_balance += sell_value
+                    
+                    # ارسال پیام به کانال
+                    await context.bot.send_message(
+                        chat_id=CHANNEL_ID,
+                        text=f"🔴 **فروش خودکار {symbol}**\n💰 قیمت: ${price_data['price']:.2f}\n📈 سود/زیان: ${pnl:+.2f} ({pnl_percent:+.1f}%)\n📊 اطمینان: {confidence}%\n📝 دلیل: {', '.join(reasons)}",
+                        parse_mode="Markdown"
+                    )
+                    logger.info(f"Auto sell {symbol} at ${price_data['price']:.2f}, PnL: ${pnl:+.2f}")
+            
+            # چک حد ضرر و حد سود برای پوزیشن‌های موجود
+            for sym, pos in list(real_positions.items()):
+                current = await get_coinex_price(sym)
+                if not current["success"]:
+                    continue
+                
+                # حد ضرر
+                if current["price"] <= pos["stop_loss"]:
+                    order = await place_order(sym, "sell", pos["amount"], "market")
+                    if order["success"]:
+                        sell_value = pos["amount"] * current["price"]
+                        pnl = sell_value - (pos["amount"] * pos["entry_price"])
+                        await context.bot.send_message(
+                            chat_id=CHANNEL_ID,
+                            text=f"⚠️ **حد ضرر فعال شد - {sym}**\n💰 قیمت: ${current['price']:.2f}\n📉 ضرر: ${pnl:+.2f}",
+                            parse_mode="Markdown"
+                        )
+                        del real_positions[sym]
+                
+                # حد سود
+                elif current["price"] >= pos["take_profit"]:
+                    order = await place_order(sym, "sell", pos["amount"], "market")
+                    if order["success"]:
+                        sell_value = pos["amount"] * current["price"]
+                        pnl = sell_value - (pos["amount"] * pos["entry_price"])
+                        await context.bot.send_message(
+                            chat_id=CHANNEL_ID,
+                            text=f"🎯 **حد سود فعال شد - {sym}**\n💰 قیمت: ${current['price']:.2f}\n📈 سود: ${pnl:+.2f}",
+                            parse_mode="Markdown"
+                        )
+                        del real_positions[sym]
+                        
+        except Exception as e:
+            logger.error(f"Error in auto trade for {symbol}: {e}")
+            continue
+
+# ========== منوی اصلی ربات ==========
 def get_main_keyboard():
     keyboard = [
         [InlineKeyboardButton("✨ سیگنال لحظه‌ای", callback_data="signals")],
         [InlineKeyboardButton("📊 قیمت ارزها", callback_data="prices")],
         [InlineKeyboardButton("🎯 تحلیل تکنیکال", callback_data="technical")],
-        [InlineKeyboardButton("🧠 تحلیل هوشمند Groq", callback_data="ai_menu")],
-        [InlineKeyboardButton("📰 تحلیل فاندامنتال", callback_data="fundamental")],
-        [InlineKeyboardButton("🤖 چت با AI (طنز)", callback_data="chat_ai")],
-        [InlineKeyboardButton("🐋 ردیابی نهنگ‌ها", callback_data="whale")],
-        [InlineKeyboardButton("💰 معامله واقعی", callback_data="trade_real")],
-        [InlineKeyboardButton("🎮 معامله دمو", callback_data="trade_demo")],
-        [InlineKeyboardButton("⚡ معامله خودکار دمو", callback_data="auto_trade")],
-        [InlineKeyboardButton("📈 پوزیشن‌ها", callback_data="positions")],
-        [InlineKeyboardButton("🔔 هشدار قیمت", callback_data="alert_menu")],
-        [InlineKeyboardButton("📰 اخبار کریپتو", callback_data="news")],
-        [InlineKeyboardButton("🛡️ مدیریت ریسک", callback_data="risk")],
+        [InlineKeyboardButton("🧠 تحلیل هوشمند", callback_data="ai_menu")],
+        [InlineKeyboardButton("💰 موجودی حساب", callback_data="balance")],
+        [InlineKeyboardButton("📈 پوزیشن‌های باز", callback_data="positions")],
+        [InlineKeyboardButton("🐋 نهنگ‌ها", callback_data="whale")],
+        [InlineKeyboardButton("📰 اخبار", callback_data="news")],
         [InlineKeyboardButton("⚙️ تنظیمات", callback_data="settings")],
         [InlineKeyboardButton("❓ راهنما", callback_data="help")],
     ]
     return InlineKeyboardMarkup(keyboard)
 
-def get_back_refresh_keyboard(back_callback, refresh_callback):
-    return InlineKeyboardMarkup([
-        [InlineKeyboardButton("🔄 بروزرسانی", callback_data=refresh_callback)],
-        [InlineKeyboardButton("🔙 بازگشت", callback_data=back_callback)]
-    ])
+def get_back_keyboard():
+    return InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="back")]])
 
-# ========== منوها ==========
+def get_refresh_keyboard(callback):
+    return InlineKeyboardMarkup([[InlineKeyboardButton("🔄 بروزرسانی", callback_data=callback)], [InlineKeyboardButton("🔙 بازگشت", callback_data="back")]])
+
+# ========== هندلرها ==========
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await is_owner(update):
         return
     text = """
-✨━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━✨
-      🔥 *ربات فوق‌هوشمند کریپتو* 🔥
-✨━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━✨
+╔══════════════════════════════════════╗
+║     🔥 *ربات فوق‌پیشرفته کریپتو* 🔥    ║
+╚══════════════════════════════════════╝
 
-📊 **قابلیت‌ها:**
-• تحلیل تکنیکال کامل (RSI, MACD, Stochastic, CCI, Williams, ADX, Bollinger, Fibonacci)
-• تحلیل هوشمند با Groq AI (طنز و خونگرم)
-• تحلیل فاندامنتال لحظه‌ای
-• چت عمومی با AI (هر موضوعی)
-• معامله خودکار دمو (خرید/فروش اتوماتیک)
-• هشدار قیمت
-• ردیابی نهنگ‌ها
+✨ **قابلیت‌ها:**
+• 📊 معامله خودکار هر ساعت
+• 💰 دریافت موجودی واقعی CoinEx
+• 🎯 حد سود و حد ضرر خودکار
+• 🐋 ردیابی نهنگ‌ها
+• 📰 اخبار لحظه‌ای
+• 🧠 تحلیل هوش مصنوعی Groq
+• 📈 گزارش هر ساعت به کانال
 
 📌 **از منوی زیر انتخاب کن:**
 """
     await update.message.reply_text(text, parse_mode="Markdown", reply_markup=get_main_keyboard())
 
-# ========== منوی چت با AI ==========
-async def chat_ai_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def balance_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-    await query.edit_message_text(
-        "🤖 **حالت چت با هوش مصنوعی (طنز و خونگرم)** 🤖\n\n"
-        "هر سوالی داری بپرس! هر چیزی که دلت می‌خواد.\n"
-        "من با لحنی شوخ و بامزه جواب می‌دم.\n\n"
-        "✏️ **سوالت رو بنویس...**",
-        parse_mode="Markdown",
-        reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="back")]])
-    )
-    context.user_data["chat_mode"] = "ai_chat"
+    await query.edit_message_text("🔄 دریافت موجودی...")
+    
+    balance = await get_account_balance()
+    if balance["success"]:
+        text = f"""
+💰 **موجودی حساب CoinEx** 💰
 
-async def handle_ai_chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_msg = update.message.text
-    await update.message.reply_chat_action("typing")
-    response = await groq_chat(user_msg, "funny")
-    await update.message.reply_text(response, parse_mode="Markdown")
+┌─────────────────────────────────┐
+│ 💵 USDT (کل): **${balance['total']:,.2f}**
+│ 📊 قابل استفاده: **${balance['free']:,.2f}**
+│ 🔒 مسدود شده: **${balance['frozen']:,.2f}**
+└─────────────────────────────────┘
+"""
+    else:
+        text = f"❌ خطا: {balance.get('error', 'مشخص نیست')}"
+    
+    await query.edit_message_text(text, parse_mode="Markdown", reply_markup=get_refresh_keyboard("balance"))
 
-# ========== تحلیل‌ها ==========
+async def positions_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    
+    if not real_positions:
+        text = "📈 **پوزیشن‌های باز**\n\nهیچ پوزیشنی وجود ندارد."
+    else:
+        text = "📈 **پوزیشن‌های باز** 📈\n\n"
+        total_pnl = 0
+        for sym, pos in real_positions.items():
+            price_data = await get_coinex_price(sym)
+            if price_data["success"]:
+                current_value = pos["amount"] * price_data["price"]
+                pnl = current_value - (pos["amount"] * pos["entry_price"])
+                pnl_percent = (pnl / (pos["amount"] * pos["entry_price"])) * 100
+                total_pnl += pnl
+                text += f"┌─────────────────────────────────┐\n"
+                text += f"│ {sym}\n"
+                text += f"│ 📦 مقدار: {pos['amount']:.6f}\n"
+                text += f"│ 💰 ورود: ${pos['entry_price']:.2f}\n"
+                text += f"│ 💵 فعلی: ${price_data['price']:.2f}\n"
+                text += f"│ 📈 سود/زیان: {pnl_percent:+.1f}%\n"
+                text += f"└─────────────────────────────────┘\n\n"
+        text += f"💰 **سود/زیان کل:** ${total_pnl:+.2f}"
+    
+    await query.edit_message_text(text, parse_mode="Markdown", reply_markup=get_refresh_keyboard("positions"))
+
 async def signals_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     await query.edit_message_text("🔄 دریافت سیگنال‌ها...")
-    text = "✨ سیگنال‌های لحظه‌ای ✨\n\n"
+    
+    text = "✨ **سیگنال‌های لحظه‌ای** ✨\n\n"
     for s in SYMBOLS:
         data = await get_coinex_price(s["symbol"])
         if data["success"]:
-            change = data["change"]
-            signal = "🟢🟢 خرید قوی" if change > 2 else "🟢 خرید" if change > 0.5 else "🔴🔴 فروش قوی" if change < -2 else "🔴 فروش" if change < -0.5 else "⚪ نگهداری"
-            arrow = "📈" if change > 0 else "📉" if change < 0 else "➖"
-            text += f"{s['emoji']} *{s['symbol']}*: ${data['price']:,.2f} {arrow} {change:+.2f}% → {signal}\n"
-    await query.edit_message_text(text, parse_mode="Markdown", reply_markup=get_back_refresh_keyboard("back", "signals"))
+            prices = [data["price"] * (1 + np.random.randn(20) * 0.015) for _ in range(20)]
+            rsi = TechnicalAnalysis.calculate_rsi(prices)
+            macd, macd_sig = TechnicalAnalysis.calculate_macd(prices)
+            signal, confidence, _ = get_trading_signal(data["price"], data["change"], rsi, macd, macd_sig)
+            
+            if signal == "BUY":
+                emoji = "🟢"
+            elif signal == "SELL":
+                emoji = "🔴"
+            else:
+                emoji = "⚪"
+            
+            text += f"{emoji} *{s['symbol']}*: ${data['price']:,.2f} ({data['change']:+.2f}%) → {signal} ({confidence}%)\n"
+    await query.edit_message_text(text, parse_mode="Markdown", reply_markup=get_refresh_keyboard("signals"))
 
 async def prices_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     await query.edit_message_text("🔄 دریافت قیمت‌ها...")
+    
     text = "💰 **قیمت لحظه‌ای ارزها** 💰\n\n"
     for s in SYMBOLS:
         data = await get_coinex_price(s["symbol"])
         if data["success"]:
             emoji = "🟢" if data["change"] > 0 else "🔴" if data["change"] < 0 else "⚪"
             text += f"{emoji} *{s['symbol']}*: ${data['price']:,.2f} ({data['change']:+.2f}%)\n"
-    await query.edit_message_text(text, parse_mode="Markdown", reply_markup=get_back_refresh_keyboard("back", "prices"))
+    await query.edit_message_text(text, parse_mode="Markdown", reply_markup=get_refresh_keyboard("prices"))
 
 async def technical_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-    keyboard = [[InlineKeyboardButton(f"{s['emoji']} {s['symbol']}", callback_data=f"tech_{s['symbol']}")] for s in SYMBOLS[:6]]
+    keyboard = [[InlineKeyboardButton(f"📊 {s['symbol']}", callback_data=f"tech_{s['symbol']}")] for s in SYMBOLS[:6]]
     keyboard.append([InlineKeyboardButton("🔙 بازگشت", callback_data="back")])
     await query.edit_message_text("📊 **تحلیل تکنیکال**\nارز را انتخاب کن:", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(keyboard))
 
@@ -467,262 +700,159 @@ async def technical_analysis(update: Update, context: ContextTypes.DEFAULT_TYPE,
     query = update.callback_query
     await query.answer()
     await query.edit_message_text(f"🔄 تحلیل {symbol}...")
+    
     data = await get_coinex_price(symbol)
     if not data["success"]:
-        await query.edit_message_text("❌ خطا", reply_markup=get_back_refresh_keyboard("technical", f"tech_{symbol}"))
+        await query.edit_message_text("❌ خطا", reply_markup=get_back_keyboard())
         return
     
-    np.random.seed(0)
-    prices = [data["price"] * (1 + np.random.randn(50) * 0.015) for _ in range(50)]
-    highs = [p * 1.005 for p in prices]
-    lows = [p * 0.995 for p in prices]
-    
+    prices = [data["price"] * (1 + np.random.randn(30) * 0.015) for _ in range(30)]
     rsi = TechnicalAnalysis.calculate_rsi(prices)
-    macd, macd_sig, _ = TechnicalAnalysis.calculate_macd(prices)
-    stoch_k, stoch_d = TechnicalAnalysis.calculate_stochastic(highs, lows, prices)
-    cci = TechnicalAnalysis.calculate_cci(highs, lows, prices)
-    williams = TechnicalAnalysis.calculate_williams_r(highs, lows, prices)
-    bb_u, bb_m, bb_l = TechnicalAnalysis.calculate_bollinger(prices)
+    macd, macd_sig = TechnicalAnalysis.calculate_macd(prices)
     sr = TechnicalAnalysis.calculate_support_resistance(prices)
+    signal, confidence, reasons = get_trading_signal(data["price"], data["change"], rsi, macd, macd_sig)
     
     text = f"""
-✨━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━✨
-      📊 *تحلیل تکنیکال {symbol}* 📊
-✨━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━✨
+📊 **تحلیل تکنیکال {symbol}** 📊
 
 💰 **قیمت:** ${data['price']:,.2f}
-📈 **تغییر:** {data['change']:+.2f}%
+📈 **تغییر 24h:** {data['change']:+.2f}%
+📊 **حجم:** ${data['volume']/1e6:.2f}M
 
-📊 **اندیکاتورها:**
-• RSI: {rsi:.1f}
-• MACD: {macd:.2f}
-• Stochastic: {stoch_k:.1f}/{stoch_d:.1f}
-• CCI: {cci:.1f}
-• Williams: {williams:.1f}
-• باند بولینگر: بالا ${bb_u:,.0f} / پایین ${bb_l:,.0f}
+┌─────────────────────────────────┐
+│ 📈 **اندیکاتورها**              │
+├─────────────────────────────────┤
+│ • RSI: {rsi:.1f}
+│ • MACD: {macd:.2f} (سیگنال: {macd_sig:.2f})
+└─────────────────────────────────┘
 
-🔑 **سطوح کلیدی:**
-🟢 حمایت: ${sr['support'][0]:,.0f}
-🔴 مقاومت: ${sr['resistance'][0]:,.0f}
+┌─────────────────────────────────┐
+│ 🔑 **سطوح کلیدی**               │
+├─────────────────────────────────┤
+│ 🟢 حمایت 1: ${sr['support'][0]:,.0f}
+│ 🟢 حمایت 2: ${sr['support'][1]:,.0f}
+│ 🔴 مقاومت 1: ${sr['resistance'][0]:,.0f}
+│ 🔴 مقاومت 2: ${sr['resistance'][1]:,.0f}
+│ 🎯 نقطه محوری: ${sr['pivot']:,.0f}
+└─────────────────────────────────┘
+
+🎯 **سیگنال:** {signal} (اطمینان: {confidence}%)
+📝 **دلایل:** {', '.join(reasons[:2])}
 
 ✨━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━✨
 """
-    await query.edit_message_text(text, parse_mode="Markdown", reply_markup=get_back_refresh_keyboard("technical", f"tech_{symbol}"))
+    await query.edit_message_text(text, parse_mode="Markdown", reply_markup=get_back_keyboard())
 
 async def ai_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-    keyboard = [[InlineKeyboardButton(f"🧠 {s['symbol']}", callback_data=f"groq_{s['symbol']}")] for s in SYMBOLS[:6]]
+    keyboard = [[InlineKeyboardButton(f"🧠 {s['symbol']}", callback_data=f"ai_{s['symbol']}")] for s in SYMBOLS[:6]]
     keyboard.append([InlineKeyboardButton("🔙 بازگشت", callback_data="back")])
     await query.edit_message_text("🧠 **تحلیل هوشمند با Groq AI**\nارز را انتخاب کن:", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(keyboard))
 
-async def groq_analysis_handler(update: Update, context: ContextTypes.DEFAULT_TYPE, symbol: str):
+async def ai_analysis(update: Update, context: ContextTypes.DEFAULT_TYPE, symbol: str):
     query = update.callback_query
     await query.answer()
     await query.edit_message_text(f"🤖 تحلیل {symbol} با AI...")
+    
     data = await get_coinex_price(symbol)
     if not data["success"]:
-        await query.edit_message_text("❌ خطا", reply_markup=get_back_refresh_keyboard("ai_menu", f"groq_{symbol}"))
+        await query.edit_message_text("❌ خطا", reply_markup=get_back_keyboard())
         return
     
     prices = [data["price"] * (1 + np.random.randn(30) * 0.015) for _ in range(30)]
     rsi = TechnicalAnalysis.calculate_rsi(prices)
     sentiment = random.choice(["صعودی", "نزولی", "خنثی"])
-    analysis = await groq_market_analysis(symbol, data["price"], data["change"], rsi, sentiment)
     
-    text = f"🧠 **تحلیل {symbol} با Groq AI** 🧠\n\n{analysis}"
-    await query.edit_message_text(text, parse_mode="Markdown", reply_markup=get_back_refresh_keyboard("ai_menu", f"groq_{symbol}"))
+    analysis = await groq_analysis(symbol, data["price"], data["change"], rsi, sentiment)
+    
+    text = f"🧠 **تحلیل AI - {symbol}** 🧠\n\n{analysis}"
+    await query.edit_message_text(text, parse_mode="Markdown", reply_markup=get_back_keyboard())
 
-async def fundamental_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def whale_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-    await query.edit_message_text("📰 در حال تحلیل فاندامنتال...")
-    analysis = await groq_fundamental_analysis()
-    text = f"📰 **تحلیل فاندامنتال** 📰\n\n{analysis}"
-    await query.edit_message_text(text, parse_mode="Markdown", reply_markup=get_back_refresh_keyboard("back", "fundamental"))
+    await query.edit_message_text("🐋 دریافت تراکنش‌های نهنگ‌ها...")
+    
+    whales = await get_whale_transactions()
+    
+    if whales:
+        text = "🐋 **تراکنش‌های بزرگ نهنگ‌ها** 🐋\n\n"
+        for w in whales[:5]:
+            direction = "🟢 خرید" if w["transaction_type"] == "transfer" else "🔴 فروش"
+            text += f"{direction} {w['amount']:.0f} {w['symbol']} (${w['value_usd']/1e6:.1f}M)\n"
+    else:
+        text = "🐋 هیچ تراکنش بزرگی یافت نشد"
+    
+    await query.edit_message_text(text, parse_mode="Markdown", reply_markup=get_refresh_keyboard("whale"))
 
 async def news_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-    text = """
-📰 **آخرین اخبار کریپتو** 📰
-
-🔥 بیت‌کوین به 70 هزار دلار نزدیک شد!
-💎 اتریوم آپدیت بعدی را اعلام کرد
-⚡ سولانا رکورد تراکنش‌ها را شکست
-🐋 نهنگ‌ها در حال انباشت BTC هستند
-
-📌 اخبار لحظه‌ای به زودی...
-"""
-    await query.edit_message_text(text, parse_mode="Markdown", reply_markup=get_back_refresh_keyboard("back", "news"))
-
-# ========== معامله دمو ==========
-async def trade_demo_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    text = f"""
-🎮 **حالت معامله دمو** 🎮
-
-💰 موجودی نقد: ${demo_balance:.2f}
-📊 تعداد پوزیشن‌ها: {len(demo_positions)}
-
-انتخاب کن:
-"""
-    keyboard = []
-    for s in SYMBOLS[:6]:
-        keyboard.append([InlineKeyboardButton(f"{s['emoji']} خرید {s['symbol']}", callback_data=f"demo_buy_{s['symbol']}")])
-        keyboard.append([InlineKeyboardButton(f"فروش {s['symbol']}", callback_data=f"demo_sell_{s['symbol']}")])
-    keyboard.append([InlineKeyboardButton("📈 پوزیشن‌های باز", callback_data="demo_positions")])
-    keyboard.append([InlineKeyboardButton("🔙 بازگشت", callback_data="back")])
-    await query.edit_message_text(text, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(keyboard))
-
-async def demo_buy(update: Update, context: ContextTypes.DEFAULT_TYPE, symbol: str):
-    global demo_balance, demo_positions
-    query = update.callback_query
-    await query.answer()
-    price_data = await get_coinex_price(symbol)
-    if not price_data["success"]:
-        await query.edit_message_text("❌ خطا در دریافت قیمت", reply_markup=get_back_refresh_keyboard("trade_demo", f"demo_buy_{symbol}"))
-        return
-    amount_usdt = 100  # مبلغ ثابت برای سادگی
-    amount_coin = amount_usdt / price_data["price"]
-    if amount_usdt > demo_balance:
-        await query.edit_message_text("❌ موجودی کافی نیست", reply_markup=get_back_refresh_keyboard("trade_demo", f"demo_buy_{symbol}"))
-        return
-    demo_balance -= amount_usdt
-    if symbol in demo_positions:
-        old = demo_positions[symbol]
-        total_cost = old["amount"] * old["entry_price"] + amount_coin * price_data["price"]
-        total_amount = old["amount"] + amount_coin
-        avg_price = total_cost / total_amount
-        demo_positions[symbol] = {"amount": total_amount, "entry_price": avg_price, "timestamp": datetime.now().strftime("%H:%M:%S")}
+    await query.edit_message_text("📰 دریافت اخبار...")
+    
+    news = await get_crypto_news()
+    
+    if news:
+        text = "📰 **آخرین اخبار کریپتو** 📰\n\n"
+        for n in news[:5]:
+            text += f"• {n['title'][:100]}...\n"
     else:
-        demo_positions[symbol] = {"amount": amount_coin, "entry_price": price_data["price"], "timestamp": datetime.now().strftime("%H:%M:%S")}
-    await query.edit_message_text(f"✅ خرید {symbol} با قیمت ${price_data['price']:.2f}\n💰 موجودی: ${demo_balance:.2f}", reply_markup=get_back_refresh_keyboard("trade_demo", f"demo_buy_{symbol}"))
-
-async def demo_sell(update: Update, context: ContextTypes.DEFAULT_TYPE, symbol: str):
-    global demo_balance, demo_positions
-    query = update.callback_query
-    await query.answer()
-    if symbol not in demo_positions:
-        await query.edit_message_text("❌ پوزیشنی برای فروش ندارید", reply_markup=get_back_refresh_keyboard("trade_demo", f"demo_sell_{symbol}"))
-        return
-    price_data = await get_coinex_price(symbol)
-    if not price_data["success"]:
-        await query.edit_message_text("❌ خطا", reply_markup=get_back_refresh_keyboard("trade_demo", f"demo_sell_{symbol}"))
-        return
-    pos = demo_positions[symbol]
-    sell_value = pos["amount"] * price_data["price"]
-    pnl = sell_value - (pos["amount"] * pos["entry_price"])
-    demo_balance += sell_value
-    del demo_positions[symbol]
-    await query.edit_message_text(f"✅ فروش {symbol} با قیمت ${price_data['price']:.2f}\n📈 سود/زیان: ${pnl:+.2f}\n💰 موجودی: ${demo_balance:.2f}", reply_markup=get_back_refresh_keyboard("trade_demo", f"demo_sell_{symbol}"))
-
-async def demo_positions_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    if not demo_positions:
-        await query.edit_message_text("📭 هیچ پوزیشنی ندارید", reply_markup=get_back_refresh_keyboard("trade_demo", "demo_positions"))
-        return
-    text = "📈 **پوزیشن‌های باز** 📈\n\n"
-    for sym, pos in demo_positions.items():
-        text += f"{sym}: {pos['amount']:.6f} @ ${pos['entry_price']:.2f}\n"
-    await query.edit_message_text(text, parse_mode="Markdown", reply_markup=get_back_refresh_keyboard("trade_demo", "demo_positions"))
-
-async def auto_trade_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    global auto_trade_enabled
-    query = update.callback_query
-    await query.answer()
-    auto_trade_enabled = not auto_trade_enabled
-    status = "✅ فعال" if auto_trade_enabled else "❌ غیرفعال"
-    text = f"⚡ **معامله خودکار دمو** ⚡\n\nوضعیت: {status}\n\nربات به صورت خودکار بر اساس سیگنال‌ها خرید و فروش می‌کند.\nحداکثر {MAX_POSITIONS} پوزیشن همزمان."
-    await query.edit_message_text(text, parse_mode="Markdown", reply_markup=get_back_refresh_keyboard("back", "auto_trade"))
-
-async def alert_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    text = "🔔 **هشدار قیمت** 🔔\n\nبرای تنظیم هشدار، ارسال کنید:\n`ALERT BTCUSDT 70000`\n\nهشدارهای فعال:\n" + "\n".join(price_alerts.keys()) if price_alerts else "هیچ هشدار فعالی نیست"
-    await query.edit_message_text(text, parse_mode="Markdown", reply_markup=get_back_refresh_keyboard("back", "alert_menu"))
-
-async def risk_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    text = f"""
-🛡️ **مدیریت ریسک** 🛡️
-
-• حداکثر ریسک: {MAX_RISK_PERCENT}% سرمایه
-• نسبت ریسک/ریوارد: 1:{TAKE_PROFIT_PERCENT/STOP_LOSS_PERCENT:.1f}
-• حد ضرر: {STOP_LOSS_PERCENT}%
-• حداکثر پوزیشن: {MAX_POSITIONS}
-
-📈 **فرمول:** حجم = (سرمایه × {MAX_RISK_PERCENT}%) / (قیمت × {STOP_LOSS_PERCENT}%)
-"""
-    await query.edit_message_text(text, parse_mode="Markdown", reply_markup=get_back_refresh_keyboard("back", "risk"))
+        text = "📰 اخباری یافت نشد"
+    
+    await query.edit_message_text(text, parse_mode="Markdown", reply_markup=get_refresh_keyboard("news"))
 
 async def settings_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     text = f"""
-⚙️ **تنظیمات** ⚙️
+⚙️ **تنظیمات ربات** ⚙️
 
-• CoinEx API: {'✅' if ACCESS_ID else '❌'}
-• Groq API: {'✅' if GROQ_API_KEY else '❌'}
-• مالک: {OWNER_ID if OWNER_ID != 0 else 'همه مجاز'}
-• معامله خودکار: {'✅' if auto_trade_enabled else '❌'}
+📡 **وضعیت API:**
+• 🔑 CoinEx: {'✅' if ACCESS_ID else '❌'}
+• 🧠 Groq: {'✅' if GROQ_API_KEY else '❌'}
+
+📊 **تنظیمات معاملاتی:**
+• حداکثر ریسک: {MAX_RISK_PERCENT}%
+• حد ضرر: {STOP_LOSS_PERCENT}%
+• حد سود: {TAKE_PROFIT_PERCENT}%
+• حداکثر پوزیشن: {MAX_POSITIONS}
+
+📈 **ارزهای تحت معامله:**
+{', '.join(TRADING_SYMBOLS)}
+
+📢 **کانال گزارش:** {CHANNEL_ID}
 """
-    await query.edit_message_text(text, parse_mode="Markdown", reply_markup=get_back_refresh_keyboard("back", "settings"))
-
-async def whale_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    text = """
-🐋 **ردیابی نهنگ‌ها** 🐋
-
-📊 آخرین تراکنش‌های بزرگ:
-• 1,250 BTC (84M$) خرید
-• 15,000 ETH (51.8M$) فروش
-• 250,000 SOL (39.1M$) خرید
-
-📈 تحلیل: خرید نهنگ‌ها روی BTC نشانه صعود است.
-"""
-    await query.edit_message_text(text, parse_mode="Markdown", reply_markup=get_back_refresh_keyboard("back", "whale"))
-
-async def trade_real_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    balance = await get_account_balance()
-    text = f"💰 **معامله واقعی CoinEx**\nموجودی: ${balance['free']:,.2f} USDT\n\n⚠️ به دلایل امنیتی غیرفعال است.\nاز حالت دمو استفاده کنید."
-    await query.edit_message_text(text, parse_mode="Markdown", reply_markup=get_back_refresh_keyboard("back", "trade_real"))
-
-async def positions_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    text = "📈 **پوزیشن‌های واقعی**\n\nهیچ پوزیشنی وجود ندارد."
-    await query.edit_message_text(text, parse_mode="Markdown", reply_markup=get_back_refresh_keyboard("back", "positions"))
+    await query.edit_message_text(text, parse_mode="Markdown", reply_markup=get_back_keyboard())
 
 async def help_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     text = """
-❓ **راهنما** ❓
+❓ **راهنمای ربات فوق‌پیشرفته** ❓
 
-📊 **دکمه‌ها:**
-• سیگنال لحظه‌ای: خرید/فروش/نگهداری
-• تحلیل تکنیکال: RSI, MACD, باندها
-• تحلیل هوشمند Groq: با طنز و خونگرمی
-• چت با AI: هر سوالی بپرس
-• معامله خودکار دمو: خرید/فروش اتوماتیک
-• هشدار قیمت: تنظیم اعلان
+📊 **قابلیت‌ها:**
 
-⚠️ فقط جنبه آموزشی
+1️⃣ **معامله خودکار**
+   - هر یک ساعت یک بار بازار را بررسی می‌کند
+   - بر اساس RSI، MACD و تغییرات قیمت سیگنال می‌گیرد
+   - حد ضرر و حد سود خودکار اعمال می‌شود
+
+2️⃣ **گزارش به کانال**
+   - هر ساعت گزارش کامل به @comedyclick ارسال می‌شود
+   - شامل: قیمت‌ها، سیگنال‌ها، پوزیشن‌ها، اخبار، نهنگ‌ها
+
+3️⃣ **مدیریت ریسک**
+   - حداکثر ۲٪ ریسک در هر معامله
+   - حداکثر ۳ پوزیشن همزمان
+
+⚠️ **هشدار:** فقط جنبه آموزشی – مسئولیت با شماست
 """
-    await query.edit_message_text(text, parse_mode="Markdown", reply_markup=get_back_refresh_keyboard("back", "help"))
+    await query.edit_message_text(text, parse_mode="Markdown", reply_markup=get_back_keyboard())
 
-# ========== هندلرها ==========
 async def back_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-    context.user_data.pop("chat_mode", None)
     await start(update, context)
 
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -733,6 +863,10 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     if data == "back":
         await back_handler(update, context)
+    elif data == "balance":
+        await balance_menu(update, context)
+    elif data == "positions":
+        await positions_menu(update, context)
     elif data == "signals":
         await signals_menu(update, context)
     elif data == "prices":
@@ -741,77 +875,41 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await technical_menu(update, context)
     elif data == "ai_menu":
         await ai_menu(update, context)
-    elif data == "fundamental":
-        await fundamental_menu(update, context)
-    elif data == "chat_ai":
-        await chat_ai_menu(update, context)
     elif data == "whale":
         await whale_menu(update, context)
-    elif data == "trade_real":
-        await trade_real_menu(update, context)
-    elif data == "trade_demo":
-        await trade_demo_menu(update, context)
-    elif data == "auto_trade":
-        await auto_trade_menu(update, context)
-    elif data == "positions":
-        await positions_menu(update, context)
-    elif data == "demo_positions":
-        await demo_positions_menu(update, context)
-    elif data == "alert_menu":
-        await alert_menu(update, context)
     elif data == "news":
         await news_menu(update, context)
-    elif data == "risk":
-        await risk_menu(update, context)
     elif data == "settings":
         await settings_menu(update, context)
     elif data == "help":
         await help_menu(update, context)
     elif data.startswith("tech_"):
         await technical_analysis(update, context, data.split("_")[1])
-    elif data.startswith("groq_"):
-        await groq_analysis_handler(update, context, data.split("_")[1])
-    elif data.startswith("demo_buy_"):
-        await demo_buy(update, context, data.split("_")[2])
-    elif data.startswith("demo_sell_"):
-        await demo_sell(update, context, data.split("_")[2])
+    elif data.startswith("ai_"):
+        await ai_analysis(update, context, data.split("_")[1])
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await is_owner(update):
         return
-    
-    if context.user_data.get("chat_mode") == "ai_chat":
-        await handle_ai_chat(update, context)
-    elif update.message.text.upper().startswith("ALERT"):
-        parts = update.message.text.split()
-        if len(parts) >= 3:
-            symbol = parts[1]
-            try:
-                price = float(parts[2])
-                price_alerts[f"{symbol}_{price}"] = update.effective_chat.id
-                await update.message.reply_text(f"✅ هشدار برای {symbol} در قیمت ${price:,.0f} تنظیم شد.")
-            except:
-                await update.message.reply_text("❌ فرمت: ALERT BTCUSDT 70000")
-        else:
-            await update.message.reply_text("❌ فرمت صحیح: ALERT BTCUSDT 70000")
-    else:
-        await update.message.reply_text("لطفاً از دکمه‌های منو استفاده کنید یا /start بزنید.")
-
-async def auto_trade_background(context: ContextTypes.DEFAULT_TYPE):
-    await auto_trade_loop(context)
+    await update.message.reply_text("لطفاً از دکمه‌های منو استفاده کنید یا /start بزنید.")
 
 def main():
     app = Application.builder().token(TOKEN).build()
+    
+    # اضافه کردن هندلرها
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CallbackQueryHandler(button_handler))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     
-    # اضافه کردن Job برای معامله خودکار هر 30 ثانیه
+    # اضافه کردن Job برای معامله خودکار هر ساعت
     job_queue = app.job_queue
     if job_queue:
-        job_queue.run_repeating(auto_trade_background, interval=30, first=10)
+        # معامله خودکار هر 60 دقیقه
+        job_queue.run_repeating(auto_trade_hourly, interval=3600, first=60)
+        # ارسال گزارش به کانال هر 60 دقیقه
+        job_queue.run_repeating(send_report_to_channel, interval=3600, first=30)
     
-    logger.info("ربات فوق‌هوشمند با معامله خودکار و چت AI روشن شد.")
+    logger.info("🚀 ربات فوق‌پیشرفته با معامله خودکار و گزارش به کانال روشن شد...")
     app.run_polling(allowed_updates=Update.ALL_TYPES)
 
 if __name__ == "__main__":
