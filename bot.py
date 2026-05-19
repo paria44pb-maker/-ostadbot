@@ -16,7 +16,11 @@ logger = logging.getLogger(__name__)
 
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
-OWNER_ID = int(os.getenv("OWNER_ID", "0"))  # عدد ادمین (ایدی عددی تلگرام)
+
+# ========== اصلاح خط ۱۹ ==========
+owner_id_str = os.getenv("OWNER_ID", "0")
+OWNER_ID = int(owner_id_str) if owner_id_str and owner_id_str.strip().isdigit() else 0
+# =================================
 
 # ========== تنظیمات CoinEx ==========
 ACCESS_ID = os.getenv("COINEX_ACCESS_ID", "")
@@ -43,7 +47,7 @@ SYMBOLS = [
 # ========== چک دسترسی ==========
 async def is_owner(update: Update) -> bool:
     if OWNER_ID == 0:
-        return True  # اگر تنظیم نشده، همه مجازند
+        return True
     user_id = update.effective_user.id
     if user_id != OWNER_ID:
         await update.message.reply_text("⛔ شما اجازه دسترسی به این ربات را ندارید.")
@@ -173,7 +177,7 @@ class TechnicalAnalysis:
         if recent_high == recent_low:
             return 50, 50
         k = 100 * ((close[-1] - recent_low) / (recent_high - recent_low))
-        d = k  # ساده شده
+        d = k
         return k, d
 
     @staticmethod
@@ -199,7 +203,6 @@ class TechnicalAnalysis:
 
     @staticmethod
     def calculate_adx(high, low, close, period=14):
-        # ساده شده (برای نمایش)
         return 25
 
     @staticmethod
@@ -248,7 +251,7 @@ class FundamentalAnalysis:
             pass
         return {"sentiment": "Neutral", "value": 50, "source": "Estimated"}
 
-# ========== هوش مصنوعی Groq (تحلیل مو به مو) ==========
+# ========== هوش مصنوعی Groq ==========
 async def groq_full_analysis(symbol, price, change, volume, high, low, rsi, macd, macd_signal, stoch_k, stoch_d, cci, williams_r, adx, bb_upper, bb_middle, bb_lower, support, resistance, trap, sentiment):
     if not GROQ_API_KEY:
         return "⚠️ Groq API تنظیم نشده است. لطفاً GROQ_API_KEY را در Railway اضافه کنید."
@@ -335,7 +338,7 @@ def get_back_keyboard():
     return InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="back")]])
 
 # ========== دمو معامله ==========
-demo_balance = 10000  # موجودی دمو
+demo_balance = 10000
 demo_positions = {}
 
 async def trade_demo_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -379,7 +382,7 @@ async def demo_sell(update: Update, context: ContextTypes.DEFAULT_TYPE, symbol: 
     if not price_data["success"]:
         await query.edit_message_text("❌ خطا در دریافت قیمت", reply_markup=get_back_keyboard())
         return
-    amount = 0.001  # مقدار کوچک برای فروش دمو
+    amount = 0.001
     demo_balance += amount * price_data["price"]
     await query.edit_message_text(f"✅ **فروش دمو {symbol}**\n💰 قیمت: ${price_data['price']:,.4f}\n💵 موجودی جدید: ${demo_balance:,.2f}", parse_mode="Markdown", reply_markup=get_back_keyboard())
 
@@ -404,7 +407,7 @@ async def technical_full_analysis(update: Update, context: ContextTypes.DEFAULT_
         await query.edit_message_text(f"❌ خطا در تحلیل {symbol}", reply_markup=get_back_keyboard())
         return
     
-    # شبیه‌سازی داده‌های تاریخی (برای اندیکاتورها)
+    # شبیه‌سازی داده‌های تاریخی
     base_price = data["price"]
     np.random.seed(0)
     prices = [base_price * (1 + np.random.randn(50) * 0.015)]
@@ -412,7 +415,6 @@ async def technical_full_analysis(update: Update, context: ContextTypes.DEFAULT_
     lows = [p * 0.995 for p in prices]
     closes = prices
     
-    # محاسبه همه اندیکاتورها
     rsi = TechnicalAnalysis.calculate_rsi(prices)
     macd, macd_signal, macd_hist = TechnicalAnalysis.calculate_macd(prices)
     stoch_k, stoch_d = TechnicalAnalysis.calculate_stochastic(highs, lows, closes)
@@ -423,7 +425,6 @@ async def technical_full_analysis(update: Update, context: ContextTypes.DEFAULT_
     sr = TechnicalAnalysis.calculate_support_resistance(prices)
     trap = TechnicalAnalysis.detect_trap(data["price"], data["change"], data["volume"], rsi)
     
-    # تولید نمودار متنی ساده
     chart = generate_text_chart(data["price"], sr["support"][0], sr["resistance"][0])
     
     text = f"""
@@ -495,7 +496,6 @@ async def groq_analysis_handler(update: Update, context: ContextTypes.DEFAULT_TY
         await query.edit_message_text(f"❌ خطا در دریافت قیمت {symbol}", reply_markup=get_back_keyboard())
         return
     
-    # شبیه‌سازی داده‌های تاریخی
     base_price = data["price"]
     np.random.seed(0)
     prices = [base_price * (1 + np.random.randn(50) * 0.015)]
@@ -528,7 +528,7 @@ async def groq_analysis_handler(update: Update, context: ContextTypes.DEFAULT_TY
     keyboard = [[InlineKeyboardButton("🔄 بروزرسانی", callback_data=f"groq_{symbol}")], [InlineKeyboardButton("🔙 بازگشت", callback_data="ai_menu")]]
     await query.edit_message_text(text, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(keyboard))
 
-# ========== سایر منوها (ساده شده برای فضا) ==========
+# ========== سایر منوها ==========
 async def signals_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -581,7 +581,6 @@ async def real_buy(update: Update, context: ContextTypes.DEFAULT_TYPE, symbol: s
         return
     price_data = await get_coinex_price(symbol)
     amount = (balance["free"] * (MAX_RISK_PERCENT/100)) / price_data["price"]
-    # در نسخه واقعی، سفارش ثبت می‌شود. برای امنیت، فقط پیام می‌دهیم.
     await query.edit_message_text(f"⚠️ در حالت واقعی، سفارش خرید {symbol} به مبلغ ${amount * price_data['price']:.2f} ثبت خواهد شد. (برای امنیت، غیرفعال است)", reply_markup=get_back_keyboard())
 
 async def real_sell(update: Update, context: ContextTypes.DEFAULT_TYPE, symbol: str):
@@ -613,12 +612,10 @@ async def help_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = "✨━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━✨\n❓ *راهنما*\n✨━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━✨\n\n📊 سیگنال‌ها: خرید/فروش بر اساس تغییر قیمت\n🎯 تحلیل تکنیکال کامل: RSI, MACD, Stochastic, CCI, Williams, ADX, Bollinger, سطوح فیبوناچی، تشخیص تله، نمودار ساده\n🧠 تحلیل هوشمند Groq: تحلیل مو به مو با AI\n🐋 ردیابی نهنگ‌ها\n💰 معامله واقعی و دمو\n🛡️ مدیریت ریسک\n\n⚠️ فقط جنبه آموزشی – مسئولیت با شماست"
     await query.edit_message_text(text, parse_mode="Markdown", reply_markup=get_back_keyboard())
 
-# ========== هندلر اصلی ==========
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not await is_owner(update):
-        return
-    text = "✨━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━✨\n🔥 *ربات حرفه‌ای کریپتو* 🔥\n✨━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━✨\n\n🔹 تحلیل تکنیکال کامل (RSI, MACD, Stochastic, CCI, Williams, ADX, Bollinger, Fibonacci)\n🔹 تحلیل هوشمند با Groq AI\n🔹 ردیابی نهنگ‌ها و تشخیص تله\n🔹 معامله واقعی و دمو\n🔹 مدیریت ریسک حرفه‌ای\n\n📌 از منوی زیر انتخاب کن"
-    await update.message.reply_text(text, parse_mode="Markdown", reply_markup=get_main_keyboard())
+async def back_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    await start(update, context)
 
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await is_owner(update):
@@ -628,7 +625,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     data = query.data
     
     if data == "back":
-        await start(update, context)
+        await back_handler(update, context)
     elif data == "signals":
         await signals_menu(update, context)
     elif data == "prices":
@@ -664,6 +661,12 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif data.startswith("real_sell_"):
         await real_sell(update, context, data.split("_")[2])
 
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not await is_owner(update):
+        return
+    text = "✨━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━✨\n🔥 *ربات حرفه‌ای کریپتو* 🔥\n✨━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━✨\n\n🔹 تحلیل تکنیکال کامل (RSI, MACD, Stochastic, CCI, Williams, ADX, Bollinger, Fibonacci)\n🔹 تحلیل هوشمند با Groq AI\n🔹 ردیابی نهنگ‌ها و تشخیص تله\n🔹 معامله واقعی و دمو\n🔹 مدیریت ریسک حرفه‌ای\n\n📌 از منوی زیر انتخاب کن"
+    await update.message.reply_text(text, parse_mode="Markdown", reply_markup=get_main_keyboard())
+
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await is_owner(update):
         return
@@ -675,7 +678,7 @@ def main():
     app.add_handler(CallbackQueryHandler(button_handler))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     
-    logger.info("🚀 ربات حرفه‌ای با همه قابلیت‌ها روشن شد...")
+    logger.info("🚀 ربات حرفه‌ای کریپتو روشن شد...")
     app.run_polling(allowed_updates=Update.ALL_TYPES)
 
 if __name__ == "__main__":
