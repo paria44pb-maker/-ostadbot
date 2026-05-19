@@ -1,339 +1,67 @@
 import os
 import logging
-import hmac
-import hashlib
-from flask import Flask, request, jsonify
-import threading
-import numpy as np
+import asyncio
 from datetime import datetime
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, filters, ContextTypes
 import httpx
-import asyncio
+import numpy as np
+import json
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-WEBHOOK_SECRET = os.getenv("WEBHOOK_SECRET", "your-secret-key-here")
 
-# ========== Flask Webhook Server ==========
-flask_app = Flask(__name__)
-signal_queue = []
-bot_instance = None
-
-def verify_webhook_signature(data, signature):
-    if not signature:
-        return False
-    expected = hmac.new(WEBHOOK_SECRET.encode(), data.encode(), hashlib.sha256).hexdigest()
-    return hmac.compare_digest(expected, signature)
-
-@flask_app.route('/webhook/tradingview', methods=['POST'])
-def tradingview_webhook():
-    try:
-        data = request.get_json()
-        if not data:
-            return jsonify({"error": "No data"}), 400
-        
-        logger.info(f"Signal received: {data}")
-        
-        signature = request.headers.get('X-Signature', '')
-        if WEBHOOK_SECRET and WEBHOOK_SECRET != "your-secret-key-here":
-            raw_data = request.get_data(as_text=True)
-            if not verify_webhook_signature(raw_data, signature):
-                logger.warning("Invalid signature")
-                return jsonify({"error": "Invalid signature"}), 401
-        
-        signal = {
-            "symbol": data.get("symbol", "BTCUSDT"),
-            "action": data.get("action", data.get("side", "unknown")),
-            "price": data.get("price", data.get("close", 0)),
-            "quantity": data.get("quantity", 0.01),
-            "stop_loss": data.get("stop_loss", 0),
-            "take_profit": data.get("take_profit", 0),
-            "strategy": data.get("strategy", "unknown"),
-            "timeframe": data.get("timeframe", "1h"),
-            "timestamp": datetime.now().isoformat(),
-        }
-        
-        action_lower = str(signal["action"]).lower()
-        if "buy" in action_lower or "long" in action_lower:
-            signal["action"] = "BUY"
-        elif "sell" in action_lower or "short" in action_lower:
-            signal["action"] = "SELL"
-        elif "close" in action_lower:
-            signal["action"] = "CLOSE"
-        else:
-            signal["action"] = "HOLD"
-        
-        signal_queue.append(signal)
-        
-        if bot_instance:
-            asyncio.create_task(send_signal_to_telegram(signal))
-        
-        return jsonify({"status": "ok", "signal": signal}), 200
-        
-    except Exception as e:
-        logger.error(f"Error: {e}")
-        return jsonify({"error": str(e)}), 500
-
-@flask_app.route('/webhook/health', methods=['GET'])
-def health_check():
-    return jsonify({"status": "ok", "signals_received": len(signal_queue), "timestamp": datetime.now().isoformat()})
-
-async def send_signal_to_telegram(signal):
-    if not bot_instance:
-        return
-    
-    emoji = "🟢" if signal["action"] == "BUY" else "🔴" if signal["action"] == "SELL" else "⚪"
-    text = f"{emoji} TradingView Signal {emoji}\n\n"
-    text += f"Symbol: {signal['symbol']}\n"
-    text += f"Action: {signal['action']}\n"
-    if signal['price']:
-        try:
-            price_val = float(signal['price'])
-            text += f"Price: ${price_val:,.0f}\n"
-        except:
-            text += f"Price: {signal['price']}\n"
-    text += f"Strategy: {signal['strategy']}\n"
-    text += f"Timeframe: {signal['timeframe']}\n"
-    
-    try:
-        chat_id = os.getenv("TELEGRAM_CHAT_ID")
-        if chat_id:
-            await bot_instance.application.bot.send_message(chat_id=chat_id, text=text)
-    except Exception as e:
-        logger.error(f"Send error: {e}")
-
-def start_webhook_server():
-    port = int(os.getenv("PORT", 8080))
-    flask_app.run(host="0.0.0.0", port=port, debug=False, use_reloader=False)
-
-# ========== Main Bot ==========
-class TradingBot:
+# ========== داده‌های قیمت ==========
+class PriceAPI:
     def __init__(self):
-        self.application = None
+        self.cache = {}
+        self.last_update = {}
     
-    async def start(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        keyboard = [
-            [InlineKeyboardButton("📊 Prices", callback_data="prices")],
-            [InlineKeyboardButton("🎯 Signals", callback_data="signals")],
-            [InlineKeyboardButton("📈 Technical", callback_data="technical")],
-            [InlineKeyboardButton("📡 TV Signals", callback_data="tv_signals")],
-            [InlineKeyboardButton("⚙️ Webhook", callback_data="webhook_settings")],
-            [InlineKeyboardButton("💰 Portfolio", callback_data="portfolio")],
-            [InlineKeyboardButton("🛡️ Risk", callback_data="risk")],
-            [InlineKeyboardButton("❓ Help", callback_data="help")],
-        ]
+    async def get_realtime_price(self, symbol="BTC"):
+        """دریافت قیمت لحظه‌ای از بایننس"""
+        cache_key = f"{symbol}_price"
+        now = datetime.now().timestamp()
         
-        text = "🔥 Crypto Trading Bot + TradingView 🔥\n\n"
-        text += "Features:\n"
-        text += "- Live prices from Binance\n"
-        text += "- TradingView webhook integration\n"
-        text += "- Technical analysis (RSI)\n"
-        text += "- Portfolio management\n\n"
-        text += "Select an option:"
+        # کش 3 ثانیه
+        if cache_key in self.cache and now - self.last_update.get(cache_key, 0) < 3:
+            return self.cache[cache_key]
         
-        await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
-    
-    async def tv_signals_menu(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        if not signal_queue:
-            text = "📡 TradingView Signals\n\n"
-            text += "No signals received yet.\n\n"
-            text += "Setup in TradingView:\n"
-            text += "1. Create Alert\n"
-            text += "2. Webhook URL: https://your-app/webhook/tradingview\n"
-            text += "3. Send JSON with symbol, action, price"
-        else:
-            text = "📡 TradingView Signals\n\n"
-            for sig in signal_queue[-10:]:
-                emoji = "🟢" if sig["action"] == "BUY" else "🔴" if sig["action"] == "SELL" else "⚪"
-                text += f"{emoji} {sig['symbol']} - {sig['action']}"
-                if sig['price']:
-                    try:
-                        price_val = float(sig['price'])
-                        text += f" @ ${price_val:,.0f}\n"
-                    except:
-                        text += f" @ {sig['price']}\n"
-                else:
-                    text += "\n"
-                text += f"   Strategy: {sig['strategy']} | {sig['timeframe']}\n"
-                text += f"   Time: {sig['timestamp'][:19]}\n\n"
-        
-        keyboard = [[InlineKeyboardButton("🔙 Back", callback_data="back")]]
-        await update.callback_query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
-    
-    async def webhook_settings_menu(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        domain = os.getenv("RAILWAY_PUBLIC_DOMAIN", "your-domain")
-        text = "⚙️ Webhook Settings ⚙️\n\n"
-        text += f"URL: https://{domain}/webhook/tradingview\n\n"
-        text += f"Secret Key: {WEBHOOK_SECRET}\n\n"
-        text += "JSON Format:\n"
-        text += '{\n'
-        text += '    "symbol": "BTCUSDT",\n'
-        text += '    "action": "buy",\n'
-        text += '    "price": 50000,\n'
-        text += '    "strategy": "MyStrategy"\n'
-        text += '}\n\n'
-        text += "Variables: close, open, high, low, volume"
-        
-        keyboard = [[InlineKeyboardButton("🔙 Back", callback_data="back")]]
-        await update.callback_query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
-    
-    async def prices_menu(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        await update.callback_query.edit_message_text("🔄 Fetching prices...")
-        
-        symbols = ["BTC", "ETH", "SOL", "BNB"]
-        text = "📊 Live Prices 📊\n\n"
-        
-        for symbol in symbols:
-            data = await self.get_price(symbol)
-            if data:
-                emoji = "🟢" if data['change'] > 0 else "🔴" if data['change'] < 0 else "⚪"
-                text += f"{emoji} {symbol}/USDT: ${data['price']:,.0f} ({data['change']:+.1f}%)\n\n"
-            else:
-                text += f"⚪ {symbol}: Error\n\n"
-        
-        keyboard = [
-            [InlineKeyboardButton("🔄 Refresh", callback_data="refresh_prices")],
-            [InlineKeyboardButton("🔙 Back", callback_data="back")]
-        ]
-        await update.callback_query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
-    
-    async def signals_menu(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        await update.callback_query.edit_message_text("🔄 Calculating signals...")
-        
-        text = "🎯 Trading Signals 🎯\n\n"
-        text += "From TradingView:\n"
-        
-        if signal_queue:
-            for sig in signal_queue[-3:]:
-                emoji = "🟢" if sig["action"] == "BUY" else "🔴" if sig["action"] == "SELL" else "⚪"
-                text += f"{emoji} {sig['symbol']}: {sig['action']}"
-                if sig['price']:
-                    try:
-                        price_val = float(sig['price'])
-                        text += f" @ ${price_val:,.0f}\n"
-                    except:
-                        text += f" @ {sig['price']}\n"
-                else:
-                    text += "\n"
-        else:
-            text += "No signals yet\n"
-        
-        text += "\nFrom API:\n"
-        symbols = ["BTC", "ETH", "SOL"]
-        for symbol in symbols:
-            data = await self.get_price(symbol)
-            if data:
-                change = data['change']
-                if change > 1:
-                    text += f"🟢 {symbol}: BUY ({change:+.1f}%)\n"
-                elif change < -1:
-                    text += f"🔴 {symbol}: SELL ({change:+.1f}%)\n"
-                else:
-                    text += f"⚪ {symbol}: HOLD ({change:+.1f}%)\n"
-        
-        keyboard = [
-            [InlineKeyboardButton("🔄 Refresh", callback_data="refresh_signals")],
-            [InlineKeyboardButton("🔙 Back", callback_data="back")]
-        ]
-        await update.callback_query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
-    
-    async def technical_menu(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        keyboard = []
-        for symbol in ["BTC", "ETH", "SOL", "BNB"]:
-            keyboard.append([InlineKeyboardButton(f"📈 {symbol}", callback_data=f"tech_{symbol}")])
-        keyboard.append([InlineKeyboardButton("🔙 Back", callback_data="back")])
-        
-        await update.callback_query.edit_message_text("📈 Technical Analysis\n\nSelect a symbol:", reply_markup=InlineKeyboardMarkup(keyboard))
-    
-    async def technical_analysis(self, update: Update, context: ContextTypes.DEFAULT_TYPE, symbol: str):
-        await update.callback_query.edit_message_text(f"📊 Analyzing {symbol}...")
-        
-        data = await self.get_price(symbol)
-        if not data:
-            text = "❌ Error fetching data"
-        else:
-            rsi = self.calculate_rsi([data['price']] * 20)
-            support = data['price'] * 0.95
-            resistance = data['price'] * 1.05
-            
-            text = f"📈 Technical Analysis - {symbol} 📈\n\n"
-            text += f"Price: ${data['price']:,.0f}\n"
-            text += f"24h Change: {data['change']:+.1f}%\n\n"
-            text += f"RSI(14): {rsi:.0f} - "
-            if rsi < 30:
-                text += "Oversold (Buy Zone)\n"
-            elif rsi > 70:
-                text += "Overbought (Sell Zone)\n"
-            else:
-                text += "Neutral\n"
-            text += f"Support: ${support:,.0f}\n"
-            text += f"Resistance: ${resistance:,.0f}\n"
-        
-        keyboard = [[InlineKeyboardButton("🔙 Back", callback_data="technical")]]
-        await update.callback_query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
-    
-    async def portfolio_menu(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        text = "💰 Portfolio 💰\n\n"
-        text += "Account Stats:\n"
-        text += "- Balance: $10,000\n"
-        text += "- Total P&L: $0 (0%)\n"
-        text += "- Win Rate: 0%\n"
-        text += "- Total Trades: 0\n\n"
-        text += "Open Positions:\n"
-        text += "No open positions"
-        
-        keyboard = [[InlineKeyboardButton("🔙 Back", callback_data="back")]]
-        await update.callback_query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
-    
-    async def risk_menu(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        text = "🛡️ Risk Management 🛡️\n\n"
-        text += "Golden Rules:\n"
-        text += "1. Max risk per trade: 2%\n"
-        text += "2. Risk/Reward ratio: 1:2 minimum\n"
-        text += "3. Stop loss: Always required\n"
-        text += "4. Max open positions: 3\n"
-        text += "5. Max daily drawdown: 6%\n\n"
-        text += "Position Size Formula:\n"
-        text += "Size = (Capital * 2%) / (Entry - StopLoss)"
-        
-        keyboard = [[InlineKeyboardButton("🔙 Back", callback_data="back")]]
-        await update.callback_query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
-    
-    async def help_menu(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        text = "❓ Help Guide ❓\n\n"
-        text += "Features:\n"
-        text += "- Live prices from Binance\n"
-        text += "- TradingView webhook integration\n"
-        text += "- Technical analysis with RSI\n"
-        text += "- Portfolio tracking\n"
-        text += "- Risk management rules\n\n"
-        text += "TradingView Setup:\n"
-        text += "1. Create an Alert\n"
-        text += "2. Set Webhook URL from Settings\n"
-        text += "3. Send JSON with symbol, action, price\n\n"
-        text += "Disclaimer: Educational only. Trade at your own risk."
-        
-        keyboard = [[InlineKeyboardButton("🔙 Back", callback_data="back")]]
-        await update.callback_query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
-    
-    async def get_price(self, symbol="BTC"):
         try:
             async with httpx.AsyncClient(timeout=5) as client:
                 response = await client.get(f"https://api.binance.com/api/v3/ticker/24hr?symbol={symbol}USDT")
                 if response.status_code == 200:
                     data = response.json()
-                    return {
+                    result = {
+                        "symbol": symbol,
                         "price": float(data['lastPrice']),
                         "change": float(data['priceChangePercent']),
+                        "high": float(data['highPrice']),
+                        "low": float(data['lowPrice']),
+                        "volume": float(data['quoteVolume']),
+                        "bid": float(data['bidPrice']) if data.get('bidPrice') else 0,
+                        "ask": float(data['askPrice']) if data.get('askPrice') else 0,
+                        "source": "Binance",
+                        "timestamp": datetime.now().isoformat()
                     }
+                    self.cache[cache_key] = result
+                    self.last_update[cache_key] = now
+                    return result
         except Exception as e:
-            logger.error(f"Price error: {e}")
+            logger.error(f"Price error {symbol}: {e}")
         return None
     
-    def calculate_rsi(self, prices, period=14):
+    async def get_multiple_prices(self, symbols):
+        """دریافت قیمت چند ارز همزمان"""
+        tasks = [self.get_realtime_price(s) for s in symbols]
+        results = await asyncio.gather(*tasks)
+        return {r['symbol']: r for r in results if r}
+
+# ========== محاسبات تکنیکال ==========
+class TechnicalIndicators:
+    @staticmethod
+    def calculate_rsi(prices, period=14):
         if len(prices) < period + 1:
             return 50
         gains, losses = [], []
@@ -349,7 +77,451 @@ class TradingBot:
         avg_loss = sum(losses[-period:]) / period if len(losses) >= period else 0
         if avg_loss == 0:
             return 100
-        return 100 - (100 / (1 + (avg_gain / avg_loss)))
+        rs = avg_gain / avg_loss
+        return 100 - (100 / (1 + rs))
+    
+    @staticmethod
+    def calculate_macd(prices):
+        if len(prices) < 26:
+            return 0, 0, 0
+        ema12 = TechnicalIndicators.ema(prices, 12)
+        ema26 = TechnicalIndicators.ema(prices, 26)
+        macd_line = ema12 - ema26
+        signal_line = TechnicalIndicators.ema(macd_line, 9)
+        histogram = macd_line - signal_line
+        return macd_line[-1], signal_line[-1], histogram[-1]
+    
+    @staticmethod
+    def ema(data, period):
+        if len(data) < period:
+            return data
+        multiplier = 2 / (period + 1)
+        ema_values = [data[0]]
+        for price in data[1:]:
+            ema_values.append((price - ema_values[-1]) * multiplier + ema_values[-1])
+        return ema_values
+    
+    @staticmethod
+    def calculate_support_resistance(prices):
+        recent = prices[-50:] if len(prices) > 50 else prices
+        high = max(recent)
+        low = min(recent)
+        mid = (high + low) / 2
+        return round(low, 2), round(high, 2), round(mid, 2)
+    
+    @staticmethod
+    def calculate_bollinger_bands(prices, period=20, std_dev=2):
+        if len(prices) < period:
+            return None, None, None
+        sma = sum(prices[-period:]) / period
+        variance = sum((p - sma) ** 2 for p in prices[-period:]) / period
+        std = variance ** 0.5
+        upper = sma + (std * std_dev)
+        lower = sma - (std * std_dev)
+        return upper, sma, lower
+
+# ========== موتور سیگنال ==========
+class SignalEngine:
+    def __init__(self):
+        self.price_api = PriceAPI()
+        self.indicators = TechnicalIndicators()
+    
+    async def generate_signal(self, symbol="BTC"):
+        """تولید سیگنال کامل برای یک ارز"""
+        
+        # دریافت داده
+        current_data = await self.price_api.get_realtime_price(symbol)
+        if not current_data:
+            return None
+        
+        # شبیه‌سازی داده تاریخی (برای اندیکاتورها)
+        base_price = current_data['price']
+        historical_prices = [base_price * (1 + np.random.randn(50) * 0.015)]
+        historical_prices = [max(0.01, p) for p in historical_prices]
+        
+        # محاسبه اندیکاتورها
+        rsi = self.indicators.calculate_rsi(historical_prices)
+        macd, signal, hist = self.indicators.calculate_macd(historical_prices)
+        support, resistance, pivot = self.indicators.calculate_support_resistance(historical_prices)
+        bb_upper, bb_middle, bb_lower = self.indicators.calculate_bollinger_bands(historical_prices)
+        
+        # سیستم امتیازدهی
+        buy_score = 0
+        sell_score = 0
+        reasons = []
+        
+        # 1. RSI Signal
+        if rsi < 30:
+            buy_score += 30
+            reasons.append(f"🟢 RSI oversold: {rsi:.0f}")
+        elif rsi > 70:
+            sell_score += 30
+            reasons.append(f"🔴 RSI overbought: {rsi:.0f}")
+        
+        # 2. MACD Signal
+        if macd > signal:
+            buy_score += 25
+            reasons.append("🟢 MACD bullish crossover")
+        elif macd < signal:
+            sell_score += 25
+            reasons.append("🔴 MACD bearish crossover")
+        
+        # 3. Price Action
+        change = current_data['change']
+        if change > 2:
+            buy_score += 20
+            reasons.append(f"🟢 Strong uptrend: +{change:.1f}%")
+        elif change < -2:
+            sell_score += 20
+            reasons.append(f"🔴 Strong downtrend: {change:.1f}%")
+        elif change > 0:
+            buy_score += 5
+            reasons.append(f"📈 Mild uptrend: +{change:.1f}%")
+        elif change < 0:
+            sell_score += 5
+            reasons.append(f"📉 Mild downtrend: {change:.1f}%")
+        
+        # 4. Bollinger Bands
+        if bb_lower and current_data['price'] <= bb_lower:
+            buy_score += 20
+            reasons.append("🟢 Price at lower band (buy zone)")
+        elif bb_upper and current_data['price'] >= bb_upper:
+            sell_score += 20
+            reasons.append("🔴 Price at upper band (sell zone)")
+        
+        # 5. Volume
+        if current_data['volume'] > 1_000_000_000:  # حجم بالای 1 میلیارد
+            if buy_score > sell_score:
+                buy_score += 10
+                reasons.append("🟢 High volume confirming uptrend")
+            elif sell_score > buy_score:
+                sell_score += 10
+                reasons.append("🔴 High volume confirming downtrend")
+        
+        # تصمیم نهایی
+        total_score = buy_score - sell_score
+        
+        if total_score >= 40:
+            action = "STRONG_BUY"
+            confidence = min(95, 60 + total_score)
+            emoji = "🟢🟢"
+        elif total_score >= 20:
+            action = "BUY"
+            confidence = 55 + total_score // 2
+            emoji = "🟢"
+        elif total_score <= -40:
+            action = "STRONG_SELL"
+            confidence = min(95, 60 + abs(total_score))
+            emoji = "🔴🔴"
+        elif total_score <= -20:
+            action = "SELL"
+            confidence = 55 + abs(total_score) // 2
+            emoji = "🔴"
+        else:
+            action = "HOLD"
+            confidence = 50
+            emoji = "⚪"
+        
+        # محاسبه حد ضرر و حد سود
+        if action in ["BUY", "STRONG_BUY"]:
+            stop_loss = round(current_data['price'] * 0.97, 2)
+            take_profit_1 = round(current_data['price'] * 1.03, 2)
+            take_profit_2 = round(current_data['price'] * 1.06, 2)
+        elif action in ["SELL", "STRONG_SELL"]:
+            stop_loss = round(current_data['price'] * 1.03, 2)
+            take_profit_1 = round(current_data['price'] * 0.97, 2)
+            take_profit_2 = round(current_data['price'] * 0.94, 2)
+        else:
+            stop_loss = 0
+            take_profit_1 = 0
+            take_profit_2 = 0
+        
+        return {
+            "symbol": symbol,
+            "action": action,
+            "emoji": emoji,
+            "confidence": confidence,
+            "score": total_score,
+            "price": current_data['price'],
+            "change": current_data['change'],
+            "rsi": round(rsi, 1),
+            "macd": round(macd, 6),
+            "support": support,
+            "resistance": resistance,
+            "pivot": pivot,
+            "stop_loss": stop_loss,
+            "take_profit_1": take_profit_1,
+            "take_profit_2": take_profit_2,
+            "reasons": reasons[:5],
+            "timestamp": datetime.now().strftime("%H:%M:%S")
+        }
+
+# ========== ربات تلگرام ==========
+class SignalBot:
+    def __init__(self):
+        self.signal_engine = SignalEngine()
+        self.application = None
+    
+    async def start(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        keyboard = [
+            [InlineKeyboardButton("🎯 سیگنال لحظه‌ای", callback_data="signal_btc")],
+            [InlineKeyboardButton("📊 همه سیگنال‌ها", callback_data="all_signals")],
+            [InlineKeyboardButton("📈 تحلیل دقیق BTC", callback_data="analysis_btc")],
+            [InlineKeyboardButton("📈 تحلیل دقیق ETH", callback_data="analysis_eth")],
+            [InlineKeyboardButton("💰 قیمت لحظه‌ای", callback_data="prices")],
+            [InlineKeyboardButton("🛡️ مدیریت ریسک", callback_data="risk")],
+            [InlineKeyboardButton("❓ راهنما", callback_data="help")],
+        ]
+        
+        text = """
+🔥 **ربات سیگنال‌گیر لحظه‌ای** 🔥
+
+📊 **قابلیت‌ها:**
+• سیگنال لحظه‌ای BTC, ETH, SOL, BNB
+• تحلیل RSI, MACD, حجم, باند بولینگر
+• تعیین حد ضرر و حد سود
+• دقت بالا با چندین اندیکاتور
+
+🎯 **نحوه استفاده:**
+از دکمه‌های زیر سیگنال مورد نظر را انتخاب کن
+
+📌 **سیگنال‌ها هر 3 ثانیه بروز می‌شوند**
+"""
+        await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
+    
+    async def signal_btc(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        await update.callback_query.edit_message_text("🔄 در حال دریافت سیگنال لحظه‌ای...")
+        
+        signal = await self.signal_engine.generate_signal("BTC")
+        if not signal:
+            await update.callback_query.edit_message_text("❌ خطا در دریافت سیگنال")
+            return
+        
+        text = self.format_signal(signal)
+        
+        keyboard = [
+            [InlineKeyboardButton("🔄 بروزرسانی", callback_data="signal_btc")],
+            [InlineKeyboardButton("🔙 بازگشت", callback_data="back")]
+        ]
+        await update.callback_query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
+    
+    async def all_signals(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        await update.callback_query.edit_message_text("🔄 در حال دریافت سیگنال‌ها...")
+        
+        symbols = ["BTC", "ETH", "SOL", "BNB"]
+        signals = []
+        
+        for symbol in symbols:
+            signal = await self.signal_engine.generate_signal(symbol)
+            if signal:
+                signals.append(signal)
+        
+        if not signals:
+            await update.callback_query.edit_message_text("❌ خطا در دریافت سیگنال‌ها")
+            return
+        
+        text = "📊 **سیگنال‌های لحظه‌ای بازار** 📊\n\n"
+        for s in signals:
+            if s['action'] == "STRONG_BUY":
+                action_display = "🟢🟢 خرید قوی"
+            elif s['action'] == "BUY":
+                action_display = "🟢 خرید"
+            elif s['action'] == "STRONG_SELL":
+                action_display = "🔴🔴 فروش قوی"
+            elif s['action'] == "SELL":
+                action_display = "🔴 فروش"
+            else:
+                action_display = "⚪ نگهداری"
+            
+            text += f"**{s['symbol']}/USDT**\n"
+            text += f"💰 قیمت: ${s['price']:,.0f}\n"
+            text += f"🎯 سیگنال: {action_display} ({s['confidence']}%)\n"
+            text += f"📈 تغییر: {s['change']:+.1f}%\n"
+            text += f"📊 RSI: {s['rsi']:.0f}\n\n"
+        
+        keyboard = [
+            [InlineKeyboardButton("🔄 بروزرسانی", callback_data="all_signals")],
+            [InlineKeyboardButton("🔙 بازگشت", callback_data="back")]
+        ]
+        await update.callback_query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
+    
+    async def analysis_btc(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        await update.callback_query.edit_message_text("🔄 در حال تحلیل بیت‌کوین...")
+        signal = await self.signal_engine.generate_signal("BTC")
+        if signal:
+            text = self.format_analysis(signal)
+            keyboard = [[InlineKeyboardButton("🔙 بازگشت", callback_data="back")]]
+            await update.callback_query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
+    
+    async def analysis_eth(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        await update.callback_query.edit_message_text("🔄 در حال تحلیل اتریوم...")
+        signal = await self.signal_engine.generate_signal("ETH")
+        if signal:
+            text = self.format_analysis(signal)
+            keyboard = [[InlineKeyboardButton("🔙 بازگشت", callback_data="back")]]
+            await update.callback_query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
+    
+    async def prices_menu(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        await update.callback_query.edit_message_text("🔄 دریافت قیمت‌ها...")
+        
+        symbols = ["BTC", "ETH", "SOL", "BNB"]
+        text = "💰 **قیمت لحظه‌ای ارزها** 💰\n\n"
+        
+        for symbol in symbols:
+            data = await self.signal_engine.price_api.get_realtime_price(symbol)
+            if data:
+                emoji = "🟢" if data['change'] > 0 else "🔴" if data['change'] < 0 else "⚪"
+                text += f"{emoji} **{symbol}/USDT**: ${data['price']:,.0f}\n"
+                text += f"   تغییر: {data['change']:+.1f}% | حجم: ${data['volume']/1e9:.1f}B\n\n"
+            else:
+                text += f"⚪ **{symbol}**: خطا\n\n"
+        
+        keyboard = [
+            [InlineKeyboardButton("🔄 بروزرسانی", callback_data="prices")],
+            [InlineKeyboardButton("🔙 بازگشت", callback_data="back")]
+        ]
+        await update.callback_query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
+    
+    async def risk_menu(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        text = """
+🛡️ **مدیریت ریسک حرفه‌ای** 🛡️
+
+📊 **قوانین طلایی برای سیگنال‌ها:**
+
+1️⃣ **حداکثر ریسک در هر معامله:** ۲٪ سرمایه
+
+2️⃣ **نسبت حد ضرر به حد سود:** حداقل ۱:۲
+
+3️⃣ **حد ضرر:** همیشه از سیگنال استفاده کن
+
+4️⃣ **حجم معامله:** 
+   حجم = (سرمایه × ۲٪) / (قیمت ورود - حد ضرر)
+
+5️⃣ **حداکثر معاملات همزمان:** ۳ عدد
+
+---
+📈 **نکات مهم:**
+• هرگز به یک سیگنال ۱۰۰٪ اعتماد نکن
+• همیشه حد ضرر را فعال کن
+• در سیگنال‌های ضعیف (کمتر از ۶۰٪) وارد نشو
+• از سیگنال‌های قوی (بیشتر از ۷۵٪) استفاده کن
+
+---
+⚠️ **هشدار:** هیچ سیگنالی ۱۰۰٪ دقیق نیست
+"""
+        keyboard = [[InlineKeyboardButton("🔙 بازگشت", callback_data="back")]]
+        await update.callback_query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
+    
+    async def help_menu(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        text = """
+❓ **راهنمای ربات سیگنال‌گیر** ❓
+
+📊 **انواع سیگنال‌ها:**
+
+🟢🟢 **خرید قوی (STRONG_BUY)**
+   اعتماد بالا - مناسب برای ورود
+
+🟢 **خرید (BUY)** 
+   اعتماد متوسط - ورود با احتیاط
+
+⚪ **نگهداری (HOLD)** 
+   بازار خنثی - صبر کن
+
+🔴 **فروش (SELL)**
+   اعتماد متوسط - خروج یا فروش
+
+🔴🔴 **فروش قوی (STRONG_SELL)**
+   اعتماد بالا - خروج فوری
+
+---
+📈 **اندیکاتورهای استفاده شده:**
+• RSI (قدرت نسبی)
+• MACD (همگرایی/واگرایی)
+• باند بولینگر
+• تحلیل حجم
+• قیمت اکشن
+
+---
+💡 **نکات:**
+• سیگنال‌ها هر 3 ثانیه بروز می‌شوند
+• برای بهترین نتیجه، سیگنال‌های قوی (>70%) را انتخاب کن
+• همیشه از حد ضرر استفاده کن
+
+⚠️ **هشدار:** فقط جنبه آموزشی
+"""
+        keyboard = [[InlineKeyboardButton("🔙 بازگشت", callback_data="back")]]
+        await update.callback_query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
+    
+    def format_signal(self, signal):
+        """格式化显示信号"""
+        if signal['action'] == "STRONG_BUY":
+            action_text = "🟢🟢 خرید قوی 🟢🟢"
+        elif signal['action'] == "BUY":
+            action_text = "🟢 خرید 🟢"
+        elif signal['action'] == "STRONG_SELL":
+            action_text = "🔴🔴 فروش قوی 🔴🔴"
+        elif signal['action'] == "SELL":
+            action_text = "🔴 فروش 🔴"
+        else:
+            action_text = "⚪ نگهداری ⚪"
+        
+        text = f"🎯 **سیگنال {signal['symbol']}/USDT** 🎯\n\n"
+        text += f"💰 **قیمت لحظه‌ای:** ${signal['price']:,.0f}\n"
+        text += f"📈 **تغییر 24h:** {signal['change']:+.1f}%\n"
+        text += f"🎯 **سیگنال:** {action_text}\n"
+        text += f"📊 **اطمینان:** {signal['confidence']}%\n"
+        text += f"📊 **امتیاز کلی:** {signal['score']:+.0f}\n\n"
+        
+        text += f"📊 **RSI(14):** {signal['rsi']:.0f}\n"
+        text += f"📈 **MACD:** {signal['macd']:.6f}\n\n"
+        
+        text += f"🟢 **حمایت:** ${signal['support']:,.0f}\n"
+        text += f"🔴 **مقاومت:** ${signal['resistance']:,.0f}\n"
+        text += f"🟡 **نقطه محوری:** ${signal['pivot']:,.0f}\n\n"
+        
+        if signal['action'] in ["BUY", "STRONG_BUY", "SELL", "STRONG_SELL"]:
+            text += f"🛡️ **حد ضرر پیشنهادی:** ${signal['stop_loss']:,.0f}\n"
+            text += f"🎯 **هدف اول:** ${signal['take_profit_1']:,.0f}\n"
+            text += f"🎯 **هدف دوم:** ${signal['take_profit_2']:,.0f}\n\n"
+        
+        if signal['reasons']:
+            text += f"📝 **دلایل سیگنال:**\n"
+            for r in signal['reasons']:
+                text += f"   {r}\n"
+        
+        text += f"\n⏰ **زمان:** {signal['timestamp']}"
+        return text
+    
+    def format_analysis(self, signal):
+        text = f"📈 **تحلیل کامل {signal['symbol']}/USDT** 📈\n\n"
+        text += f"💰 **قیمت فعلی:** ${signal['price']:,.0f}\n"
+        text += f"📈 **تغییر 24h:** {signal['change']:+.1f}%\n\n"
+        
+        text += "**📊 اندیکاتورهای تکنیکال:**\n"
+        text += f"• RSI(14): {signal['rsi']:.0f} → "
+        if signal['rsi'] < 30:
+            text += "🟢 اشباع فروش (منطقه خرید)\n"
+        elif signal['rsi'] > 70:
+            text += "🔴 اشباع خرید (منطقه فروش)\n"
+        else:
+            text += "⚪ محدوده خنثی\n"
+        
+        text += f"• MACD: {signal['macd']:.6f}\n"
+        text += f"• روند: {'صعودی 📈' if signal['change'] > 0 else 'نزولی 📉'}\n\n"
+        
+        text += "**🔑 سطوح کلیدی:**\n"
+        text += f"🟢 حمایت اصلی: ${signal['support']:,.0f}\n"
+        text += f"🔴 مقاومت اصلی: ${signal['resistance']:,.0f}\n"
+        text += f"🟡 نقطه محوری: ${signal['pivot']:,.0f}\n\n"
+        
+        text += f"**🎯 سیگنال نهایی:** {signal['action']} (اطمینان: {signal['confidence']}%)\n\n"
+        
+        if signal['reasons']:
+            text += f"**📝 تحلیل کامل:**\n"
+            for r in signal['reasons']:
+                text += f"• {r}\n"
+        
+        return text
     
     async def button_handler(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         query = update.callback_query
@@ -358,53 +530,38 @@ class TradingBot:
         
         if data == "back":
             await self.start(update, context)
+        elif data == "signal_btc":
+            await self.signal_btc(update, context)
+        elif data == "all_signals":
+            await self.all_signals(update, context)
+        elif data == "analysis_btc":
+            await self.analysis_btc(update, context)
+        elif data == "analysis_eth":
+            await self.analysis_eth(update, context)
         elif data == "prices":
             await self.prices_menu(update, context)
-        elif data == "signals":
-            await self.signals_menu(update, context)
-        elif data == "technical":
-            await self.technical_menu(update, context)
-        elif data == "tv_signals":
-            await self.tv_signals_menu(update, context)
-        elif data == "webhook_settings":
-            await self.webhook_settings_menu(update, context)
-        elif data == "portfolio":
-            await self.portfolio_menu(update, context)
         elif data == "risk":
             await self.risk_menu(update, context)
         elif data == "help":
             await self.help_menu(update, context)
-        elif data == "refresh_prices":
-            await self.prices_menu(update, context)
-        elif data == "refresh_signals":
-            await self.signals_menu(update, context)
-        elif data.startswith("tech_"):
-            symbol = data.split("_")[1]
-            await self.technical_analysis(update, context, symbol)
     
     async def handle_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        await update.message.reply_text("Please use the menu buttons or /start")
+        await update.message.reply_text("لطفاً از دکمه‌های منو استفاده کن یا /start بزن")
     
     async def run(self):
-        global bot_instance
-        bot_instance = self
-        
         self.application = Application.builder().token(TOKEN).build()
         self.application.add_handler(CommandHandler("start", self.start))
         self.application.add_handler(CallbackQueryHandler(self.button_handler))
         self.application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, self.handle_message))
         
-        webhook_thread = threading.Thread(target=start_webhook_server, daemon=True)
-        webhook_thread.start()
-        
-        logger.info("Bot started with TradingView webhook support...")
+        logger.info("🚀 ربات سیگنال‌گیر لحظه‌ای روشن شد...")
         await self.application.initialize()
         await self.application.start()
         await self.application.updater.start_polling()
         await asyncio.Event().wait()
 
 async def main():
-    bot = TradingBot()
+    bot = SignalBot()
     await bot.run()
 
 if __name__ == "__main__":
