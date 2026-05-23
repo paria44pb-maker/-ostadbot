@@ -1,6 +1,5 @@
 import os
 import logging
-import asyncio
 import time
 import hmac
 import hashlib
@@ -19,7 +18,6 @@ TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 CHANNEL_ID = os.getenv("CHANNEL_ID", "@comedyclick")
 OWNER_ID = int(os.getenv("OWNER_ID", "0"))
-
 ACCESS_ID = os.getenv("COINEX_ACCESS_ID", "")
 SECRET_KEY = os.getenv("COINEX_SECRET_KEY", "")
 
@@ -33,6 +31,7 @@ SYMBOLS = {
     "DOGEUSDT": {"name": "داوج", "emoji": "🐕"},
 }
 
+# ---------------------------- توابع کوینکس ----------------------------
 def coinex_sign(method, request_path, body=""):
     timestamp = str(int(time.time() * 1000))
     prepared = method.upper() + request_path + timestamp + (body if body else "")
@@ -84,6 +83,7 @@ async def get_coinex_price(symbol):
         logger.error(f"Price error {symbol}: {e}")
     return None
 
+# ---------------------------- اندیکاتورها ----------------------------
 def calculate_rsi(prices, period=14):
     if len(prices) < period + 1:
         return 50
@@ -175,6 +175,7 @@ def generate_signal(price, change, rsi, macd, macd_signal):
     else:
         return "HOLD", "نگهداری ⚪", 50, ["بازار خنثی"]
 
+# ---------------------------- هوش مصنوعی ----------------------------
 async def groq_chat(prompt):
     if not GROQ_API_KEY:
         return "⚠️ Groq API تنظیم نشده است."
@@ -191,7 +192,8 @@ async def groq_chat(prompt):
         logger.error(f"Groq error: {e}")
     return "خطا در ارتباط با هوش مصنوعی."
 
-async def auto_signal_job(app):
+# ---------------------------- تابع ارسال خودکار (با JobQueue) ----------------------------
+async def auto_signal_job(context: ContextTypes.DEFAULT_TYPE):
     if not CHANNEL_ID:
         return
     for symbol, info in list(SYMBOLS.items())[:3]:
@@ -232,17 +234,13 @@ async def auto_signal_job(app):
 ✨ @comedyclick
 """
         try:
-            await app.bot.send_message(chat_id=CHANNEL_ID, text=msg, parse_mode="Markdown")
+            await context.bot.send_message(chat_id=CHANNEL_ID, text=msg, parse_mode="Markdown")
             logger.info(f"Auto signal sent for {symbol}")
             await asyncio.sleep(3)
         except Exception as e:
             logger.error(f"Failed to send {symbol}: {e}")
 
-async def auto_signal_loop(app):
-    while True:
-        await asyncio.sleep(300)
-        await auto_signal_job(app)
-
+# ---------------------------- منوی ربات ----------------------------
 def get_main_menu():
     keyboard = [
         [InlineKeyboardButton("📊 قیمت لحظه‌ای", callback_data="prices")],
@@ -386,15 +384,21 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.answer()
         await query.edit_message_text("در حال توسعه...")
 
+# ---------------------------- اجرای اصلی (با JobQueue) ----------------------------
 def main():
     app = Application.builder().token(TOKEN).build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CallbackQueryHandler(button_handler))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
-    asyncio.create_task(auto_signal_loop(app))
+    # راه‌اندازی JobQueue برای ارسال خودکار هر 5 دقیقه
+    if app.job_queue:
+        app.job_queue.run_repeating(auto_signal_job, interval=300, first=10)
+        logger.info("⏰ تایمر ۵ دقیقه با JobQueue فعال شد.")
+    else:
+        logger.error("❌ JobQueue در دسترس نیست. لطفاً کتابخانه را با [job-queue] نصب کنید.")
 
-    logger.info("🚀 ربات بدون نقص راه‌اندازی شد (تایمر ۵ دقیقه).")
+    logger.info("🚀 ربات حرفه‌ای راه‌اندازی شد.")
     app.run_polling()
 
 if __name__ == "__main__":
