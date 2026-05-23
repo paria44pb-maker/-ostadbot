@@ -4,7 +4,6 @@ import asyncio
 import threading
 import time
 import random
-import json
 import httpx
 from datetime import datetime
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
@@ -16,11 +15,11 @@ logger = logging.getLogger(__name__)
 
 # ---------------------------- متغیرهای محیطی ----------------------------
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-GROQ_API_KEY = os.getenv("GROQ_API_KEY")          # اختیاری (برای هوش مصنوعی)
+GROQ_API_KEY = os.getenv("GROQ_API_KEY")          # اختیاری
 CHANNEL_ID = os.getenv("CHANNEL_ID", "@comedyclick")
 OWNER_ID = int(os.getenv("OWNER_ID", "0"))
 
-# لیست ارزهای تحت پوشش (نام، ایموجی، حداقل سفارش)
+# لیست ارزهای تحت پوشش (نام، ایموجی)
 SYMBOLS = {
     "BTCUSDT": {"name": "بیت‌کوین", "emoji": "👑"},
     "ETHUSDT": {"name": "اتریوم", "emoji": "💎"},
@@ -60,7 +59,7 @@ async def get_historical_klines(symbol, limit=50):
             if resp.status_code == 200 and resp.json().get("code") == 0:
                 klines = resp.json()["data"]
                 # استخراج قیمت‌های بسته شدن
-                closes = [float(k[4]) for k in klines]  # هر کندل: [time, open, high, low, close, volume]
+                closes = [float(k[4]) for k in klines]
                 return closes
     except Exception as e:
         logger.error(f"Kline error {symbol}: {e}")
@@ -68,7 +67,6 @@ async def get_historical_klines(symbol, limit=50):
 
 # ---------------------------- اندیکاتورهای تکنیکال (بدون numpy) ----------------------------
 def calculate_ema(values, period):
-    """میانگین متحرک نمایی"""
     if len(values) < period:
         return values[-1] if values else 0
     multiplier = 2 / (period + 1)
@@ -78,7 +76,6 @@ def calculate_ema(values, period):
     return ema
 
 def calculate_rsi(closes, period=14):
-    """شاخص قدرت نسبی (RSI) از داده‌های کندل واقعی"""
     if len(closes) < period + 1:
         return 50
     gains, losses = [], []
@@ -98,7 +95,6 @@ def calculate_rsi(closes, period=14):
     return 100 - (100 / (1 + rs))
 
 def calculate_macd(closes, fast=12, slow=26, signal=9):
-    """MACD (line, signal, histogram) از داده‌های واقعی"""
     if len(closes) < slow + signal:
         return 0, 0, 0
     ema_fast = [calculate_ema(closes[:i+1], fast) for i in range(len(closes))]
@@ -109,7 +105,6 @@ def calculate_macd(closes, fast=12, slow=26, signal=9):
     return macd_line[-1], macd_signal[-1], macd_hist[-1]
 
 def calculate_bollinger(closes, period=20, std_dev=2):
-    """باند بولینگر (بالا، میانه، پایین)"""
     if len(closes) < period:
         return None, None, None
     sma = sum(closes[-period:]) / period
@@ -120,7 +115,6 @@ def calculate_bollinger(closes, period=20, std_dev=2):
     return upper, sma, lower
 
 def support_resistance(closes, lookback=50):
-    """سطح حمایت و مقاومت ساده از بالاترین و پایین‌ترین"""
     recent = closes[-lookback:]
     high = max(recent)
     low = min(recent)
@@ -132,7 +126,6 @@ def support_resistance(closes, lookback=50):
     return {"support": [s1, s2, low], "resistance": [r1, r2, high]}
 
 def detect_trap(change, volume, rsi):
-    """تشخیص تله گاوی/خرسی"""
     if change > 3 and volume > 10_000_000 and rsi > 70:
         return "⚠️ تله گاوی (خرید کاذب)"
     if change < -3 and volume > 10_000_000 and rsi < 30:
@@ -140,7 +133,6 @@ def detect_trap(change, volume, rsi):
     return "✅ بدون تله"
 
 def generate_signal(change, rsi, macd, macd_signal):
-    """سیگنال ترکیبی (قوی/متوسط/نگهداری)"""
     score = 0
     if rsi < 30:
         score += 30
@@ -165,7 +157,7 @@ def generate_signal(change, rsi, macd, macd_signal):
     else:
         return "نگهداری ⚪", 50
 
-# ---------------------------- هوش مصنوعی Groq (اختیاری) ----------------------------
+# ---------------------------- هوش مصنوعی Groq ----------------------------
 async def groq_analysis(symbol, price, change, rsi):
     if not GROQ_API_KEY:
         return None
@@ -183,11 +175,10 @@ async def groq_analysis(symbol, price, change, rsi):
         logger.error(f"Groq error: {e}")
     return None
 
-# ---------------------------- ارسال خودکار به کانال (در ترد جداگانه) ----------------------------
+# ---------------------------- ارسال خودکار سیگنال (در ترد جداگانه) ----------------------------
 auto_thread_running = True
 
 def auto_signal_thread(app):
-    """حلقه بی‌پایان در ترد جداگانه برای ارسال سیگنال هر ۵ دقیقه"""
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
     while auto_thread_running:
@@ -195,17 +186,15 @@ def auto_signal_thread(app):
         loop.run_until_complete(send_auto_signals(app))
 
 async def send_auto_signals(app):
-    """ارسال سیگنال برای ۳ ارز اول به کانال"""
     if not CHANNEL_ID:
         return
     for symbol, info in list(SYMBOLS.items())[:3]:
         price_data = await get_coinex_price(symbol)
         if not price_data:
             continue
-        # دریافت کندل‌های واقعی برای تحلیل
         closes = await get_historical_klines(symbol, limit=50)
         if not closes:
-            # fallback: شبیه‌سازی ساده
+            # fallback ساده برای مواقع قطعی API
             closes = [price_data["price"] * (1 + random.uniform(-0.01, 0.01)) for _ in range(50)]
         rsi = calculate_rsi(closes)
         macd, macd_signal, _ = calculate_macd(closes)
@@ -213,7 +202,6 @@ async def send_auto_signals(app):
         bb_upper, bb_mid, bb_lower = calculate_bollinger(closes)
         sr = support_resistance(closes)
         trap = detect_trap(price_data["change"], price_data["volume"], rsi)
-        # حد ضرر و هدف بر اساس باند بولینگر
         if "خرید" in signal:
             sl = bb_lower if bb_lower else price_data["price"] * 0.97
             tp1 = bb_mid if bb_mid else price_data["price"] * 1.02
@@ -239,17 +227,17 @@ async def send_auto_signals(app):
 """
         try:
             await app.bot.send_message(chat_id=CHANNEL_ID, text=msg, parse_mode="Markdown")
-            logger.info(f"✅ خودکار: {symbol} ارسال شد")
+            logger.info(f✅ خودکار: {symbol} ارسال شد)
             await asyncio.sleep(3)
         except Exception as e:
             logger.error(f"❌ خطا در ارسال {symbol}: {e}")
 
-# ---------------------------- منوی اصلی (بیش از ۱۰ دکمه) ----------------------------
+# ---------------------------- منوی اصلی (۱۲ دکمه) ----------------------------
 def get_main_menu():
     keyboard = [
         [InlineKeyboardButton("📊 قیمت لحظه‌ای", callback_data="prices")],
         [InlineKeyboardButton("🎯 سیگنال فوری (BTC)", callback_data="signal")],
-        [InlineKeyboardButton("📈 تحلیل تکنیکال پیشرفته", callback_data="technical")],
+        [InlineKeyboardButton("📈 تحلیل تکنیکال", callback_data="technical")],
         [InlineKeyboardButton("🧠 تحلیل هوش مصنوعی", callback_data="ai_analysis")],
         [InlineKeyboardButton("🐋 ردیابی نهنگ", callback_data="whale")],
         [InlineKeyboardButton("🛡️ مدیریت ریسک", callback_data="risk")],
@@ -331,7 +319,6 @@ async def technical_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data["waiting_technical"] = True
 
 async def technical_analysis(update: Update, context: ContextTypes.DEFAULT_TYPE, symbol_input):
-    # پیدا کردن نماد کامل
     symbol = None
     for sym in SYMBOLS:
         if symbol_input in sym or sym.startswith(symbol_input):
@@ -377,9 +364,17 @@ async def ai_analysis_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def ai_chat_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     prompt = update.message.text
     await update.message.reply_chat_action("typing")
-    analysis = await groq_analysis("BTC", 0, 0, 0)  # فعلاً ساده
-    if not analysis:
-        analysis = "⚠️ متأسفانه هوش مصنوعی در دسترس نیست. لطفاً بعداً تلاش کنید."
+    # فعلاً از یک تحلیل ساده برای بیت‌کوین استفاده می‌کنیم
+    data = await get_coinex_price("BTCUSDT")
+    if not data:
+        analysis = "⚠️ متأسفانه داده‌های بازار در دسترس نیست."
+    else:
+        closes = await get_historical_klines("BTCUSDT", 30)
+        if not closes:
+            closes = [data["price"] * (1 + random.uniform(-0.01, 0.01)) for _ in range(30)]
+        rsi = calculate_rsi(closes)
+        ai_text = await groq_analysis("BTC", data["price"], data["change"], rsi)
+        analysis = ai_text if ai_text else "⚠️ هوش مصنوعی در دسترس نیست."
     await update.message.reply_text(f"🧠 *تحلیل AI:*\n{analysis}", parse_mode="Markdown")
     context.user_data["waiting_ai"] = False
 
