@@ -21,11 +21,9 @@ GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 CHANNEL_ID = os.getenv("CHANNEL_ID", "@comedyclick")
 OWNER_ID = int(os.getenv("OWNER_ID", "0"))
 
-# ---------- تنظیمات کوینکس (نسخه صحیح API v2) ----------
 ACCESS_ID = os.getenv("COINEX_ACCESS_ID", "")
 SECRET_KEY = os.getenv("COINEX_SECRET_KEY", "")
 
-# ارزهای تحت پوشش (نماد، نام، ایموجی)
 SYMBOLS = {
     "BTCUSDT": {"name": "بیت‌کوین", "emoji": "👑"},
     "ETHUSDT": {"name": "اتریوم", "emoji": "💎"},
@@ -36,16 +34,14 @@ SYMBOLS = {
     "DOGEUSDT": {"name": "داوج", "emoji": "🐕"},
 }
 
-# ---------------------------- توابع صحیح کوینکس ----------------------------
+# ---------------------------- توابع کوینکس ----------------------------
 def coinex_sign(method, request_path, body=""):
-    """تولید امضا برای درخواست کوینکس (نسخه v2)"""
     timestamp = str(int(time.time() * 1000))
     prepared = method.upper() + request_path + timestamp + (body if body else "")
     signature = hmac.new(SECRET_KEY.encode(), prepared.encode(), hashlib.sha256).hexdigest().lower()
     return timestamp, signature
 
 async def coinex_request(method, path, body=None):
-    """ارسال درخواست به API کوینکس v2"""
     if not ACCESS_ID or not SECRET_KEY:
         return {"success": False, "error": "API Key تنظیم نشده"}
     url = f"https://api.coinex.com{path}"
@@ -73,7 +69,6 @@ async def coinex_request(method, path, body=None):
         return {"success": False, "error": str(e)}
 
 async def get_coinex_price(symbol):
-    """دریافت قیمت لحظه‌ای از کوینکس (مسیر عمومی ticker نیازی به امضا ندارد)"""
     try:
         async with httpx.AsyncClient(timeout=10) as client:
             url = f"https://api.coinex.com/v1/market/ticker?market={symbol}"
@@ -81,11 +76,11 @@ async def get_coinex_price(symbol):
             if resp.status_code == 200 and resp.json().get("code") == 0:
                 ticker = resp.json()["data"]["ticker"]
                 return {
-                    "price": float(ticker["last"]),
-                    "change": float(ticker["change"]),
-                    "volume": float(ticker["vol"]),
-                    "high": float(ticker["high"]),
-                    "low": float(ticker["low"])
+                    "price": float(ticker.get("last", 0)),
+                    "change": float(ticker.get("change", 0)),
+                    "volume": float(ticker.get("vol", 0)),
+                    "high": float(ticker.get("high", 0)),
+                    "low": float(ticker.get("low", 0))
                 }
     except Exception as e:
         logger.error(f"Price error {symbol}: {e}")
@@ -200,9 +195,8 @@ async def groq_chat(prompt):
         logger.error(f"Groq error: {e}")
     return "خطا در ارتباط با هوش مصنوعی."
 
-# ---------------------------- ارسال خودکار به کانال (هر ۵ دقیقه) ----------------------------
-async def auto_signal_job(context: ContextTypes.DEFAULT_TYPE):
-    """ارسال سیگنال برای ۳ ارز اول هر ۵ دقیقه"""
+# ---------------------------- ارسال خودکار به کانال (حلقه دستی بدون JobQueue) ----------------------------
+async def auto_signal_job(context):
     if not CHANNEL_ID:
         return
     for symbol, info in list(SYMBOLS.items())[:3]:
@@ -217,7 +211,6 @@ async def auto_signal_job(context: ContextTypes.DEFAULT_TYPE):
         sr = support_resistance(prices)
         trap = detect_trap(data["change"], data["volume"], rsi)
         signal, signal_fa, confidence, reasons = generate_signal(data["price"], data["change"], rsi, macd, macd_sig)
-        # محاسبه حد ضرر و تارگت
         if "STRONG_BUY" in signal or "BUY" in signal:
             sl = sr["support"][0]
             tp1, tp2 = sr["resistance"][0], sr["resistance"][1]
@@ -229,7 +222,7 @@ async def auto_signal_job(context: ContextTypes.DEFAULT_TYPE):
 
         msg = f"""
 ╔══════════════════════════════════════╗
-║   🔥 {info['emoji']} *{symbol.replace('USDT','')}* - سیگنال حرفه‌ایی 🔥   ║
+║   🔥 {info['emoji']} *{symbol.replace('USDT','')}* - سیگنال حرفه‌ای 🔥   ║
 ╚══════════════════════════════════════╝
 
 💰 قیمت: `${data['price']:,.2f}`
@@ -251,7 +244,12 @@ async def auto_signal_job(context: ContextTypes.DEFAULT_TYPE):
         except Exception as e:
             logger.error(f"Failed to send {symbol}: {e}")
 
-# ---------------------------- دکمه‌های منو ----------------------------
+async def auto_signal_loop(app):
+    while True:
+        await asyncio.sleep(300)  # ۵ دقیقه
+        await auto_signal_job(app)
+
+# ---------------------------- منوی ربات ----------------------------
 def get_main_menu():
     keyboard = [
         [InlineKeyboardButton("📊 قیمت لحظه‌ای", callback_data="prices")],
@@ -268,7 +266,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     await update.message.reply_text(
         "🔥 *ربات حرفه‌ای کریپتو* 🔥\n"
-        "✅ اتصال به کوینکس (v2)\n"
+        "✅ اتصال به کوینکس (v1 + v2)\n"
         "✅ تحلیل تکنیکال (RSI, MACD, EMA, حمایت/مقاومت)\n"
         "✅ تشخیص تله‌های بازار\n"
         "✅ سیگنال‌های خرید/فروش با حد ضرر و تارگت\n"
@@ -419,11 +417,10 @@ def main():
     app.add_handler(CallbackQueryHandler(button_handler))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
-    if app.job_queue:
-        app.job_queue.run_repeating(auto_signal_job, interval=300, first=10)
-        logger.info("⏰ تایمر ۵ دقیقه برای ارسال خودکار فعال شد.")
+    # راه‌اندازی حلقه خودکار بدون نیاز به JobQueue
+    asyncio.create_task(auto_signal_loop(app))
 
-    logger.info("🚀 ربات حرفه‌ای بدون نقص راه‌اندازی شد.")
+    logger.info("🚀 ربات حرفه‌ای بدون نقص راه‌اندازی شد (تایمر دستی ۵ دقیقه).")
     app.run_polling()
 
 if __name__ == "__main__":
