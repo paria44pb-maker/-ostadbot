@@ -12,7 +12,6 @@ from datetime import datetime
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, filters, ContextTypes
 
-# ---------------------------- تنظیمات اولیه ----------------------------
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
@@ -34,7 +33,6 @@ SYMBOLS = {
     "DOGEUSDT": {"name": "داوج", "emoji": "🐕"},
 }
 
-# ---------------------------- توابع کوینکس ----------------------------
 def coinex_sign(method, request_path, body=""):
     timestamp = str(int(time.time() * 1000))
     prepared = method.upper() + request_path + timestamp + (body if body else "")
@@ -86,7 +84,6 @@ async def get_coinex_price(symbol):
         logger.error(f"Price error {symbol}: {e}")
     return None
 
-# ---------------------------- اندیکاتورهای تکنیکال ----------------------------
 def calculate_rsi(prices, period=14):
     if len(prices) < period + 1:
         return 50
@@ -178,7 +175,6 @@ def generate_signal(price, change, rsi, macd, macd_signal):
     else:
         return "HOLD", "نگهداری ⚪", 50, ["بازار خنثی"]
 
-# ---------------------------- هوش مصنوعی Groq ----------------------------
 async def groq_chat(prompt):
     if not GROQ_API_KEY:
         return "⚠️ Groq API تنظیم نشده است."
@@ -195,15 +191,13 @@ async def groq_chat(prompt):
         logger.error(f"Groq error: {e}")
     return "خطا در ارتباط با هوش مصنوعی."
 
-# ---------------------------- ارسال خودکار به کانال (حلقه دستی بدون JobQueue) ----------------------------
-async def auto_signal_job(context):
+async def auto_signal_job(app):
     if not CHANNEL_ID:
         return
     for symbol, info in list(SYMBOLS.items())[:3]:
         data = await get_coinex_price(symbol)
         if not data:
             continue
-        # شبیه‌سازی داده تاریخی برای اندیکاتورها
         base = data["price"]
         prices = [base * (1 + np.random.randn(30) * 0.015) for _ in range(30)]
         rsi = calculate_rsi(prices)
@@ -238,7 +232,7 @@ async def auto_signal_job(context):
 ✨ @comedyclick
 """
         try:
-            await context.bot.send_message(chat_id=CHANNEL_ID, text=msg, parse_mode="Markdown")
+            await app.bot.send_message(chat_id=CHANNEL_ID, text=msg, parse_mode="Markdown")
             logger.info(f"Auto signal sent for {symbol}")
             await asyncio.sleep(3)
         except Exception as e:
@@ -246,10 +240,9 @@ async def auto_signal_job(context):
 
 async def auto_signal_loop(app):
     while True:
-        await asyncio.sleep(300)  # ۵ دقیقه
+        await asyncio.sleep(300)
         await auto_signal_job(app)
 
-# ---------------------------- منوی ربات ----------------------------
 def get_main_menu():
     keyboard = [
         [InlineKeyboardButton("📊 قیمت لحظه‌ای", callback_data="prices")],
@@ -266,13 +259,9 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     await update.message.reply_text(
         "🔥 *ربات حرفه‌ای کریپتو* 🔥\n"
-        "✅ اتصال به کوینکس (v1 + v2)\n"
-        "✅ تحلیل تکنیکال (RSI, MACD, EMA, حمایت/مقاومت)\n"
-        "✅ تشخیص تله‌های بازار\n"
-        "✅ سیگنال‌های خرید/فروش با حد ضرر و تارگت\n"
-        "✅ هوش مصنوعی Groq\n"
-        "⏰ ارسال خودکار به کانال هر ۵ دقیقه\n\n"
-        "از منوی زیر انتخاب کنید:",
+        "✅ اتصال به کوینکس\n✅ تحلیل تکنیکال (RSI, MACD, EMA)\n"
+        "✅ تشخیص تله‌های بازار\n✅ سیگنال خرید/فروش با حد ضرر و تارگت\n"
+        "✅ هوش مصنوعی Groq\n⏰ ارسال خودکار به کانال هر ۵ دقیقه\n\nاز منوی زیر انتخاب کنید:",
         parse_mode="Markdown",
         reply_markup=get_main_menu()
     )
@@ -292,7 +281,7 @@ async def prices_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def signal_now(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-    await query.edit_message_text("🔄 در حال تولید سیگنال لحظه‌ای...")
+    await query.edit_message_text("🔄 تولید سیگنال...")
     sym = list(SYMBOLS.keys())[0]
     data = await get_coinex_price(sym)
     if not data:
@@ -310,19 +299,14 @@ async def signal_now(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def technical_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-    await query.edit_message_text(
-        "📈 *تحلیل تکنیکال پیشرفته*\n"
-        "لطفاً نام ارز را وارد کنید (مانند BTC, ETH, SOL):",
-        parse_mode="Markdown"
-    )
+    await query.edit_message_text("📈 *تحلیل تکنیکال پیشرفته*\nلطفاً نام ارز را وارد کنید (مثل BTC, ETH):", parse_mode="Markdown")
     context.user_data["waiting_technical"] = True
 
 async def ai_chat_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     await query.edit_message_text(
-        "🧠 *حالت چت هوش مصنوعی*\n\n"
-        "هر سوالی دارید بپرسید (کریپتو، ترید، یا هر موضوع دیگر).\nبرای پایان، /cancel را بفرستید.",
+        "🧠 *حالت چت هوش مصنوعی*\n\nهر سوالی دارید بپرسید.\nبرای پایان، /cancel را بفرستید.",
         parse_mode="Markdown"
     )
     context.user_data["ai_chat_mode"] = True
@@ -332,12 +316,8 @@ async def help_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.answer()
     text = (
         "❓ *راهنما*\n"
-        "• قیمت لحظه‌ای: نمایش آخرین قیمت‌ها.\n"
-        "• سیگنال فوری: دریافت سیگنال خرید/فروش.\n"
-        "• تحلیل تکنیکال: دریافت تحلیل کامل با وارد کردن نام ارز.\n"
-        "• چت با AI: پرسش و پاسخ با هوش مصنوعی.\n"
-        "• ربات هر ۵ دقیقه سیگنال به کانال ارسال می‌کند.\n\n"
-        "⚠️ فقط جنبه آموزشی – مسئولیت با شماست."
+        "• قیمت لحظه‌ای\n• سیگنال فوری\n• تحلیل تکنیکال\n"
+        "• چت با AI\n• ربات هر ۵ دقیقه سیگنال به کانال ارسال می‌کند.\n\n⚠️ فقط جنبه آموزشی"
     )
     await query.edit_message_text(text, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="back")]]))
 
@@ -362,7 +342,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 symbol = sym
                 break
         if not symbol:
-            await update.message.reply_text("❌ ارز معتبر نیست. نام صحیح را وارد کنید (مثال: BTC, ETH).")
+            await update.message.reply_text("❌ ارز معتبر نیست.")
             return
         data = await get_coinex_price(symbol)
         if not data:
@@ -377,14 +357,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         signal, _, _, _ = generate_signal(data["price"], data["change"], rsi, macd, macd_sig)
         reply = (
             f"📊 *تحلیل تکنیکال {symbol.replace('USDT','')}*\n"
-            f"💰 قیمت: ${data['price']:,.2f}\n"
-            f"📈 تغییر: {data['change']:+.2f}%\n"
-            f"📊 RSI: {rsi:.1f}\n"
-            f"📈 MACD: {macd:.2f} (سیگنال: {macd_sig:.2f})\n"
-            f"🟢 EMA20: ${ema20:,.2f}\n"
-            f"🟡 حمایت: ${sr['support'][0]:,.2f} | مقاومت: ${sr['resistance'][0]:,.2f}\n"
-            f"{trap}\n"
-            f"🎯 سیگنال نهایی: {signal}"
+            f"💰 قیمت: ${data['price']:,.2f}\n📈 تغییر: {data['change']:+.2f}%\n"
+            f"📊 RSI: {rsi:.1f}\n📈 MACD: {macd:.2f} (سیگنال: {macd_sig:.2f})\n"
+            f"🟢 EMA20: ${ema20:,.2f}\n🟡 حمایت: ${sr['support'][0]:,.2f} | مقاومت: ${sr['resistance'][0]:,.2f}\n"
+            f"{trap}\n🎯 سیگنال نهایی: {signal}"
         )
         await update.message.reply_text(reply, parse_mode="Markdown")
         context.user_data["waiting_technical"] = False
@@ -410,17 +386,15 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.answer()
         await query.edit_message_text("در حال توسعه...")
 
-# ---------------------------- اجرای اصلی ----------------------------
 def main():
     app = Application.builder().token(TOKEN).build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CallbackQueryHandler(button_handler))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
-    # راه‌اندازی حلقه خودکار بدون نیاز به JobQueue
     asyncio.create_task(auto_signal_loop(app))
 
-    logger.info("🚀 ربات حرفه‌ای بدون نقص راه‌اندازی شد (تایمر دستی ۵ دقیقه).")
+    logger.info("🚀 ربات بدون نقص راه‌اندازی شد (تایمر ۵ دقیقه).")
     app.run_polling()
 
 if __name__ == "__main__":
