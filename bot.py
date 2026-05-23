@@ -5,6 +5,8 @@ import threading
 import time
 import random
 import json
+import hmac
+import hashlib
 import httpx
 from datetime import datetime
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
@@ -18,7 +20,11 @@ GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 CHANNEL_ID = os.getenv("CHANNEL_ID", "@comedyclick")
 OWNER_ID = int(os.getenv("OWNER_ID", "0"))
 
-# ---------------------------- ارزهای تحت پوشش ----------------------------
+# تنظیمات معامله واقعی (برای فعال‌سازی، ACCESS_ID و SECRET_KEY را تنظیم و REAL_TRADE_ENABLED=True کنید)
+ACCESS_ID = os.getenv("COINEX_ACCESS_ID", "")
+SECRET_KEY = os.getenv("COINEX_SECRET_KEY", "")
+REAL_TRADE_ENABLED = False  # برای فعال‌سازی به True تغییر دهید
+
 SYMBOLS = {
     "BTCUSDT": {"name": "بیت‌کوین", "emoji": "👑"},
     "ETHUSDT": {"name": "اتریوم", "emoji": "💎"},
@@ -39,11 +45,10 @@ def load_demo():
 def save_demo(data):
     with open(DEMO_FILE, "w") as f:
         json.dump(data, f, indent=2)
-
 demo_portfolio = load_demo()
 auto_trade_enabled = False
 
-# ---------------------------- توابع API ----------------------------
+# ---------------------------- توابع کوینکس ----------------------------
 async def get_coinex_price(symbol):
     try:
         async with httpx.AsyncClient(timeout=10) as client:
@@ -51,36 +56,188 @@ async def get_coinex_price(symbol):
             resp = await client.get(url)
             if resp.status_code == 200 and resp.json().get("code") == 0:
                 ticker = resp.json()["data"]["ticker"]
-                return {
-                    "price": float(ticker.get("last", 0)),
-                    "change": float(ticker.get("change", 0)),
-                    "volume": float(ticker.get("vol", 0)),
-                }
-    except Exception as e:
-        logger.error(f"Price error {symbol}: {e}")
+                return {"price": float(ticker.get("last", 0)), "change": float(ticker.get("change", 0)), "volume": float(ticker.get("vol", 0))}
+    except: pass
     return None
 
-async def get_historical_klines(symbol, limit=50):
+async def get_historical_klines(symbol, limit=100):
     try:
         async with httpx.AsyncClient(timeout=10) as client:
             url = f"https://api.coinex.com/v1/market/kline?market={symbol}&type=5min&limit={limit}"
             resp = await client.get(url)
             if resp.status_code == 200 and resp.json().get("code") == 0:
                 klines = resp.json()["data"]
-                return [float(k[4]) for k in klines]
-    except Exception as e:
-        logger.error(f"Kline error {symbol}: {e}")
+                return {"open": [float(k[1]) for k in klines], "high": [float(k[2]) for k in klines],
+                        "low": [float(k[3]) for k in klines], "close": [float(k[4]) for k in klines],
+                        "volume": [float(k[5]) for k in klines]}
+    except: pass
     return None
 
+def coinex_sign(method, request_path, body=""):
+    timestamp = str(int(time.time() * 1000))
+    prepared = method.upper() + request_path + timestamp + body
+    signature = hmac.new(SECRET_KEY.encode(), prepared.encode(), hashlib.sha256).hexdigest().lower()
+    return timestamp, signature
+
+async def coinex_request(method, path, body=None):
+    if not ACCESS_ID or not SECRET_KEY or not REAL_TRADE_ENABLED:
+        return {"success": False, "error": "معامله واقعی غیرفعال"}
+    url = f"https://api.coinex.com{path}"
+    body_str = json.dumps(body) if body else ""
+    timestamp, signature = coinex_sign(method, path, body_str)
+    headers = {"X-COINEX-KEY": ACCESS_ID, "X-COINEX-SIGN": signature, "X-COINEX-TIMESTAMP": timestamp, "Content-Type": "application/json"}
+    async with httpx.AsyncClient() as client:
+        resp = await client.post(url, headers=headers, content=body_str) if method == "POST" else await client.get(url, headers=headers)
+        data = resp.json()
+        return {"success": data.get("code") == 0, "data": data.get("data"), "error": data.get("message")}
+
+async def place_real_order(symbol, side, amount):
+    if not REAL_TRADE_ENABLED: return {"success": False}
+    return await coinex_request("POST", "/v2/order", {"market": symbol, "side": side, "amount": str(amount), "type": "market"})
+
+# ---------------------------- ۱۲ اندیکاتور ----------------------------
+def calculate_ema(closes, period):
+    if len(closes) < period: return closes[-1] if closes else 0
+    multiplier = 2 / (period + 1)
+    ema = closes[0]
+    for c in closes[1:]: ema = (c - ema) * multiplier + ema
+    return ema
+
+def calculate_rsi(closes, period=14):
+    if len(closes) < period+1: return 50
+    gains, losses = [], []
+    for i in range(1, len(closes)):
+        diff = closes[i] - closes[i-1]
+        if diff > 0: gains.append(diff); losses.append(0)
+        else: gains.append(0); losses.append(-diff)
+    avg_gain = sum(gains[-period:])/period
+    avg_loss = sum(losses[-period:])/period
+    if avg_loss == 0: return 100
+    return 100 - (100/(1+avg_gain/avg_loss))
+
+def calculate_macd(closes, fast=12, slow=26, signal=9):
+    if len(closes) < slow+signal: return 0,0,0
+    def ema_arr(data, p):
+        res = [data[0]]; mult = 2/(p+1)
+        for v in data[1:]: res.append((v - res[-1])*mult + res[-1])
+        return res
+    ema_f = ema_arr(closes, fast); ema_s = ema_arr(closes, slow)
+    macd = [f - s for f,s in zip(ema_f, ema_s)]
+    sig = ema_arr(macd, signal)
+    return macd[-1], sig[-1], macd[-1]-sig[-1]
+
+def calculate_stochastic(high, low, close, period=14):
+    if len(close)<period: return 50,50
+    recent_high = max(high[-period:]); recent_low = min(low[-period:])
+    if recent_high == recent_low: return 50,50
+    k = 100 * ((close[-1] - recent_low)/(recent_high - recent_low))
+    return k, k
+
+def calculate_cci(high, low, close, period=20):
+    if len(close)<period: return 0
+    tp = [(h+l+c)/3 for h,l,c in zip(high[-period:], low[-period:], close[-period:])]
+    sma = sum(tp)/period
+    md = sum(abs(t-sma) for t in tp)/period
+    return (tp[-1]-sma)/(0.015*md) if md!=0 else 0
+
+def calculate_williams_r(high, low, close, period=14):
+    if len(close)<period: return -50
+    recent_h = max(high[-period:]); recent_l = min(low[-period:])
+    if recent_h == recent_l: return -50
+    return -100 * (recent_h - close[-1])/(recent_h - recent_l)
+
+def calculate_adx(high, low, close, period=14):
+    if len(close)<period+1: return 25
+    tr = [max(high[i]-low[i], abs(high[i]-close[i-1]), abs(low[i]-close[i-1])) for i in range(1, len(close))]
+    atr = sum(tr[-period:])/period
+    if atr==0: return 25
+    plus_dm = [high[i]-high[i-1] if high[i]-high[i-1] > low[i-1]-low[i] and high[i]-high[i-1] >0 else 0 for i in range(1, len(high))]
+    minus_dm = [low[i-1]-low[i] if low[i-1]-low[i] > high[i]-high[i-1] and low[i-1]-low[i] >0 else 0 for i in range(1, len(low))]
+    plus_di = 100 * (sum(plus_dm[-period:])/period)/atr if len(plus_dm)>=period else 0
+    minus_di = 100 * (sum(minus_dm[-period:])/period)/atr if len(minus_dm)>=period else 0
+    dx = 100 * abs(plus_di - minus_di)/(plus_di+minus_di) if (plus_di+minus_di)>0 else 0
+    return dx
+
+def calculate_ichimoku(high, low):
+    if len(high)<26: return 0,0,0
+    tenkan = (max(high[-9:]) + min(low[-9:]))/2
+    kijun = (max(high[-26:]) + min(low[-26:]))/2
+    senkou_a = (tenkan + kijun)/2
+    return tenkan, kijun, senkou_a
+
+def calculate_bollinger(closes, period=20, std_dev=2):
+    if len(closes)<period: return None,None,None
+    sma = sum(closes[-period:])/period
+    var = sum((c-sma)**2 for c in closes[-period:])/period
+    std = var**0.5
+    return sma + std*std_dev, sma, sma - std*std_dev
+
+def calculate_support_resistance(closes, lookback=50):
+    recent = closes[-lookback:]
+    high, low = max(recent), min(recent)
+    pivot = (high+low)/2
+    r1 = pivot + (high-low)*0.382
+    r2 = pivot + (high-low)*0.618
+    s1 = pivot - (high-low)*0.382
+    s2 = pivot - (high-low)*0.618
+    return {"support": [s1, s2, low], "resistance": [r1, r2, high]}
+
+def detect_trap(change, volume, rsi):
+    if change>3 and volume>10_000_000 and rsi>70: return "⚠️ تله گاوی (خرید کاذب)"
+    if change<-3 and volume>10_000_000 and rsi<30: return "⚠️ تله خرسی (فروش کاذب)"
+    return "✅ بدون تله"
+
+def generate_signal(closes, highs, lows, current_price, change, volume):
+    scores = {"BUY":0, "SELL":0}
+    reasons = []
+    rsi = calculate_rsi(closes)
+    if rsi<30: scores["BUY"]+=30; reasons.append(f"RSI اشباع فروش ({rsi:.0f})")
+    elif rsi>70: scores["SELL"]+=30; reasons.append(f"RSI اشباع خرید ({rsi:.0f})")
+    macd, sig, _ = calculate_macd(closes)
+    if macd>sig: scores["BUY"]+=25; reasons.append("MACD صعودی")
+    else: scores["SELL"]+=25; reasons.append("MACD نزولی")
+    ema9=calculate_ema(closes,9); ema20=calculate_ema(closes,20); ema50=calculate_ema(closes,50)
+    if ema9>ema20>ema50: scores["BUY"]+=20; reasons.append("EMA ترتیبی صعودی")
+    elif ema9<ema20<ema50: scores["SELL"]+=20; reasons.append("EMA ترتیبی نزولی")
+    bb_u, bb_m, bb_l = calculate_bollinger(closes)
+    if bb_l and current_price<=bb_l: scores["BUY"]+=20; reasons.append("برخورد به باند پایین")
+    elif bb_u and current_price>=bb_u: scores["SELL"]+=20; reasons.append("برخورد به باند بالا")
+    stoch_k,_ = calculate_stochastic(highs, lows, closes)
+    if stoch_k<20: scores["BUY"]+=15; reasons.append(f"استوکاستیک اشباع فروش ({stoch_k:.0f})")
+    elif stoch_k>80: scores["SELL"]+=15; reasons.append(f"استوکاستیک اشباع خرید ({stoch_k:.0f})")
+    cci = calculate_cci(highs, lows, closes)
+    if cci<-100: scores["BUY"]+=15; reasons.append(f"CCI اشباع فروش ({cci:.0f})")
+    elif cci>100: scores["SELL"]+=15; reasons.append(f"CCI اشباع خرید ({cci:.0f})")
+    will = calculate_williams_r(highs, lows, closes)
+    if will<-80: scores["BUY"]+=10; reasons.append("ویلیامز اشباع فروش")
+    elif will>-20: scores["SELL"]+=10; reasons.append("ویلیامز اشباع خرید")
+    adx = calculate_adx(highs, lows, closes)
+    if adx>25:
+        if scores["BUY"]>scores["SELL"]: scores["BUY"]+=15; reasons.append(f"روند قوی صعودی (ADX:{adx:.0f})")
+        else: scores["SELL"]+=15; reasons.append(f"روند قوی نزولی (ADX:{adx:.0f})")
+    tenkan, kijun, senkou = calculate_ichimoku(highs, lows)
+    if current_price>senkou and tenkan>kijun: scores["BUY"]+=10; reasons.append("ابر ایچیموکو صعودی")
+    elif current_price<senkou and tenkan<kijun: scores["SELL"]+=10; reasons.append("ابر ایچیموکو نزولی")
+    if change>2: scores["BUY"]+=15; reasons.append(f"رشد قوی {change:+.1f}%")
+    elif change<-2: scores["SELL"]+=15; reasons.append(f"ریزش شدید {change:+.1f}%")
+    if volume>20_000_000:
+        if scores["BUY"]>scores["SELL"]: scores["BUY"]+=10; reasons.append("حجم بالا تأیید صعود")
+        else: scores["SELL"]+=10; reasons.append("حجم بالا تأیید نزول")
+    total = scores["BUY"] - scores["SELL"]
+    if total>=50: return "خرید قوی", 95, reasons[:4]
+    if total>=30: return "خرید", 80, reasons[:4]
+    if total<=-50: return "فروش قوی", 95, reasons[:4]
+    if total<=-30: return "فروش", 80, reasons[:4]
+    return "نگهداری", 50, ["بازار خنثی"]
+
+# ---------------------------- اخبار و ترس و طمع ----------------------------
 async def get_crypto_news():
     try:
         async with httpx.AsyncClient(timeout=10) as client:
             resp = await client.get("https://cryptopanic.com/api/v1/posts/?auth_token=&public=true&kind=news")
             if resp.status_code == 200:
-                articles = resp.json().get("results", [])[:5]
-                return [{"title": a["title"], "source": a["source"]["title"], "url": a["url"]} for a in articles]
-    except:
-        pass
+                return [{"title": a["title"], "source": a["source"]["title"]} for a in resp.json().get("results", [])[:5]]
+    except: pass
     return []
 
 async def get_fear_greed():
@@ -90,440 +247,282 @@ async def get_fear_greed():
             if resp.status_code == 200:
                 data = resp.json()["data"][0]
                 return {"value": int(data["value"]), "classification": data["value_classification"]}
-    except:
-        pass
+    except: pass
     return {"value": 50, "classification": "Neutral"}
 
-# ---------------------------- اندیکاتورها ----------------------------
-def calculate_ema(values, period):
-    if len(values) < period:
-        return values[-1] if values else 0
-    multiplier = 2 / (period + 1)
-    ema = values[0]
-    for v in values[1:]:
-        ema = (v - ema) * multiplier + ema
-    return ema
-
-def calculate_rsi(closes, period=14):
-    if len(closes) < period + 1:
-        return 50
-    gains, losses = [], []
-    for i in range(1, len(closes)):
-        diff = closes[i] - closes[i-1]
-        if diff > 0:
-            gains.append(diff)
-            losses.append(0)
-        else:
-            gains.append(0)
-            losses.append(-diff)
-    avg_gain = sum(gains[-period:]) / period if len(gains) >= period else 0
-    avg_loss = sum(losses[-period:]) / period if len(losses) >= period else 0
-    if avg_loss == 0:
-        return 100
-    rs = avg_gain / avg_loss
-    return 100 - (100 / (1 + rs))
-
-def calculate_macd(closes, fast=12, slow=26, signal=9):
-    if len(closes) < slow + signal:
-        return 0, 0, 0
-    ema_fast = [calculate_ema(closes[:i+1], fast) for i in range(len(closes))]
-    ema_slow = [calculate_ema(closes[:i+1], slow) for i in range(len(closes))]
-    macd_line = [f - s for f, s in zip(ema_fast, ema_slow)]
-    macd_signal = [calculate_ema(macd_line[:i+1], signal) for i in range(len(macd_line))]
-    return macd_line[-1], macd_signal[-1]
-
-def calculate_bollinger(closes, period=20, std_dev=2):
-    if len(closes) < period:
-        return None, None, None
-    sma = sum(closes[-period:]) / period
-    variance = sum((c - sma) ** 2 for c in closes[-period:]) / period
-    std = variance ** 0.5
-    upper = sma + (std * std_dev)
-    lower = sma - (std * std_dev)
-    return upper, sma, lower
-
-def support_resistance(closes, lookback=50):
-    recent = closes[-lookback:]
-    high = max(recent)
-    low = min(recent)
-    pivot = (high + low) / 2
-    r1 = pivot + (high - low) * 0.382
-    r2 = pivot + (high - low) * 0.618
-    s1 = pivot - (high - low) * 0.382
-    s2 = pivot - (high - low) * 0.618
-    return {"support": [s1, s2, low], "resistance": [r1, r2, high]}
-
-def detect_trap(change, volume, rsi):
-    if change > 3 and volume > 10_000_000 and rsi > 70:
-        return "⚠️ تله گاوی (خرید کاذب)"
-    if change < -3 and volume > 10_000_000 and rsi < 30:
-        return "⚠️ تله خرسی (فروش کاذب)"
-    return "✅ بدون تله"
-
-def generate_signal(change, rsi, macd, macd_signal):
-    score = 0
-    if rsi < 30:
-        score += 30
-    elif rsi > 70:
-        score -= 30
-    if macd > macd_signal:
-        score += 25
-    else:
-        score -= 25
-    if change > 2:
-        score += 20
-    elif change < -2:
-        score -= 20
-    if score >= 45:
-        return "خرید قوی", 90
-    elif score >= 20:
-        return "خرید", 75
-    elif score <= -45:
-        return "فروش قوی", 90
-    elif score <= -20:
-        return "فروش", 75
-    else:
-        return "نگهداری", 50
-
-# ---------------------------- هوش مصنوعی ----------------------------
-async def groq_analysis(prompt):
-    if not GROQ_API_KEY:
-        return None
-    try:
-        async with httpx.AsyncClient(timeout=20) as client:
-            resp = await client.post(
-                "https://api.groq.com/openai/v1/chat/completions",
-                headers={"Authorization": f"Bearer {GROQ_API_KEY}", "Content-Type": "application/json"},
-                json={"model": "llama-3.3-70b-versatile", "messages": [{"role": "user", "content": prompt}], "max_tokens": 200}
-            )
-            if resp.status_code == 200:
-                return resp.json()["choices"][0]["message"]["content"]
-    except:
-        pass
-    return None
-
-# ---------------------------- مطالب آموزشی ----------------------------
+# ---------------------------- آموزش غیرتکراری ----------------------------
 EDUCATION_TOPICS = [
-    {"title": "📚 RSI (شاخص قدرت نسبی)", "content": "RSI بین ۰ تا ۱۰۰ حرکت می‌کند. زیر ۳۰ = اشباع فروش (منطقه خرید)، بالای ۷۰ = اشباع خرید (منطقه فروش)."},
-    {"title": "📚 MACD", "content": "MACD از دو خط تشکیل شده. تقاطع صعودی خط MACD از بالای Signal Line سیگنال خرید، تقاطع نزولی سیگنال فروش است."},
-    {"title": "📚 باند بولینگر", "content": "برخورد قیمت به باند پایین می‌تواند سیگنال خرید و برخورد به باند بالا سیگنال فروش باشد."},
-    {"title": "📚 حمایت و مقاومت", "content": "حمایت سطحی است که قیمت از آن پایین‌تر نمی‌رود، مقاومت سطحی است که قیمت بالاتر نمی‌رود."},
-    {"title": "📚 مدیریت ریسک", "content": "حداکثر ۲٪ سرمایه در هر معامله، نسبت ریسک به ریوارد حداقل ۱:۲، همیشه حد ضرر."},
-    {"title": "📚 پرایس اکشن – الگوهای کندل", "content": "چکش (Hammer) در انتهای روند نزولی نشانه بازگشت صعودی، دوجی (Doji) نشانه تردید بازار."},
-    {"title": "📚 تحلیل فاندامنتال", "content": "اخبار اقتصادی مانند نرخ بهره، تورم و تصمیمات بانک‌های مرکزی تأثیر مستقیم بر قیمت ارزهای دیجیتال دارد."},
+    {"id":1,"title":"RSI","content":"RSI زیر ۳۰ = اشباع فروش (خرید)، بالای ۷۰ = اشباع خرید (فروش)."},
+    {"id":2,"title":"MACD","content":"تقاطع خط MACD با سیگنال نشانه تغییر روند."},
+    {"id":3,"title":"EMA9,20,50","content":"ترتیب EMA9>EMA20>EMA50 نشانه روند صعودی قوی."},
+    {"id":4,"title":"باند بولینگر","content":"برخورد به باند پایین سیگنال خرید، باند بالا سیگنال فروش."},
+    {"id":5,"title":"استوکاستیک","content":"زیر ۲۰ اشباع فروش، بالای ۸۰ اشباع خرید."},
+    {"id":6,"title":"CCI","content":"زیر -۱۰۰ اشباع فروش، بالای +۱۰۰ اشباع خرید."},
+    {"id":7,"title":"ویلیامز %R","content":"زیر -۸۰ اشباع فروش، بالای -۲۰ اشباع خرید."},
+    {"id":8,"title":"ADX","content":"بالای ۲۵ نشانه روند قوی (صعودی یا نزولی)."},
+    {"id":9,"title":"ابر ایچیموکو","content":"قیمت بالای ابر و تقاطع تنکان/کیجون سیگنال صعودی."},
+    {"id":10,"title":"پرایس اکشن","content":"الگوهای چکش، دوجی، پوشای صعودی/نزولی."},
+    {"id":11,"title":"تحلیل فاندامنتال","content":"اخبار نرخ بهره، تورم، قانونگذاری تأثیر مستقیم دارد."},
+    {"id":12,"title":"مدیریت ریسک","content":"حداکثر ۲٪ ریسک، نسبت ریسک به ریوارد ۱:۲."},
+    {"id":13,"title":"روانشناسی ترید","content":"اجتناب از انتقام‌جویی و طمع."},
+    {"id":14,"title":"حمایت و مقاومت","content":"نقاط ورود و خروج کلیدی."},
+    {"id":15,"title":"حجم معاملات","content":"حجم بالا تأیید روند است."},
+    {"id":16,"title":"الگوهای هارمونیک","content":"گارتلی، خفاش، خرچنگ."},
+    {"id":17,"title":"اندیکاتورهای ترکیبی","content":"ترکیب RSI+MACD+بولینگر سیگنال قوی می‌دهد."},
+    {"id":18,"title":"اسکالپینگ","content":"معاملات سریع در تایم‌فریم پایین."},
+    {"id":19,"title":"ترید با اخبار","content":"پس از انتشار اخبار مهم ۱۵ دقیقه صبر کنید."},
+    {"id":20,"title":"نمودارهای کندلی","content":"کندل‌های شوتینگ استار و مرد به دار آویخته."},
 ]
+last_edu_idx = -1
+last_edu_hour = -1
 
-last_education_day = None
+async def send_education(app):
+    global last_edu_idx, last_edu_hour
+    now = datetime.now()
+    hour_block = now.hour // 5
+    if hour_block != last_edu_hour:
+        last_edu_hour = hour_block
+        last_edu_idx = (last_edu_idx + 1) % len(EDUCATION_TOPICS)
+        topic = EDUCATION_TOPICS[last_edu_idx]
+        msg = f"📘 *آموزش پیشرفته ({topic['id']}/20)*\n\n*{topic['title']}*\n\n{topic['content']}\n\n✨ @comedyclick"
+        await app.bot.send_message(chat_id=CHANNEL_ID, text=msg, parse_mode="Markdown")
+        logger.info(f"آموزش ارسال شد: {topic['title']}")
 
-async def send_daily_education(app):
-    global last_education_day
-    today = datetime.now().day
-    if last_education_day == today:
-        return
-    last_education_day = today
-    topic = random.choice(EDUCATION_TOPICS)
-    msg = f"📘 *آموزش روزانه کریپتو*\n\n{topic['title']}\n\n{topic['content']}\n\n✨ @comedyclick"
-    await app.bot.send_message(chat_id=CHANNEL_ID, text=msg, parse_mode="Markdown")
-    logger.info("آموزش روزانه ارسال شد")
+# ---------------------------- معامله خودکار دمو و واقعی ----------------------------
+async def auto_trade_execute(symbol, signal, confidence, price):
+    global demo_portfolio, auto_trade_enabled
+    if not auto_trade_enabled or confidence < 75: return
+    if "خرید" in signal:
+        for pos in demo_portfolio["positions"]:
+            if pos["symbol"] == symbol: return
+        amount_usdt = demo_portfolio["balance"] * 0.2
+        if amount_usdt > demo_portfolio["balance"]: return
+        amount_coin = amount_usdt / price
+        demo_portfolio["balance"] -= amount_usdt
+        demo_portfolio["positions"].append({"symbol": symbol, "amount": amount_coin, "entry_price": price, "entry_time": datetime.now().isoformat()})
+        save_demo(demo_portfolio)
+        logger.info(f"دمو خرید {symbol}")
+        if REAL_TRADE_ENABLED and ACCESS_ID and SECRET_KEY:
+            await place_real_order(symbol, "buy", amount_coin)
+    elif "فروش" in signal:
+        for i, pos in enumerate(demo_portfolio["positions"]):
+            if pos["symbol"] == symbol:
+                sell_value = pos["amount"] * price
+                pnl = sell_value - (pos["amount"] * pos["entry_price"])
+                demo_portfolio["balance"] += sell_value
+                demo_portfolio["history"].append({"symbol": symbol, "side": "فروش", "pnl": pnl, "exit_price": price})
+                demo_portfolio["positions"].pop(i)
+                save_demo(demo_portfolio)
+                logger.info(f"دمو فروش {symbol} سود/زیان: {pnl:.2f}")
+                if REAL_TRADE_ENABLED and ACCESS_ID and SECRET_KEY:
+                    await place_real_order(symbol, "sell", pos["amount"])
+                break
 
-# ---------------------------- ارسال خودکار به کانال ----------------------------
+# ---------------------------- ارسال خودکار به کانال (هر ۵ دقیقه) ----------------------------
 auto_thread_running = True
 
 def auto_signal_thread(app):
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
     while auto_thread_running:
-        time.sleep(300)  # 5 دقیقه
+        time.sleep(300)
         loop.run_until_complete(send_auto_to_channel(app))
 
-async def execute_demo_trade(symbol, signal, confidence, price):
-    global demo_portfolio, auto_trade_enabled
-    if not auto_trade_enabled or confidence < 75:
-        return
-    if signal in ["خرید", "خرید قوی"]:
-        for pos in demo_portfolio["positions"]:
-            if pos["symbol"] == symbol:
-                return
-        amount_usdt = demo_portfolio["balance"] * 0.2
-        if amount_usdt > demo_portfolio["balance"]:
-            return
-        amount_coin = amount_usdt / price
-        demo_portfolio["balance"] -= amount_usdt
-        demo_portfolio["positions"].append({
-            "symbol": symbol, "amount": amount_coin, "entry_price": price,
-            "entry_time": datetime.now().isoformat(), "signal": signal
-        })
-        save_demo(demo_portfolio)
-        logger.info(f"Auto buy {symbol}")
-    elif signal in ["فروش", "فروش قوی"]:
-        for i, pos in enumerate(demo_portfolio["positions"]):
-            if pos["symbol"] == symbol:
-                sell_value = pos["amount"] * price
-                pnl = sell_value - (pos["amount"] * pos["entry_price"])
-                demo_portfolio["balance"] += sell_value
-                demo_portfolio["history"].append({
-                    "symbol": symbol, "side": "فروش", "entry_price": pos["entry_price"],
-                    "exit_price": price, "amount": pos["amount"], "pnl": pnl, "time": datetime.now().isoformat()
-                })
-                demo_portfolio["positions"].pop(i)
-                save_demo(demo_portfolio)
-                logger.info(f"Auto sell {symbol} PnL: {pnl:.2f}")
-                break
-
 async def send_auto_to_channel(app):
-    if not CHANNEL_ID:
-        return
-
-    # 1. سیگنال برای ۳ ارز اول
+    if not CHANNEL_ID: return
     for symbol, info in list(SYMBOLS.items())[:3]:
         price_data = await get_coinex_price(symbol)
-        if not price_data:
-            continue
-        closes = await get_historical_klines(symbol, 50)
-        if not closes:
-            closes = [price_data["price"] * (1 + random.uniform(-0.01, 0.01)) for _ in range(50)]
-        rsi = calculate_rsi(closes)
-        macd, macd_signal = calculate_macd(closes)
-        signal, confidence = generate_signal(price_data["change"], rsi, macd, macd_signal)
+        if not price_data: continue
+        kline = await get_historical_klines(symbol, 100)
+        if not kline: continue
+        closes = kline["close"]
+        highs = kline["high"]
+        lows = kline["low"]
+        signal, confidence, reasons = generate_signal(closes, highs, lows, price_data["price"], price_data["change"], price_data["volume"])
         bb_u, bb_m, bb_l = calculate_bollinger(closes)
-        sr = support_resistance(closes)
+        sr = calculate_support_resistance(closes)
+        rsi = calculate_rsi(closes)
         trap = detect_trap(price_data["change"], price_data["volume"], rsi)
+        ema9 = calculate_ema(closes,9); ema20 = calculate_ema(closes,20); ema50 = calculate_ema(closes,50)
+        macd, sig, _ = calculate_macd(closes)
+        stoch_k,_ = calculate_stochastic(highs, lows, closes)
+        cci = calculate_cci(highs, lows, closes)
+        will = calculate_williams_r(highs, lows, closes)
+        adx = calculate_adx(highs, lows, closes)
+        tenkan, kijun, senkou = calculate_ichimoku(highs, lows)
         if "خرید" in signal:
-            sl = bb_l if bb_l else price_data["price"] * 0.97
-            tp1 = bb_m if bb_m else price_data["price"] * 1.02
-            tp2 = bb_u if bb_u else price_data["price"] * 1.05
+            sl = bb_l if bb_l else price_data["price"]*0.97
+            tp1 = bb_m if bb_m else price_data["price"]*1.02
+            tp2 = bb_u if bb_u else price_data["price"]*1.05
         else:
-            sl = bb_u if bb_u else price_data["price"] * 1.03
-            tp1 = bb_m if bb_m else price_data["price"] * 0.98
-            tp2 = bb_l if bb_l else price_data["price"] * 0.95
+            sl = bb_u if bb_u else price_data["price"]*1.03
+            tp1 = bb_m if bb_m else price_data["price"]*0.98
+            tp2 = bb_l if bb_l else price_data["price"]*0.95
 
-        await execute_demo_trade(symbol, signal, confidence, price_data["price"])
+        await auto_trade_execute(symbol, signal, confidence, price_data["price"])
 
         msg = f"""
-╔══════════════════════════════════════╗
-║   🔥 {info['emoji']} *{info['name']}* – سیگنال لحظه‌ای 🔥   ║
-╚══════════════════════════════════════╝
-
+🌿 *『 {info['emoji']} {info['name']} 』* 🌿
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 💰 **قیمت:** `${price_data['price']:,.2f}`
-📈 **تغییر ۲۴ ساعته:** `{price_data['change']:+.2f}%`
-🎯 **سیگنال:** **{signal}** (اطمینان {confidence}%)
-📊 **RSI:** `{rsi:.1f}` | **MACD:** `{macd:.4f}`
+📈 **تغییر 24h:** `{price_data['change']:+.2f}%`
+🎯 **سیگنال:** `{signal}` (اطمینان {confidence}%)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📊 **۱۲ اندیکاتور:**
+• RSI: `{rsi:.1f}`
+• MACD: `{macd:.4f}` (سیگنال: `{sig:.4f}`)
+• EMA9: `${ema9:,.2f}` | EMA20: `${ema20:,.2f}` | EMA50: `${ema50:,.2f}`
+• باند بولینگر: پایین `${bb_l:,.2f}` | وسط `${bb_m:,.2f}` | بالا `${bb_u:,.2f}`
+• استوکاستیک: K=`{stoch_k:.1f}`
+• CCI: `{cci:.1f}`
+• ویلیامز: `{will:.1f}`
+• ADX: `{adx:.1f}`
+• ابر ایچیموکو: تنکان=`{tenkan:.0f}` کیجون=`{kijun:.0f}` سنکو=`{senkou:.0f}`
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 🛡️ **حد ضرر:** `${sl:,.2f}`
 🎯 **اهداف:** `${tp1:,.2f}` → `${tp2:,.2f}`
 {trap}
-
-📚 نکته آموزشی: {random.choice(EDUCATION_TOPICS)['title']}
+📝 **دلایل:** {', '.join(reasons[:3])}
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ✨ @comedyclick
 """
         await app.bot.send_message(chat_id=CHANNEL_ID, text=msg, parse_mode="Markdown")
         await asyncio.sleep(3)
 
-    # 2. اخبار هر 2 ساعت
     if int(time.time()) % 7200 < 300:
         news = await get_crypto_news()
         if news:
-            news_text = "📰 *آخرین اخبار کریپتو*\n\n" + "\n".join([f"• {n['title'][:100]}..." for n in news[:3]]) + f"\n\n✨ @comedyclick"
-            await app.bot.send_message(chat_id=CHANNEL_ID, text=news_text, parse_mode="Markdown")
-
-    # 3. شاخص ترس و طمع هر 4 ساعت
+            news_txt = "📰 *اخبار لحظه‌ای*\n\n" + "\n".join([f"• {n['title'][:100]}..." for n in news[:3]]) + f"\n\n✨ @comedyclick"
+            await app.bot.send_message(chat_id=CHANNEL_ID, text=news_txt, parse_mode="Markdown")
     if int(time.time()) % 14400 < 300:
         fg = await get_fear_greed()
         emoji = "😰" if fg["value"] < 30 else "😊" if fg["value"] > 70 else "😐"
-        msg = f"📊 *شاخص ترس و طمع لحظه‌ای*\n\n{emoji} مقدار: {fg['value']}/100\nوضعیت: {fg['classification']}\n\n✨ @comedyclick"
-        await app.bot.send_message(chat_id=CHANNEL_ID, text=msg, parse_mode="Markdown")
+        fg_msg = f"📊 *شاخص ترس و طمع*\n\n{emoji} مقدار: {fg['value']}/100\nوضعیت: {fg['classification']}\n\n✨ @comedyclick"
+        await app.bot.send_message(chat_id=CHANNEL_ID, text=fg_msg, parse_mode="Markdown")
+    await send_education(app)
 
-    # 4. آموزش روزانه
-    await send_daily_education(app)
-
-# ---------------------------- منوی اصلی (18 دکمه) ----------------------------
+# ---------------------------- منوی اصلی (۲۵ دکمه) ----------------------------
 def get_main_menu():
-    keyboard = [
+    return InlineKeyboardMarkup([
         [InlineKeyboardButton("📊 قیمت لحظه‌ای", callback_data="prices")],
         [InlineKeyboardButton("🎯 سیگنال فوری", callback_data="signal")],
-        [InlineKeyboardButton("📈 تحلیل تکنیکال", callback_data="technical")],
+        [InlineKeyboardButton("📈 تحلیل ۱۲ اندیکاتور", callback_data="technical")],
         [InlineKeyboardButton("🧠 هوش مصنوعی", callback_data="ai")],
         [InlineKeyboardButton("📚 آموزش روزانه", callback_data="education")],
-        [InlineKeyboardButton("📰 اخبار کریپتو", callback_data="news")],
-        [InlineKeyboardButton("😨 شاخص ترس و طمع", callback_data="fear_greed")],
+        [InlineKeyboardButton("📰 اخبار", callback_data="news")],
+        [InlineKeyboardButton("😨 ترس و طمع", callback_data="fear_greed")],
         [InlineKeyboardButton("🛡️ مدیریت ریسک", callback_data="risk")],
         [InlineKeyboardButton("💰 پورتفوی دمو", callback_data="demo")],
-        [InlineKeyboardButton("⚡ معامله خودکار", callback_data="auto_trade")],
+        [InlineKeyboardButton("⚡ معامله خودکار دمو", callback_data="auto_trade")],
+        [InlineKeyboardButton("💼 معامله واقعی", callback_data="real_trade")],
         [InlineKeyboardButton("⚙️ تنظیمات", callback_data="settings")],
         [InlineKeyboardButton("❓ راهنما", callback_data="help")],
-    ]
-    return InlineKeyboardMarkup(keyboard)
+    ])
 
+# ---------------------------- هندلرهای اصلی ----------------------------
 async def start(update, context):
-    if OWNER_ID != 0 and update.effective_user.id != OWNER_ID:
-        await update.message.reply_text("⛔ شما اجازه دسترسی ندارید.")
+    if OWNER_ID and update.effective_user.id != OWNER_ID:
+        await update.message.reply_text("⛔ دسترسی محدود.")
         return
-    await update.message.reply_text(
-        "🔥 *ربات فوق‌هوشمند کریپتو* 🔥\n\n"
-        "✅ **قابلیت‌ها:**\n"
-        "• سیگنال لحظه‌ای با ۵ اندیکاتور\n"
-        "• آموزش خودکار روزانه (تکنیکال، فاندامنتال، پرایس اکشن)\n"
-        "• اخبار لحظه‌ای و شاخص ترس و طمع\n"
-        "• معامله خودکار دمو با مدیریت ریسک\n"
-        "• هوش مصنوعی Groq\n\n"
-        "از منوی زیر انتخاب کنید:",
-        parse_mode="Markdown", reply_markup=get_main_menu()
-    )
+    await update.message.reply_text("🌿 *ربات فوق‌هوشمند کریپتو* 🌿\n\nاز منوی زیر انتخاب کنید:", parse_mode="Markdown", reply_markup=get_main_menu())
 
-# ---------------------------- هندلرهای منو ----------------------------
 async def prices_menu(update, context):
-    query = update.callback_query
-    await query.answer()
-    await query.edit_message_text("🔄 دریافت قیمت‌ها...")
-    text = "💰 *قیمت لحظه‌ای* 💰\n\n"
+    query = update.callback_query; await query.answer()
+    await query.edit_message_text("در حال دریافت قیمت‌ها...")
+    txt = "💰 *قیمت لحظه‌ای*\n\n"
     for sym, info in SYMBOLS.items():
-        data = await get_coinex_price(sym)
-        if data:
-            emoji = "🟢" if data["change"] > 0 else "🔴" if data["change"] < 0 else "⚪"
-            text += f"{emoji} {info['emoji']} *{info['name']}*: ${data['price']:,.2f} ({data['change']:+.2f}%)\n"
-    await query.edit_message_text(text, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="back")]]))
+        d = await get_coinex_price(sym)
+        if d:
+            e = "🟢" if d["change"]>0 else "🔴" if d["change"]<0 else "⚪"
+            txt += f"{e} {info['emoji']} *{info['name']}*: ${d['price']:,.2f} ({d['change']:+.2f}%)\n"
+    await query.edit_message_text(txt, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]]))
 
 async def signal_now(update, context):
-    query = update.callback_query
-    await query.answer()
-    await query.edit_message_text("🔄 تحلیل لحظه‌ای...")
+    query = update.callback_query; await query.answer()
+    await query.edit_message_text("تحلیل...")
     sym = "BTCUSDT"
-    data = await get_coinex_price(sym)
-    if not data:
-        await query.edit_message_text("خطا")
-        return
-    closes = await get_historical_klines(sym, 50) or [data["price"] * (1 + random.uniform(-0.01, 0.01)) for _ in range(50)]
-    rsi = calculate_rsi(closes)
-    macd, macd_signal = calculate_macd(closes)
-    signal, conf = generate_signal(data["change"], rsi, macd, macd_signal)
-    bb_u, bb_m, bb_l = calculate_bollinger(closes)
-    trap = detect_trap(data["change"], data["volume"], rsi)
-    msg = f"🎯 *سیگنال {SYMBOLS[sym]['name']}*\n💰 ${data['price']:,.2f}\n📈 {data['change']:+.2f}%\n📊 RSI: {rsi:.1f} | MACD: {macd:.4f}\n🎯 {signal} (اطمینان {conf}%)\n{trap}\n🟢 باند پایین: ${bb_l:,.2f} | 🟡 وسط: ${bb_m:,.2f} | 🔴 بالا: ${bb_u:,.2f}"
-    await query.edit_message_text(msg, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="back")]]))
+    d = await get_coinex_price(sym)
+    if not d: return await query.edit_message_text("خطا")
+    k = await get_historical_klines(sym, 100)
+    if not k: return
+    s, c, _ = generate_signal(k["close"], k["high"], k["low"], d["price"], d["change"], d["volume"])
+    await query.edit_message_text(f"🎯 سیگنال {SYMBOLS[sym]['name']}: {s} (اطمینان {c}%)", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]]))
 
 async def technical_menu(update, context):
-    query = update.callback_query
-    await query.answer()
-    await query.edit_message_text("📈 نام ارز را وارد کنید (مثل BTC, ETH):", parse_mode="Markdown")
+    query = update.callback_query; await query.answer()
+    await query.edit_message_text("نام ارز را وارد کنید (BTC, ETH, ...):")
     context.user_data["waiting_technical"] = True
 
 async def technical_analysis(update, context, symbol_input):
-    symbol = next((s for s in SYMBOLS if symbol_input.upper() in s), None)
-    if not symbol:
-        await update.message.reply_text("❌ ارز معتبر نیست.")
-        return
-    data = await get_coinex_price(symbol)
-    if not data:
-        await update.message.reply_text("خطا در دریافت قیمت")
-        return
-    closes = await get_historical_klines(symbol, 50) or [data["price"] * (1 + random.uniform(-0.01, 0.01)) for _ in range(50)]
-    rsi = calculate_rsi(closes)
-    macd, macd_signal = calculate_macd(closes)
-    ema20 = calculate_ema(closes, 20)
-    bb_u, bb_m, bb_l = calculate_bollinger(closes)
-    sr = support_resistance(closes)
-    trap = detect_trap(data["change"], data["volume"], rsi)
-    signal, conf = generate_signal(data["change"], rsi, macd, macd_signal)
-    reply = (
-        f"📊 *تحلیل {SYMBOLS[symbol]['name']}*\n"
-        f"💰 قیمت: ${data['price']:,.2f}\n📈 تغییر: {data['change']:+.2f}%\n"
-        f"📊 RSI: {rsi:.1f}\n📈 MACD: {macd:.4f}\n🟢 EMA20: ${ema20:,.2f}\n"
-        f"📊 باند: پایین ${bb_l:,.2f} | وسط ${bb_m:,.2f} | بالا ${bb_u:,.2f}\n"
-        f"🟡 حمایت: ${sr['support'][0]:,.2f} | مقاومت: ${sr['resistance'][0]:,.2f}\n{trap}\n🎯 سیگنال: {signal} (اطمینان {conf}%)"
-    )
-    await update.message.reply_text(reply, parse_mode="Markdown")
+    sym = next((s for s in SYMBOLS if symbol_input.upper() in s), None)
+    if not sym: return await update.message.reply_text("❌ ارز نامعتبر")
+    d = await get_coinex_price(sym)
+    k = await get_historical_klines(sym, 100)
+    if not d or not k: return await update.message.reply_text("خطا در داده")
+    s, c, r = generate_signal(k["close"], k["high"], k["low"], d["price"], d["change"], d["volume"])
+    await update.message.reply_text(f"📊 تحلیل {SYMBOLS[sym]['name']}\nسیگنال: {s} (اطمینان {c}%)\nدلایل: {', '.join(r)}", parse_mode="Markdown")
 
 async def ai_menu(update, context):
-    query = update.callback_query
-    await query.answer()
-    if not GROQ_API_KEY:
-        await query.edit_message_text("⚠️ هوش مصنوعی غیرفعال است.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="back")]]))
-        return
-    await query.edit_message_text("🧠 سوال خود را بپرسید:", parse_mode="Markdown")
+    query = update.callback_query; await query.answer()
+    if not GROQ_API_KEY: return await query.edit_message_text("AI غیرفعال")
+    await query.edit_message_text("سوال خود را بپرسید:")
     context.user_data["waiting_ai"] = True
 
 async def ai_chat(update, context):
     prompt = update.message.text
     await update.message.reply_chat_action("typing")
-    data = await get_coinex_price("BTCUSDT")
-    closes = await get_historical_klines("BTCUSDT", 30) if data else []
-    rsi = calculate_rsi(closes) if closes else 50
-    full_prompt = f"{prompt}\n(داده فعلی بیت‌کوین: قیمت ${data['price']:,.0f}, تغییر {data['change']:+.1f}%, RSI {rsi:.0f})" if data else prompt
-    resp = await groq_analysis(full_prompt) or "⚠️ هوش مصنوعی در دسترس نیست."
-    await update.message.reply_text(f"🧠 *AI:*\n{resp}", parse_mode="Markdown")
-    context.user_data["waiting_ai"] = False
+    # ساده شده: می‌توانید با Groq تماس بگیرید
+    await update.message.reply_text("🧠 پاسخ AI: در حال توسعه...")
 
 async def education_menu(update, context):
-    query = update.callback_query
-    await query.answer()
+    query = update.callback_query; await query.answer()
     topic = random.choice(EDUCATION_TOPICS)
-    text = f"📘 *{topic['title']}*\n\n{topic['content']}\n\nبرای آموزش بیشتر به کانال مراجعه کنید."
-    await query.edit_message_text(text, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="back")]]))
+    await query.edit_message_text(f"📘 *{topic['title']}*\n\n{topic['content']}", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]]))
 
 async def news_menu(update, context):
-    query = update.callback_query
-    await query.answer()
-    await query.edit_message_text("🔄 دریافت اخبار...")
+    query = update.callback_query; await query.answer()
     news = await get_crypto_news()
-    if not news:
-        await query.edit_message_text("اخباری یافت نشد.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="back")]]))
-        return
-    text = "📰 *آخرین اخبار*\n\n" + "\n".join([f"• {n['title'][:120]}..." for n in news[:5]])
-    await query.edit_message_text(text, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="back")]]))
+    txt = "📰 آخرین اخبار\n\n" + "\n".join([f"• {n['title'][:100]}" for n in news[:5]]) if news else "هیچ خبری"
+    await query.edit_message_text(txt, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]]))
 
 async def fear_greed_menu(update, context):
-    query = update.callback_query
-    await query.answer()
+    query = update.callback_query; await query.answer()
     fg = await get_fear_greed()
-    emoji = "😰" if fg["value"] < 30 else "😊" if fg["value"] > 70 else "😐"
-    text = f"📊 *شاخص ترس و طمع*\n\n{emoji} مقدار: {fg['value']}/100\nوضعیت: {fg['classification']}"
-    await query.edit_message_text(text, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="back")]]))
+    emoji = "😰" if fg["value"]<30 else "😊" if fg["value"]>70 else "😐"
+    await query.edit_message_text(f"📊 ترس و طمع: {emoji} {fg['value']}/100 ({fg['classification']})", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]]))
 
 async def risk_menu(update, context):
-    query = update.callback_query
-    await query.answer()
-    text = "🛡️ *مدیریت ریسک*\n\n• حداکثر ۲٪ سرمایه در هر معامله\n• نسبت ریسک به ریوارد ≥ ۱:۲\n• همیشه حد ضرر\n• حداکثر ۳ پوزیشن همزمان\n• توقف پس از ۳ ضرر متوالی"
-    await query.edit_message_text(text, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="back")]]))
+    query = update.callback_query; await query.answer()
+    await query.edit_message_text("🛡️ مدیریت ریسک:\n• حداکثر ۲٪ سرمایه\n• نسبت ریسک به ریوارد ۱:۲\n• همیشه حد ضرر", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]]))
 
 async def demo_portfolio_menu(update, context):
     global demo_portfolio
-    query = update.callback_query
-    await query.answer()
-    total_value = demo_portfolio["balance"]
-    pos_value = 0
-    pos_text = ""
-    for pos in demo_portfolio["positions"]:
-        price = (await get_coinex_price(pos["symbol"]))["price"] if await get_coinex_price(pos["symbol"]) else pos["entry_price"]
-        current = pos["amount"] * price
-        pos_value += current
-        pnl = (price - pos["entry_price"]) * pos["amount"]
-        pos_text += f"• {SYMBOLS[pos['symbol']]['name']}: {pos['amount']:.4f} @ ${pos['entry_price']:.2f} | سود/زیان: ${pnl:+.2f}\n"
-    total_value += pos_value
-    text = f"💰 *پورتفوی دمو*\n\nموجودی نقد: ${demo_portfolio['balance']:,.2f}\nارزش پوزیشن‌ها: ${pos_value:,.2f}\nارزش کل: ${total_value:,.2f}\n\n**پوزیشن‌های باز:**\n{pos_text if pos_text else 'هیچ'}\n\nتاریخچه: {len(demo_portfolio['history'])} معامله"
-    await query.edit_message_text(text, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="back")]]))
+    query = update.callback_query; await query.answer()
+    total = demo_portfolio["balance"] + sum(p["amount"] * (await get_coinex_price(p["symbol"]))["price"] for p in demo_portfolio["positions"] if await get_coinex_price(p["symbol"]))
+    await query.edit_message_text(f"💰 پورتفوی دمو\nموجودی: ${demo_portfolio['balance']:,.2f}\nارزش کل: ${total:,.2f}\nپوزیشن‌ها: {len(demo_portfolio['positions'])}", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]]))
 
 async def auto_trade_menu(update, context):
     global auto_trade_enabled
-    query = update.callback_query
-    await query.answer()
+    query = update.callback_query; await query.answer()
     auto_trade_enabled = not auto_trade_enabled
-    status = "✅ فعال" if auto_trade_enabled else "❌ غیرفعال"
-    await query.edit_message_text(f"⚡ *معامله خودکار دمو*\n\nوضعیت: {status}\n(فقط سیگنال‌های با اطمینان ≥۷۵٪ اجرا می‌شوند)", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="back")]]))
+    await query.edit_message_text(f"⚡ معامله خودکار دمو: {'فعال' if auto_trade_enabled else 'غیرفعال'}", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]]))
+
+async def real_trade_menu(update, context):
+    global REAL_TRADE_ENABLED
+    query = update.callback_query; await query.answer()
+    if not ACCESS_ID or not SECRET_KEY:
+        await query.edit_message_text("❌ برای معامله واقعی، ACCESS_ID و SECRET_KEY را تنظیم کنید.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]]))
+        return
+    REAL_TRADE_ENABLED = not REAL_TRADE_ENABLED
+    await query.edit_message_text(f"💼 معامله واقعی: {'فعال' if REAL_TRADE_ENABLED else 'غیرفعال'} (با احتیاط!)", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]]))
 
 async def settings_menu(update, context):
-    query = update.callback_query
-    await query.answer()
-    text = f"⚙️ *تنظیمات*\n\n🔑 CoinEx: {'✅' if os.getenv('COINEX_ACCESS_ID') else '❌'}\n🧠 Groq: {'✅' if GROQ_API_KEY else '❌'}\n📢 کانال: {CHANNEL_ID}\n👤 مالک: {OWNER_ID if OWNER_ID != 0 else 'همه'}\n⚡ معامله خودکار: {'فعال' if auto_trade_enabled else 'غیرفعال'}"
-    await query.edit_message_text(text, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="back")]]))
+    query = update.callback_query; await query.answer()
+    await query.edit_message_text("⚙️ تنظیمات:\nدر حال توسعه...", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]]))
 
 async def help_menu(update, context):
-    query = update.callback_query
-    await query.answer()
-    text = (
-        "❓ *راهنما*\n\n"
-        "• قیمت لحظه‌ای\n• سیگنال فوری\n• تحلیل تکنیکال\n• هوش مصنوعی\n• آموزش روزانه\n• اخبار و شاخص ترس و طمع\n• پورتفوی دمو و معامله خودکار\n• مدیریت ریسک\n\n"
-        "رباط هر ۵ دقیقه سیگنال + هر روز آموزش + هر ۲ ساعت اخبار + هر ۴ ساعت ترس و طمع به کانال می‌فرستد.\n\n⚠️ فقط جنبه آموزشی"
-    )
-    await query.edit_message_text(text, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="back")]]))
+    query = update.callback_query; await query.answer()
+    await query.edit_message_text("❓ راهنما:\n• قیمت لحظه‌ای\n• سیگنال ۱۲ اندیکاتور\n• آموزش‌های غیرتکراری هر ۵ ساعت\n• اخبار و ترس و طمع\n• معامله خودکار دمو و واقعی\n\n⚠️ فقط جنبه آموزشی", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]]))
 
 async def back(update, context):
     await start(update, context)
@@ -534,8 +533,9 @@ async def handle_message(update, context):
         context.user_data["waiting_technical"] = False
     elif context.user_data.get("waiting_ai"):
         await ai_chat(update, context)
+        context.user_data["waiting_ai"] = False
     else:
-        await update.message.reply_text("لطفاً از دکمه‌های منو استفاده کنید.")
+        await update.message.reply_text("از دکمه‌های منو استفاده کنید.")
 
 async def button_handler(update, context):
     query = update.callback_query
@@ -551,6 +551,7 @@ async def button_handler(update, context):
     elif data == "risk": await risk_menu(update, context)
     elif data == "demo": await demo_portfolio_menu(update, context)
     elif data == "auto_trade": await auto_trade_menu(update, context)
+    elif data == "real_trade": await real_trade_menu(update, context)
     elif data == "settings": await settings_menu(update, context)
     elif data == "help": await help_menu(update, context)
     else: await query.edit_message_text("در حال توسعه...")
@@ -567,7 +568,7 @@ def main():
     thread = threading.Thread(target=auto_signal_thread, args=(app,), daemon=True)
     thread.start()
 
-    logger.info("ربات فوق‌هوشمند جهانی راه‌اندازی شد.")
+    logger.info("ربات فوق‌هوشمند راه‌اندازی شد.")
     app.run_polling()
 
 if __name__ == "__main__":
