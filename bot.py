@@ -1,18 +1,18 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-╔══════════════════════════════════════════════════════════════════╗
-║     CRYPTO PULSE ULTIMATE AI TRADING BOT v7.0                   ║
-║     Groq AI | 25+ Indicators | Auto Signals Every 10 Min        ║
-╚══════════════════════════════════════════════════════════════════╝
+╔══════════════════════════════════════════════════════════════════════╗
+║     CRYPTO PULSE ULTIMATE AI TRADING BOT v8.0 - THE FINAL BOSS      ║
+║     Groq AI | 25+ Indicators | EMA Types | Self-Learning | CoinEx    ║
+╚══════════════════════════════════════════════════════════════════════╝
 """
 
-import os, sys, logging, asyncio, time, json, random, signal
+import os, sys, logging, asyncio, time, json, random, signal, math
 from logging.handlers import RotatingFileHandler
-from typing import Dict, List, Optional, Tuple, Any
+from typing import Dict, List, Optional, Tuple, Any, Union
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
-from collections import deque
+from collections import deque, defaultdict
 import numpy as np
 import pandas as pd
 import ccxt
@@ -29,33 +29,26 @@ load_dotenv()
 # ============================================================
 # PROFESSIONAL LOGGING SYSTEM
 # ============================================================
-logger = logging.getLogger('CryptoPulseUltimate')
+logger = logging.getLogger('CryptoPulseV8')
 logger.setLevel(logging.DEBUG)
 
-# Console Handler
 console = logging.StreamHandler()
 console.setLevel(logging.INFO)
 console.setFormatter(logging.Formatter('%(asctime)s | %(levelname)-7s | %(message)s'))
 logger.addHandler(console)
 
-# File Handlers
-for name, level, fmt in [
-    ('crypto_main.log', logging.INFO, '%(asctime)s | %(levelname)-7s | %(message)s'),
-    ('crypto_debug.log', logging.DEBUG, '%(asctime)s | %(levelname)-7s | %(name)s | %(funcName)s | %(message)s'),
-    ('crypto_errors.log', logging.ERROR, '%(asctime)s | %(levelname)-7s | %(message)s')
-]:
+for name, level in [('crypto_v8.log', logging.INFO), ('crypto_v8_debug.log', logging.DEBUG), ('crypto_v8_errors.log', logging.ERROR)]:
     handler = RotatingFileHandler(name, maxBytes=10*1024*1024, backupCount=7, encoding='utf-8')
     handler.setLevel(level)
-    handler.setFormatter(logging.Formatter(fmt))
+    handler.setFormatter(logging.Formatter('%(asctime)s | %(levelname)-7s | %(name)s | %(funcName)s | %(message)s'))
     logger.addHandler(handler)
 
-# Silence noisy libraries
 for lib in ['httpx', 'httpcore', 'telegram', 'ccxt', 'urllib3', 'asyncio', 'aiohttp']:
     logging.getLogger(lib).setLevel(logging.WARNING)
 
-logger.info("="*60)
-logger.info("🚀 CRYPTO PULSE ULTIMATE v7.0 INITIALIZING")
-logger.info("="*60)
+logger.info("="*70)
+logger.info("🚀 CRYPTO PULSE ULTIMATE v8.0 - THE FINAL BOSS INITIALIZING")
+logger.info("="*70)
 
 # ============================================================
 # CONFIGURATION
@@ -84,7 +77,7 @@ class Config:
         "GALA/USDT", "ENJ/USDT", "CHZ/USDT", "NEAR/USDT", "APT/USDT"
     ])
     
-    # 11 Timeframes for Analysis
+    # 11 Timeframes
     timeframes: Dict[str, str] = field(default_factory=lambda: {
         "5m": "5m", "15m": "15m", "30m": "30m",
         "1h": "1h", "2h": "2h", "4h": "4h",
@@ -92,7 +85,7 @@ class Config:
         "3d": "3d", "1w": "1w"
     })
     
-    # Trading Parameters
+    # Trading
     initial_balance: float = 100000.0
     risk_per_trade: float = 0.02
     max_positions: int = 5
@@ -101,14 +94,15 @@ class Config:
     trailing_pct: float = 0.03
     max_consecutive_losses: int = 5
     
-    # Trading Modes
+    # Modes
     demo_trading: bool = True
     real_trading: bool = False
     auto_send: bool = True
     
-    # Intervals
-    signal_interval: int = 600  # 10 دقیقه
-    education_interval: int = 3600  # 1 ساعت
+    # Intervals (10 minutes for everything)
+    signal_interval: int = 600
+    education_interval: int = 600  # Also 10 minutes!
+    price_interval: int = 600
 
 cfg = Config()
 
@@ -116,7 +110,7 @@ cfg = Config()
 # PROCESS LOCK
 # ============================================================
 class ProcessLock:
-    _file = "crypto_ultimate.lock"
+    _file = "crypto_v8.lock"
     
     @classmethod
     def acquire(cls) -> bool:
@@ -155,16 +149,55 @@ for sig in [signal.SIGINT, signal.SIGTERM]:
     signal.signal(sig, lambda s, f: (ProcessLock.release(), sys.exit(0)))
 
 # ============================================================
-# GROQ AI - تحلیل تکنیکال + فاندامنتال + پرایس اکشن
+# DATE & TIME UTILITIES
+# ============================================================
+class DateTimeManager:
+    """Professional Date/Time Manager for Online Timestamps"""
+    
+    @staticmethod
+    def now() -> datetime:
+        return datetime.now()
+    
+    @staticmethod
+    def now_str() -> str:
+        return datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    
+    @staticmethod
+    def now_persian() -> str:
+        """Persian formatted date/time"""
+        now = datetime.now()
+        days_fa = ['دوشنبه', 'سه‌شنبه', 'چهارشنبه', 'پنج‌شنبه', 'جمعه', 'شنبه', 'یکشنبه']
+        months_fa = ['فروردین', 'اردیبهشت', 'خرداد', 'تیر', 'مرداد', 'شهریور', 'مهر', 'آبان', 'آذر', 'دی', 'بهمن', 'اسفند']
+        
+        day_name = days_fa[now.weekday()]
+        day = now.day
+        month = months_fa[now.month - 1]
+        year = now.year
+        time_str = now.strftime('%H:%M:%S')
+        
+        return f"{day_name} {day} {month} {year} | {time_str}"
+    
+    @staticmethod
+    def timestamp_header() -> str:
+        """Full timestamp header for messages"""
+        return f"""
+📅 *تاریخ:* {DateTimeManager.now_persian()}
+🌍 *UTC:* {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')}
+"""
+
+dtm = DateTimeManager()
+
+# ============================================================
+# GROQ AI - 10+ Analysis Types
 # ============================================================
 class GroqAIEngine:
-    """Ultimate AI Analysis Engine"""
+    """Ultimate AI Engine with 10+ Analysis Types"""
     API_URL = "https://api.groq.com/openai/v1/chat/completions"
     MODEL = "llama-3.3-70b-versatile"
     
     def __init__(self):
         self.enabled = bool(cfg.groq_api_key)
-        self.client = httpx.AsyncClient(timeout=45.0)
+        self.client = httpx.AsyncClient(timeout=60.0)
         if self.enabled:
             logger.info("🧠 Groq AI Engine Connected (Llama 3.3 70B)")
         else:
@@ -172,9 +205,8 @@ class GroqAIEngine:
     
     async def technical_analysis(self, symbol: str, indicators: Dict, price: float, 
                                   change: float, patterns: List[str], mtf_data: Dict) -> Optional[str]:
-        """تحلیل تکنیکال عمیق با AI"""
-        if not self.enabled:
-            return None
+        """تحلیل تکنیکال عمیق"""
+        if not self.enabled: return None
         
         mtf_text = ""
         for tf, ind in mtf_data.items():
@@ -184,13 +216,13 @@ class GroqAIEngine:
 
 SYMBOL: {symbol}
 PRICE: ${price:,.4f} | 24h CHANGE: {change:+.2f}%
+DATE: {dtm.now_persian()}
 
 === 25+ TECHNICAL INDICATORS ===
 RSI(7): {indicators.get('RSI_7',50):.1f}
 RSI(14): {indicators.get('RSI_14',50):.1f}
 RSI(21): {indicators.get('RSI_21',50):.1f}
 MACD Histogram: {indicators.get('MACD_HIST',0):.4f}
-MACD Signal: {indicators.get('MACD_SIG',0):.4f}
 Stochastic K: {indicators.get('STOCH_K',50):.1f}
 Stochastic D: {indicators.get('STOCH_D',50):.1f}
 ADX: {indicators.get('ADX',20):.1f}
@@ -203,17 +235,22 @@ Bollinger Width: {indicators.get('BB_WIDTH',0):.4f}
 ATR(14): {indicators.get('ATR_14',0):.4f}
 ATR%: {indicators.get('ATR_PCT',0):.2f}%
 Williams %R: {indicators.get('WILLIAMS_R',-50):.1f}
-Ultimate Oscillator: {indicators.get('ULTIMATE',50):.1f}
-ROC(12): {indicators.get('ROC',0):.2f}
-TRIX: {indicators.get('TRIX',0):.4f}
 Volume Ratio: {indicators.get('VOL_RATIO',1):.2f}x
 Trend Strength: {indicators.get('TREND_STR',0):.1f}%
-Volatility: {indicators.get('VOLATILITY',0):.2f}%
-EMA Crossover: {'Bullish' if indicators.get('EMA_7',0) > indicators.get('EMA_20',0) else 'Bearish'}
-Ichimoku: {'Bullish' if price > indicators.get('ICH_SENKOU_A',0) else 'Bearish'}
-Parabolic SAR: {'Bullish' if indicators.get('PSAR_DIR',0) > 0 else 'Bearish'}
-Vortex: {'Bullish' if indicators.get('VORTEX+',0) > indicators.get('VORTEX-',0) else 'Bearish'}
-Aroon: {'Bullish' if indicators.get('AROON_UP',0) > indicators.get('AROON_DOWN',0) else 'Bearish'}
+
+=== EMA TYPES ===
+EMA_7: {indicators.get('EMA_7',0):.2f}
+EMA_14: {indicators.get('EMA_14',0):.2f}
+EMA_20: {indicators.get('EMA_20',0):.2f}
+EMA_50: {indicators.get('EMA_50',0):.2f}
+EMA_100: {indicators.get('EMA_100',0):.2f}
+EMA_200: {indicators.get('EMA_200',0):.2f}
+DEMA_20: {indicators.get('DEMA_20',0):.2f}
+TEMA_20: {indicators.get('TEMA_20',0):.2f}
+KAMA: {indicators.get('KAMA',0):.2f}
+HMA_20: {indicators.get('HMA_20',0):.2f}
+FRAMA_20: {indicators.get('FRAMA_20',0):.2f}
+JMA_20: {indicators.get('JMA_20',0):.2f}
 
 === CANDLESTICK PATTERNS ===
 Detected: {', '.join(patterns) if patterns else 'None'}
@@ -221,89 +258,192 @@ Detected: {', '.join(patterns) if patterns else 'None'}
 === DIVERGENCE ===
 {indicators.get('DIVERGENCE', 'NONE')}
 
-=== MULTI-TIMEFRAME ANALYSIS ===
+=== MULTI-TIMEFRAME ===
 {mtf_text}
 
 === SUPPORT/RESISTANCE ===
 Resistance: ${indicators.get('RESISTANCE',0):.2f}
 Pivot: ${indicators.get('PIVOT',0):.2f}
 Support: ${indicators.get('SUPPORT',0):.2f}
-Fibonacci 0.618: ${indicators.get('FIB_618',0):.2f}
 
 Provide in Persian (فارسی):
-1. Technical Analysis Summary (3 lines)
-2. Key Support/Resistance Levels
-3. Momentum & Volume Analysis
-4. Candlestick Pattern Interpretation
+1. Technical Analysis Summary
+2. Key Support/Resistance with exact prices
+3. EMA Alignment & Crossover Analysis
+4. Momentum & Volume Analysis
 5. Multi-Timeframe Confluence
-6. SHORT-TERM Prediction (next 4-12 hours)
-7. MEDIUM-TERM Prediction (next 1-3 days)
+6. SHORT-TERM Prediction (4-12 hours)
+7. MEDIUM-TERM Prediction (1-3 days)
 8. Entry/Exit Suggestions with Price Levels
 9. Risk Level (LOW/MEDIUM/HIGH/EXTREME)
 10. Confidence Score (0-100%)
 
-Use emojis. Be specific with price levels. Max 400 words."""
+Use emojis. Be specific. Max 400 words."""
         
         return await self._call_api(prompt)
     
-    async def fundamental_analysis(self, symbol: str, price: float, change: float) -> Optional[str]:
-        """تحلیل فاندامنتال با AI"""
-        if not self.enabled:
-            return None
+    async def market_overview(self, top_coins: List[Dict]) -> Optional[str]:
+        """تحلیل کلی بازار"""
+        if not self.enabled: return None
         
-        coin = symbol.replace('/USDT', '')
+        coins_text = "\n".join([f"{c['symbol']}: ${c['price']:,.2f} ({c['change']:+.2f}%)" for c in top_coins[:10]])
         
-        prompt = f"""You are a crypto fundamental analyst. Analyze {coin}:
+        prompt = f"""You are a crypto market strategist. Provide a comprehensive market overview in Persian (فارسی):
 
-Current Price: ${price:,.4f}
-24h Change: {change:+.2f}%
+DATE: {dtm.now_persian()}
 
-Provide in Persian (فارسی):
-1. Market Sentiment & Overall Outlook
-2. Key Fundamental Factors (adoption, development, partnerships)
-3. Market Cap & Volume Analysis
-4. Correlation with BTC
-5. Upcoming Events/Catalysts
-6. Institutional Interest
-7. On-Chain Metrics (if known)
-8. Long-Term Potential (3-6 months)
-9. Risk Factors
-10. Overall Fundamental Rating (1-10)
+TOP 10 COINS:
+{coins_text}
 
-Use emojis. Be concise. Max 300 words."""
+Provide:
+1. Overall Market Sentiment
+2. Bitcoin Dominance Analysis
+3. Altcoin Season Assessment
+4. Fear & Greed Analysis
+5. Key Market Drivers Today
+6. Upcoming Events to Watch
+7. Sector Rotation Analysis
+8. Institutional Flow Analysis
+9. Risk Assessment for New Entries
+10. Best & Worst Performers Analysis
+
+Use emojis. Be comprehensive. Max 500 words."""
         
         return await self._call_api(prompt)
     
-    async def price_action_analysis(self, symbol: str, indicators: Dict, price: float, patterns: List[str]) -> Optional[str]:
-        """تحلیل پرایس اکشن با AI"""
-        if not self.enabled:
-            return None
+    async def trading_strategy(self, symbol: str, indicators: Dict, price: float) -> Optional[str]:
+        """استراتژی معاملاتی"""
+        if not self.enabled: return None
         
-        prompt = f"""You are a professional price action trader. Analyze {symbol} at ${price:,.4f}:
+        prompt = f"""You are a professional trading strategist. Create a detailed trading strategy for {symbol} at ${price:,.2f} in Persian (فارسی):
 
-Candlestick Patterns: {', '.join(patterns) if patterns else 'None detected'}
-BB Position: {indicators.get('BB_PCT',0.5):.2f} (0=Lower, 1=Upper)
-Volume Ratio: {indicators.get('VOL_RATIO',1):.2f}x
+RSI(14): {indicators.get('RSI_14',50):.1f}
+ADX: {indicators.get('ADX',20):.1f}
 ATR%: {indicators.get('ATR_PCT',0):.2f}%
-Divergence: {indicators.get('DIVERGENCE','NONE')}
+BB Position: {indicators.get('BB_PCT',0.5):.2f}
 
-Provide in Persian (فارسی):
-1. Market Structure (Trending/Ranging/Reversing)
-2. Key Support/Resistance Zones
-3. Supply/Demand Zones
-4. Candlestick Pattern Analysis
-5. Breakout/Fakeout Probability
-6. Order Flow Analysis
-7. Key Levels to Watch
-8. Best Entry Strategy
-9. Stop Loss Placement
-10. Take Profit Targets
+Provide:
+1. Optimal Entry Strategy (Limit/Market/Scale-in)
+2. Position Sizing Recommendation
+3. Stop Loss Placement (Multiple Levels)
+4. Take Profit Targets (Short/Medium/Long)
+5. Trailing Stop Strategy
+6. Risk Management Rules
+7. Exit Strategy (When to take profits/cut losses)
+8. Maximum Drawdown Allowance
+9. Correlation Hedge Suggestions
+10. Time-Based Exit Rules
 
-Use emojis. Be specific. Max 300 words."""
+Use emojis. Be practical. Max 400 words."""
         
         return await self._call_api(prompt)
     
-    async def _call_api(self, prompt: str) -> Optional[str]:
+    async def educational_content(self, topic: str = None) -> Optional[str]:
+        """محتوای آموزشی حجیم"""
+        if not self.enabled: return None
+        
+        topics = [
+            "تحلیل تکنیکال پیشرفته با EMA و فیبوناچی",
+            "روانشناسی معامله‌گری و کنترل احساسات در بازار",
+            "مدیریت سرمایه و ریسک پیشرفته در کریپتو",
+            "الگوهای کندلی و پرایس اکشن حرفه‌ای",
+            "تحلیل وایکوف و فازهای انباشت و توزیع",
+            "استراتژی‌های معاملاتی در بازارهای نوسانی",
+            "تحلیل آنچین و داده‌های درون شبکه‌ای",
+            "مدیریت حد ضرر و ترلینگ استاپ حرفه‌ای",
+            "تحلیل مولتی تایم‌فریم و همروندی",
+            "فاندامنتال و تاثیر اخبار بر بازار کریپتو",
+            "ایچیموکو و استراتژی‌های ابر کومو",
+            "باندهای بولینگر و استراتژی فشردگی",
+            "مکدی و واگرایی‌های مخفی",
+            "آراس‌آی و تشخیص اشباع خرید و فروش",
+            "تحلیل حجم معاملات و ردپای نهنگ‌ها",
+            "فیبوناچی و نسبت‌های طلایی در معامله",
+            "الگوهای هارمونیک و نقاط بازگشتی",
+            "مدیریت سبد سرمایه در بازار کریپتو",
+            "تحلیل تایم‌فریم‌های بالا برای معاملات روزانه",
+            "روش‌های نوین تحلیل بازار با هوش مصنوعی"
+        ]
+        
+        if not topic:
+            topic = random.choice(topics)
+        
+        prompt = f"""You are a crypto trading professor. Write an EXTENSIVE, DETAILED educational post in Persian (فارسی) about:
+
+TOPIC: {topic}
+DATE: {dtm.now_persian()}
+
+Requirements:
+- AT LEAST 500 words
+- Practical examples with real scenarios
+- Step-by-step guides
+- Pro tips and common mistakes
+- Advanced techniques
+- Include specific numbers and calculations
+- Use emojis extensively
+- Make it engaging and professional
+- Add a "Golden Nugget" section at the end
+- Include actionable takeaways
+
+Make this the BEST content about this topic on Telegram!"""
+        
+        return await self._call_api(prompt, max_tokens=1200)
+    
+    async def market_prediction(self, symbol: str, indicators: Dict, price: float) -> Optional[str]:
+        """پیش‌بینی بازار"""
+        if not self.enabled: return None
+        
+        prompt = f"""You are a crypto market forecaster. Predict the future of {symbol} at ${price:,.2f} in Persian (فارسی):
+
+DATE: {dtm.now_persian()}
+RSI: {indicators.get('RSI_14',50):.1f}
+MACD: {'Bullish' if indicators.get('MACD_HIST',0)>0 else 'Bearish'}
+ADX: {indicators.get('ADX',20):.1f}
+BB Position: {indicators.get('BB_PCT',0.5):.2f}
+
+Provide predictions for:
+1. Next 4 Hours (with price target)
+2. Next 24 Hours
+3. Next 7 Days
+4. Next 30 Days
+5. Best Case Scenario
+6. Worst Case Scenario
+7. Most Likely Scenario
+8. Key Levels to Watch
+9. Reversal Probability
+10. Confidence Level for Each Prediction
+
+Use emojis. Be bold with specific numbers! Max 500 words."""
+        
+        return await self._call_api(prompt)
+    
+    async def sentiment_analysis(self, symbol: str, price: float, change: float) -> Optional[str]:
+        """تحلیل احساسات بازار"""
+        if not self.enabled: return None
+        
+        prompt = f"""You are a market sentiment analyst. Analyze {symbol} sentiment in Persian (فارسی):
+
+Price: ${price:,.2f}
+24h Change: {change:+.2f}%
+Date: {dtm.now_persian()}
+
+Provide:
+1. Current Market Sentiment (Fear/Greed/Neutral)
+2. Social Media Sentiment
+3. Institutional Sentiment
+4. Retail Sentiment
+5. Whale Activity Assessment
+6. Contrarian Indicators
+7. Sentiment Divergence Analysis
+8. Historical Sentiment Comparison
+9. Sentiment-Based Trading Strategy
+10. Sentiment Reversal Signals
+
+Use emojis extensively. Max 400 words."""
+        
+        return await self._call_api(prompt)
+    
+    async def _call_api(self, prompt: str, max_tokens: int = 800) -> Optional[str]:
         """Call Groq API"""
         try:
             response = await self.client.post(
@@ -314,10 +454,12 @@ Use emojis. Be specific. Max 300 words."""
                 },
                 json={
                     "model": self.MODEL,
-                    "messages": [{"role": "system", "content": "You are an elite crypto analyst. Respond only in Persian (فارسی)."}, 
-                                 {"role": "user", "content": prompt}],
-                    "max_tokens": 800,
-                    "temperature": 0.6
+                    "messages": [
+                        {"role": "system", "content": "You are an elite crypto analyst. Respond only in Persian (فارسی). Use emojis. Be detailed and professional."},
+                        {"role": "user", "content": prompt}
+                    ],
+                    "max_tokens": max_tokens,
+                    "temperature": 0.7
                 }
             )
             if response.status_code == 200:
@@ -352,10 +494,10 @@ class ExchangeManager:
             self._ex = ccxt.coinex(params)
             self._ex.load_markets()
             self.connected = True
-            logger.info(f"✅ Exchange: {'FULL' if not self.read_only else 'READ-ONLY'} | {len(self._ex.markets)} markets")
+            logger.info(f"✅ CoinEx: {'FULL' if not self.read_only else 'READ-ONLY'} | {len(self._ex.markets)} markets")
             return True
         except Exception as e:
-            logger.error(f"❌ Exchange: {e}")
+            logger.error(f"❌ CoinEx: {e}")
             try:
                 self._ex = ccxt.coinex({'enableRateLimit': True, 'timeout': 30000})
                 self._ex.load_markets()
@@ -378,14 +520,20 @@ class ExchangeManager:
             if data and len(data) > 30:
                 return pd.DataFrame(data, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
         except: return None
+    
+    def order_book(self, symbol: str) -> Optional[Dict]:
+        """دریافت عمق بازار"""
+        if not self.connected: return None
+        try: return self._ex.fetch_order_book(symbol, 10)
+        except: return None
 
 exchange_mgr = ExchangeManager()
 
 # ============================================================
-# 25+ TECHNICAL INDICATORS & OSCILLATORS
+# 25+ INDICATORS + 7 EMA TYPES
 # ============================================================
-class TechnicalIndicators:
-    """Complete Technical Analysis Suite - 25+ Indicators"""
+class UltimateIndicators:
+    """Complete Indicator Suite with 7 EMA Types"""
     
     @staticmethod
     def calculate_all(df: pd.DataFrame) -> Dict[str, Any]:
@@ -393,25 +541,65 @@ class TechnicalIndicators:
         high = df['high'].astype(float)
         low = df['low'].astype(float)
         volume = df['volume'].astype(float)
-        open_ = df['open'].astype(float)
         
         ind = {}
         
-        # ===== 1-3. MOVING AVERAGES =====
+        # ===== 7 TYPES OF EMA =====
+        # 1. Standard EMA
         for p in [7, 14, 20, 50, 100, 200]:
             ind[f'EMA_{p}'] = float(close.ewm(span=p, adjust=False).mean().iloc[-1])
             ind[f'SMA_{p}'] = float(close.rolling(p).mean().iloc[-1])
-            if p <= 50 and p <= len(close):
-                weights = np.arange(1, p+1)
-                ind[f'WMA_{p}'] = float(np.average(close.iloc[-p:], weights=weights))
         
-        # ===== 4-6. RSI MULTIPLE =====
+        # 2. DEMA (Double EMA)
+        ema20 = close.ewm(span=20, adjust=False).mean()
+        ema20_2 = ema20.ewm(span=20, adjust=False).mean()
+        ind['DEMA_20'] = float((2 * ema20.iloc[-1] - ema20_2.iloc[-1]))
+        
+        # 3. TEMA (Triple EMA)
+        ema20_3 = ema20_2.ewm(span=20, adjust=False).mean()
+        ind['TEMA_20'] = float((3 * ema20.iloc[-1] - 3 * ema20_2.iloc[-1] + ema20_3.iloc[-1]))
+        
+        # 4. KAMA (Kaufman Adaptive Moving Average)
+        from ta.momentum import KAMAIndicator
+        try: ind['KAMA'] = float(KAMAIndicator(close, 20, 2, 30).kama().iloc[-1])
+        except: ind['KAMA'] = ind['EMA_20']
+        
+        # 5. HMA (Hull Moving Average)
+        if len(close) >= 20:
+            wma_half = 2 * close.rolling(10).apply(lambda x: np.average(x, weights=range(1,11))).iloc[-1]
+            wma_full = close.rolling(20).apply(lambda x: np.average(x, weights=range(1,21))).iloc[-1]
+            diff = wma_half - wma_full
+            ind['HMA_20'] = float(diff if not np.isnan(diff) else ind['EMA_20'])
+        else:
+            ind['HMA_20'] = ind['EMA_20']
+        
+        # 6. FRAMA (Fractal Adaptive Moving Average)
+        if len(close) >= 20:
+            n1 = (high.rolling(10).max().iloc[-1] - low.rolling(10).min().iloc[-1]) / 10
+            n2 = (high.rolling(20).max().iloc[-1] - low.rolling(20).min().iloc[-1]) / 20
+            n3 = (high.rolling(40).max().iloc[-1] - low.rolling(40).min().iloc[-1]) / 40 if len(close) >= 40 else n2
+            dim = (np.log(n1 + n2) - np.log(n3)) / np.log(2) if n3 > 0 else 1
+            alpha = np.exp(-4.6 * (dim - 1))
+            alpha = max(0.01, min(1, alpha))
+            frama = close.iloc[-1] * alpha + ind['EMA_20'] * (1 - alpha)
+            ind['FRAMA_20'] = float(frama)
+        else:
+            ind['FRAMA_20'] = ind['EMA_20']
+        
+        # 7. JMA (Jurik Moving Average) - Simplified
+        if len(close) >= 20:
+            jma = close.iloc[-5:].mean() * 0.5 + ind['EMA_20'] * 0.3 + close.iloc[-1] * 0.2
+            ind['JMA_20'] = float(jma)
+        else:
+            ind['JMA_20'] = ind['EMA_20']
+        
+        # ===== RSI MULTIPLE =====
         from ta.momentum import RSIIndicator
         for p in [7, 14, 21]:
             try: ind[f'RSI_{p}'] = float(RSIIndicator(close, window=p).rsi().iloc[-1])
             except: ind[f'RSI_{p}'] = 50.0
         
-        # ===== 7. MACD COMPLETE =====
+        # ===== MACD =====
         from ta.trend import MACD
         try:
             macd = MACD(close, 12, 26, 9)
@@ -420,7 +608,7 @@ class TechnicalIndicators:
             ind['MACD_HIST'] = float(macd.macd_diff().iloc[-1])
         except: ind['MACD_LINE'] = ind['MACD_SIG'] = ind['MACD_HIST'] = 0.0
         
-        # ===== 8. STOCHASTIC =====
+        # ===== STOCHASTIC =====
         from ta.momentum import StochasticOscillator
         try:
             stoch = StochasticOscillator(high, low, close, 14, 3)
@@ -428,7 +616,7 @@ class TechnicalIndicators:
             ind['STOCH_D'] = float(stoch.stoch_signal().iloc[-1])
         except: ind['STOCH_K'] = ind['STOCH_D'] = 50.0
         
-        # ===== 9. BOLLINGER BANDS =====
+        # ===== BOLLINGER BANDS =====
         from ta.volatility import BollingerBands
         try:
             bb = BollingerBands(close, 20, 2)
@@ -441,30 +629,14 @@ class TechnicalIndicators:
             ind['BB_UPPER'] = ind['BB_MIDDLE'] = ind['BB_LOWER'] = close.iloc[-1]
             ind['BB_WIDTH'] = ind['BB_PCT'] = 0.5
         
-        # ===== 10. KELTNER CHANNEL =====
-        from ta.volatility import KeltnerChannel
-        try:
-            kc = KeltnerChannel(high, low, close, 20)
-            ind['KC_UPPER'] = float(kc.keltner_channel_hband().iloc[-1])
-            ind['KC_LOWER'] = float(kc.keltner_channel_lband().iloc[-1])
-        except: ind['KC_UPPER'] = ind['KC_LOWER'] = close.iloc[-1]
-        
-        # ===== 11. DONCHIAN CHANNEL =====
-        from ta.volatility import DonchianChannel
-        try:
-            dc = DonchianChannel(high, low, close, 20)
-            ind['DC_UPPER'] = float(dc.donchian_channel_hband().iloc[-1])
-            ind['DC_LOWER'] = float(dc.donchian_channel_lband().iloc[-1])
-        except: ind['DC_UPPER'] = ind['DC_LOWER'] = close.iloc[-1]
-        
-        # ===== 12. ATR =====
+        # ===== ATR =====
         from ta.volatility import AverageTrueRange
         for p in [7, 14]:
             try: ind[f'ATR_{p}'] = float(AverageTrueRange(high, low, close, p).average_true_range().iloc[-1])
             except: ind[f'ATR_{p}'] = close.iloc[-1] * 0.01
         ind['ATR_PCT'] = float(ind['ATR_14'] / close.iloc[-1] * 100)
         
-        # ===== 13. ADX + DI =====
+        # ===== ADX =====
         from ta.trend import ADXIndicator
         try:
             adx = ADXIndicator(high, low, close, 14)
@@ -473,12 +645,12 @@ class TechnicalIndicators:
             ind['DI-'] = float(adx.adx_neg().iloc[-1])
         except: ind['ADX'] = 20.0; ind['DI+'] = ind['DI-'] = 20.0
         
-        # ===== 14. CCI =====
+        # ===== CCI =====
         from ta.trend import CCIIndicator
         try: ind['CCI'] = float(CCIIndicator(high, low, close, 20).cci().iloc[-1])
         except: ind['CCI'] = 0.0
         
-        # ===== 15. ICHIMOKU CLOUD =====
+        # ===== ICHIMOKU =====
         from ta.trend import IchimokuIndicator
         try:
             ichi = IchimokuIndicator(high, low, 9, 26, 52)
@@ -489,73 +661,22 @@ class TechnicalIndicators:
         except:
             ind['ICH_TENKAN'] = ind['ICH_KIJUN'] = ind['ICH_SENKOU_A'] = ind['ICH_SENKOU_B'] = close.iloc[-1]
         
-        # ===== 16. PARABOLIC SAR =====
-        from ta.trend import PSARIndicator
-        try:
-            psar = PSARIndicator(high, low, close)
-            ind['PSAR'] = float(psar.psar().iloc[-1])
-            ind['PSAR_DIR'] = 1 if close.iloc[-1] > ind['PSAR'] else -1
-        except: ind['PSAR'] = close.iloc[-1]; ind['PSAR_DIR'] = 0
-        
-        # ===== 17. WILLIAMS %R =====
+        # ===== WILLIAMS %R =====
         from ta.momentum import WilliamsRIndicator
         try: ind['WILLIAMS_R'] = float(WilliamsRIndicator(high, low, close, 14).williams_r().iloc[-1])
         except: ind['WILLIAMS_R'] = -50.0
         
-        # ===== 18. ULTIMATE OSCILLATOR =====
-        from ta.momentum import UltimateOscillator
-        try: ind['ULTIMATE'] = float(UltimateOscillator(high, low, close).ultimate_oscillator().iloc[-1])
-        except: ind['ULTIMATE'] = 50.0
-        
-        # ===== 19. ROC =====
-        from ta.momentum import ROCIndicator
-        try: ind['ROC'] = float(ROCIndicator(close, 12).roc().iloc[-1])
-        except: ind['ROC'] = 0.0
-        
-        # ===== 20. AWESOME OSCILLATOR =====
-        from ta.momentum import AwesomeOscillatorIndicator
-        try: ind['AO'] = float(AwesomeOscillatorIndicator(high, low).awesome_oscillator().iloc[-1])
-        except: ind['AO'] = 0.0
-        
-        # ===== 21. MFI =====
+        # ===== MFI =====
         from ta.volume import MFIIndicator
         try: ind['MFI'] = float(MFIIndicator(high, low, close, volume, 14).money_flow_index().iloc[-1])
         except: ind['MFI'] = 50.0
         
-        # ===== 22. OBV =====
-        from ta.volume import OnBalanceVolumeIndicator
-        try: ind['OBV'] = float(OnBalanceVolumeIndicator(close, volume).on_balance_volume().iloc[-1])
-        except: ind['OBV'] = 0.0
-        
-        # ===== 23. AROON =====
-        from ta.trend import AroonIndicator
-        try:
-            aroon = AroonIndicator(close, 25)
-            ind['AROON_UP'] = float(aroon.aroon_up().iloc[-1])
-            ind['AROON_DOWN'] = float(aroon.aroon_down().iloc[-1])
-        except: ind['AROON_UP'] = ind['AROON_DOWN'] = 50.0
-        
-        # ===== 24. VORTEX =====
-        from ta.trend import VortexIndicator
-        try:
-            vortex = VortexIndicator(high, low, close, 14)
-            ind['VORTEX+'] = float(vortex.vortex_indicator_pos().iloc[-1])
-            ind['VORTEX-'] = float(vortex.vortex_indicator_neg().iloc[-1])
-        except: ind['VORTEX+'] = ind['VORTEX-'] = 1.0
-        
-        # ===== 25. TRIX =====
-        from ta.trend import TRIXIndicator
-        try: ind['TRIX'] = float(TRIXIndicator(close, 15).trix().iloc[-1])
-        except: ind['TRIX'] = 0.0
-        
-        # ===== VOLUME ANALYSIS =====
+        # ===== VOLUME =====
         vol_sma = volume.rolling(20).mean().iloc[-1] if len(volume) >= 20 else volume.iloc[-1]
         ind['VOL_RATIO'] = float(volume.iloc[-1] / vol_sma if vol_sma > 0 else 1)
         
-        # ===== MARKET METRICS =====
+        # ===== TREND STRENGTH =====
         ind['TREND_STR'] = float((close.iloc[-1] - close.iloc[-50]) / close.iloc[-50] * 100) if len(close) >= 50 else 0
-        ind['VOLATILITY'] = float(close.pct_change().rolling(14).std().iloc[-1] * 100)
-        ind['MOMENTUM'] = float(close.iloc[-1] - close.iloc[-10]) if len(close) >= 10 else 0
         
         # ===== PIVOT POINTS =====
         h, l, c = high.iloc[-1], low.iloc[-1], close.iloc[-1]
@@ -578,10 +699,10 @@ class TechnicalIndicators:
         ind['RESISTANCE'] = float(high.rolling(20).max().iloc[-1]) if len(high) >= 20 else high.max()
         
         # ===== CANDLESTICK PATTERNS =====
-        ind.update(TechnicalIndicators.detect_candles(df))
+        ind.update(UltimateIndicators.detect_candles(df))
         
         # ===== DIVERGENCE =====
-        ind['DIVERGENCE'] = TechnicalIndicators.detect_divergence(close)
+        ind['DIVERGENCE'] = UltimateIndicators.detect_divergence(close)
         
         return ind
     
@@ -590,171 +711,109 @@ class TechnicalIndicators:
         patterns = {p: False for p in [
             'DOJI', 'HAMMER', 'SHOOTING_STAR', 'ENGULFING_BULL', 'ENGULFING_BEAR',
             'MORNING_STAR', 'EVENING_STAR', 'THREE_WHITE_SOLDIERS', 'THREE_BLACK_CROWS',
-            'HARAMI_BULL', 'HARAMI_BEAR', 'PIERCING_LINE', 'DARK_CLOUD_COVER',
-            'MARUBOZU_BULL', 'MARUBOZU_BEAR', 'SPINNING_TOP', 'HANGING_MAN',
-            'INVERTED_HAMMER', 'TWEEZER_TOP', 'TWEEZER_BOTTOM'
+            'HARAMI_BULL', 'HARAMI_BEAR', 'MARUBOZU_BULL', 'MARUBOZU_BEAR'
         ]}
         
-        if len(df) < 3:
-            return patterns
+        if len(df) < 3: return patterns
         
-        o = df['open'].iloc[-1]; h = df['high'].iloc[-1]
-        l = df['low'].iloc[-1]; c = df['close'].iloc[-1]
-        po = df['open'].iloc[-2]; ph = df['high'].iloc[-2]
-        pl = df['low'].iloc[-2]; pc = df['close'].iloc[-2]
+        o, h, l, c = df['open'].iloc[-1], df['high'].iloc[-1], df['low'].iloc[-1], df['close'].iloc[-1]
+        po, pc = df['open'].iloc[-2], df['close'].iloc[-2]
         
         body = abs(c - o)
         upper = h - max(c, o)
         lower = min(c, o) - l
-        total_range = h - l
+        tr = h - l
+        if tr == 0: return patterns
         
-        if total_range == 0:
-            return patterns
-        
-        # Doji
-        patterns['DOJI'] = body <= total_range * 0.08
-        # Spinning Top
-        patterns['SPINNING_TOP'] = 0.08 < body <= total_range * 0.3 and upper > body * 0.3 and lower > body * 0.3
-        # Hammer
+        patterns['DOJI'] = body <= tr * 0.08
         patterns['HAMMER'] = lower > body * 2 and upper < body * 0.5 and c > o
-        # Hanging Man
-        patterns['HANGING_MAN'] = lower > body * 2 and upper < body * 0.5 and c < o
-        # Shooting Star
         patterns['SHOOTING_STAR'] = upper > body * 2 and lower < body * 0.5 and c < o
-        # Inverted Hammer
-        patterns['INVERTED_HAMMER'] = upper > body * 2 and lower < body * 0.5 and c > o
-        # Engulfing
         patterns['ENGULFING_BULL'] = c > o and pc < po and o <= pc and c >= po
         patterns['ENGULFING_BEAR'] = c < o and pc > po and o >= pc and c <= po
-        # Marubozu
         patterns['MARUBOZU_BULL'] = c > o and upper < body * 0.1 and lower < body * 0.1
         patterns['MARUBOZU_BEAR'] = c < o and upper < body * 0.1 and lower < body * 0.1
-        # Piercing Line
-        patterns['PIERCING_LINE'] = pc < po and c > o and o < pl and c > (po + pc) / 2
-        # Dark Cloud Cover
-        patterns['DARK_CLOUD_COVER'] = pc > po and c < o and o > ph and c < (po + pc) / 2
         
         if len(df) >= 3:
-            o3 = df['open'].iloc[-3]; c3 = df['close'].iloc[-3]
-            # Morning Star
-            patterns['MORNING_STAR'] = pc < po and abs(df['close'].iloc[-2] - df['open'].iloc[-2]) < body * 0.3 and c > o
-            # Evening Star
-            patterns['EVENING_STAR'] = pc > po and abs(df['close'].iloc[-2] - df['open'].iloc[-2]) < body * 0.3 and c < o
-            # Three White Soldiers
-            patterns['THREE_WHITE_SOLDIERS'] = c > o and pc > po and c3 > o3 and c > pc > c3
-            # Three Black Crows
-            patterns['THREE_BLACK_CROWS'] = c < o and pc < po and c3 < o3 and c < pc < c3
+            o3, c3 = df['open'].iloc[-3], df['close'].iloc[-3]
+            patterns['MORNING_STAR'] = pc < po and c > o
+            patterns['EVENING_STAR'] = pc > po and c < o
+            patterns['THREE_WHITE_SOLDIERS'] = c > o and pc > po and c3 > o3
+            patterns['THREE_BLACK_CROWS'] = c < o and pc < po and c3 < o3
         
         return patterns
     
     @staticmethod
     def detect_divergence(price: pd.Series) -> str:
-        if len(price) < 20:
-            return "NONE"
+        if len(price) < 20: return "NONE"
         from ta.momentum import RSIIndicator
-        rsi_series = RSIIndicator(price, 14).rsi()
-        rp = price.iloc[-20:]
-        rr = rsi_series.iloc[-20:]
-        
-        if rp.iloc[-1] < rp.min() and rr.iloc[-1] > rr.min():
-            return "BULLISH_DIVERGENCE"
-        if rp.iloc[-1] > rp.max() and rr.iloc[-1] < rr.max():
-            return "BEARISH_DIVERGENCE"
-        if rp.iloc[-1] > rp.min() and rr.iloc[-1] < rr.min():
-            return "HIDDEN_BULLISH"
-        if rp.iloc[-1] < rp.max() and rr.iloc[-1] > rr.max():
-            return "HIDDEN_BEARISH"
+        rsi = RSIIndicator(price, 14).rsi()
+        rp, rr = price.iloc[-20:], rsi.iloc[-20:]
+        if rp.iloc[-1] < rp.min() and rr.iloc[-1] > rr.min(): return "BULLISH_DIVERGENCE"
+        if rp.iloc[-1] > rp.max() and rr.iloc[-1] < rr.max(): return "BEARISH_DIVERGENCE"
         return "NONE"
 
-ti = TechnicalIndicators()
+ui = UltimateIndicators()
 
 # ============================================================
-# SIGNAL GENERATOR
+# SIGNAL GENERATOR WITH EMA TYPES
 # ============================================================
 class SignalGenerator:
     @staticmethod
     def generate(ind: Dict, price: float, mtf: Dict = None) -> Tuple[str, int, int]:
         score = 0
         
-        # EMA Crossover
-        if ind['EMA_7'] > ind['EMA_20'] > ind['EMA_50'] > ind['EMA_200']: score += 200
-        elif ind['EMA_7'] > ind['EMA_20'] > ind['EMA_50']: score += 130
-        elif ind['EMA_7'] < ind['EMA_20'] < ind['EMA_50'] < ind['EMA_200']: score -= 200
-        elif ind['EMA_7'] < ind['EMA_20'] < ind['EMA_50']: score -= 130
+        # EMA Crossovers (with all 7 types)
+        if ind['EMA_7'] > ind['EMA_20'] > ind['EMA_50']: score += 150
+        elif ind['EMA_7'] < ind['EMA_20'] < ind['EMA_50']: score -= 150
         
-        # Ichimoku
-        if price > ind['ICH_SENKOU_A'] and price > ind['ICH_SENKOU_B']:
-            score += 80 if ind['ICH_TENKAN'] > ind['ICH_KIJUN'] else 40
-        elif price < ind['ICH_SENKOU_A'] and price < ind['ICH_SENKOU_B']:
-            score -= 80 if ind['ICH_TENKAN'] < ind['ICH_KIJUN'] else 40
+        if ind['DEMA_20'] > ind['EMA_20']: score += 40
+        if ind['TEMA_20'] > ind['EMA_20']: score += 30
+        if ind['HMA_20'] > ind['EMA_20']: score += 30
+        if ind['FRAMA_20'] > ind['EMA_20']: score += 20
+        if ind['JMA_20'] > ind['EMA_20']: score += 20
         
         # RSI
         rsi = ind['RSI_14']
-        if rsi < 25: score += 120
-        elif rsi < 35: score += 70
-        elif rsi < 45: score += 30
-        elif rsi > 75: score -= 120
-        elif rsi > 65: score -= 70
-        elif rsi > 55: score -= 30
+        if rsi < 30: score += 120
+        elif rsi < 40: score += 60
+        elif rsi > 70: score -= 120
+        elif rsi > 60: score -= 60
         
         # MACD
         if ind['MACD_HIST'] > 0: score += 70
         else: score -= 70
         
         # Stochastic
-        if ind['STOCH_K'] < 20 and ind['STOCH_D'] < 20: score += 80
-        elif ind['STOCH_K'] > 80 and ind['STOCH_D'] > 80: score -= 80
+        if ind['STOCH_K'] < 20: score += 70
+        elif ind['STOCH_K'] > 80: score -= 70
         
         # CCI
         cci = ind['CCI']
         if cci < -200: score += 70
-        elif cci < -100: score += 40
         elif cci > 200: score -= 70
-        elif cci > 100: score -= 40
         
         # Bollinger
         if ind['BB_PCT'] < 0.1: score += 100
         elif ind['BB_PCT'] > 0.9: score -= 100
         
-        # ATR Volatility
-        if ind['ATR_PCT'] > 5: score += 40
-        
         # Volume
-        if ind['VOL_RATIO'] > 2.5: score += 60 if score > 0 else -60
-        elif ind['VOL_RATIO'] > 1.5: score += 40 if score > 0 else -40
+        if ind['VOL_RATIO'] > 2: score += 50 if score > 0 else -50
         
         # MFI
         if ind['MFI'] < 20: score += 60
         elif ind['MFI'] > 80: score -= 60
         
-        # Williams %R
-        if ind['WILLIAMS_R'] < -80: score += 50
-        elif ind['WILLIAMS_R'] > -20: score -= 50
-        
-        # ADX
-        if ind['ADX'] > 25 and ind['DI+'] > ind['DI-']: score += 50
-        elif ind['ADX'] > 25 and ind['DI-'] > ind['DI+']: score -= 50
-        
         # Candles
         if ind.get('ENGULFING_BULL'): score += 80
         if ind.get('HAMMER'): score += 50
-        if ind.get('MORNING_STAR'): score += 60
-        if ind.get('THREE_WHITE_SOLDIERS'): score += 60
-        if ind.get('PIERCING_LINE'): score += 50
-        if ind.get('MARUBOZU_BULL'): score += 40
         if ind.get('ENGULFING_BEAR'): score -= 80
         if ind.get('SHOOTING_STAR'): score -= 50
-        if ind.get('EVENING_STAR'): score -= 60
+        if ind.get('THREE_WHITE_SOLDIERS'): score += 60
         if ind.get('THREE_BLACK_CROWS'): score -= 60
-        if ind.get('DARK_CLOUD_COVER'): score -= 50
-        if ind.get('MARUBOZU_BEAR'): score -= 40
         
         # Divergence
-        div = ind.get('DIVERGENCE', 'NONE')
-        if div == 'BULLISH_DIVERGENCE': score += 70
-        elif div == 'BEARISH_DIVERGENCE': score -= 70
-        elif div == 'HIDDEN_BULLISH': score += 40
-        elif div == 'HIDDEN_BEARISH': score -= 40
+        if ind.get('DIVERGENCE') == 'BULLISH_DIVERGENCE': score += 70
+        elif ind.get('DIVERGENCE') == 'BEARISH_DIVERGENCE': score -= 70
         
         # MTF
         if mtf:
@@ -762,8 +821,6 @@ class SignalGenerator:
                 w = {"5m": 0.3, "15m": 0.5, "30m": 0.7, "1h": 1.0, "2h": 1.2, "4h": 1.5, "6h": 1.8, "12h": 2.0, "1d": 2.5, "3d": 3.0, "1w": 4.0}.get(tf, 0.5)
                 if ti_data.get('RSI_14', 50) > 55: score += int(25 * w)
                 elif ti_data.get('RSI_14', 50) < 45: score -= int(25 * w)
-                if ti_data.get('MACD_HIST', 0) > 0: score += int(18 * w)
-                else: score -= int(18 * w)
         
         score = max(-1000, min(1000, score))
         
@@ -780,57 +837,142 @@ class SignalGenerator:
 sg = SignalGenerator()
 
 # ============================================================
-# TRADING ENGINE
+# SELF-LEARNING TRADING ENGINE
 # ============================================================
-class TradingEngine:
+class SelfLearningTrader:
+    """Trading Engine with Experience Learning"""
+    
     def __init__(self):
         self.balance = cfg.initial_balance
         self.positions: Dict[str, Dict] = {}
         self.history: List[Dict] = []
         self.consecutive_losses = 0
+        self.experience = {
+            'total_trades': 0,
+            'wins': 0,
+            'losses': 0,
+            'best_trade': 0,
+            'worst_trade': 0,
+            'avg_win': 0,
+            'avg_loss': 0,
+            'best_hour': None,
+            'worst_hour': None,
+            'best_symbol': None,
+            'worst_symbol': None,
+            'symbol_performance': {},
+            'hour_performance': {},
+            'confidence_threshold': 70,
+            'risk_multiplier': 1.0,
+            'learned_patterns': []
+        }
         self.load()
     
     def load(self):
         try:
-            with open('trades_v7.json', 'r') as f:
-                d = json.load(f)
-                self.balance = d.get('balance', cfg.initial_balance)
-                self.history = d.get('history', [])
+            with open('trading_brain.json', 'r') as f:
+                data = json.load(f)
+                self.balance = data.get('balance', cfg.initial_balance)
+                self.history = data.get('history', [])
+                self.experience.update(data.get('experience', {}))
         except: pass
     
     def save(self):
         try:
-            with open('trades_v7.json', 'w') as f:
-                json.dump({'balance': self.balance, 'history': self.history[-500:]}, f)
+            with open('trading_brain.json', 'w') as f:
+                json.dump({
+                    'balance': self.balance,
+                    'history': self.history[-1000:],
+                    'experience': self.experience
+                }, f)
         except: pass
     
-    def calc_size(self, entry: float, sl: float, conf: int) -> float:
-        risk = self.balance * cfg.risk_per_trade
-        if conf >= 90: risk *= 1.5
-        elif conf >= 80: risk *= 1.2
-        elif conf < 65: risk *= 0.5
-        if self.consecutive_losses > 0: risk *= (0.5 ** self.consecutive_losses)
-        pr = abs(entry - sl)
-        return min(risk/pr, self.balance*0.25/entry) if pr > 0 else 0
+    def learn_from_history(self):
+        """Learn from past trades to improve"""
+        if len(self.history) < 10:
+            return
+        
+        wins = [t for t in self.history if t['pnl'] > 0]
+        losses = [t for t in self.history if t['pnl'] <= 0]
+        
+        self.experience['total_trades'] = len(self.history)
+        self.experience['wins'] = len(wins)
+        self.experience['losses'] = len(losses)
+        
+        if wins:
+            self.experience['best_trade'] = max(t['pnl'] for t in wins)
+            self.experience['avg_win'] = sum(t['pnl'] for t in wins) / len(wins)
+        
+        if losses:
+            self.experience['worst_trade'] = min(t['pnl'] for t in losses)
+            self.experience['avg_loss'] = sum(t['pnl'] for t in losses) / len(losses)
+        
+        # Adjust confidence threshold based on win rate
+        win_rate = len(wins) / len(self.history) * 100
+        if win_rate > 70:
+            self.experience['confidence_threshold'] = 60
+            self.experience['risk_multiplier'] = 1.3
+        elif win_rate > 60:
+            self.experience['confidence_threshold'] = 65
+            self.experience['risk_multiplier'] = 1.1
+        elif win_rate < 40:
+            self.experience['confidence_threshold'] = 80
+            self.experience['risk_multiplier'] = 0.7
+        
+        self.save()
+    
+    def should_trade(self, symbol: str, confidence: int, score: int) -> Tuple[bool, str]:
+        """Decide whether to trade based on experience"""
+        if confidence < self.experience['confidence_threshold']:
+            return False, f"اطمینان {confidence}% کمتر از حد نیاز {self.experience['confidence_threshold']}%"
+        
+        if len(self.positions) >= cfg.max_positions:
+            return False, "حداکثر پوزیشن باز"
+        
+        if self.consecutive_losses >= cfg.max_consecutive_losses:
+            return False, f"{cfg.max_consecutive_losses} ضرر متوالی"
+        
+        # Check symbol performance
+        sym_perf = self.experience.get('symbol_performance', {}).get(symbol, 0)
+        if sym_perf < -500:
+            return False, f"عملکرد ضعیف {symbol} در گذشته"
+        
+        return True, "آماده معامله"
     
     def open(self, symbol: str, entry: float, sl: float, tp: float, conf: int) -> Optional[Dict]:
-        if len(self.positions) >= cfg.max_positions: return None
-        if self.consecutive_losses >= cfg.max_consecutive_losses: return None
-        sz = self.calc_size(entry, sl, conf)
-        if sz <= 0 or sz*entry > self.balance: return None
+        can_trade, reason = self.should_trade(symbol, conf, conf)
+        if not can_trade:
+            logger.info(f"⚠️ Trade rejected for {symbol}: {reason}")
+            return None
+        
+        risk = self.balance * cfg.risk_per_trade * self.experience['risk_multiplier']
+        if self.consecutive_losses > 0:
+            risk *= (0.5 ** self.consecutive_losses)
+        
+        pr = abs(entry - sl)
+        sz = min(risk/pr, self.balance*0.25/entry) if pr > 0 else 0
+        
+        if sz <= 0 or sz*entry > self.balance:
+            return None
+        
         self.balance -= sz * entry
-        pos = {'symbol': symbol, 'size': sz, 'entry': entry, 'sl': sl, 'tp': tp, 'high': entry, 'time': datetime.now(), 'conf': conf}
+        pos = {
+            'symbol': symbol, 'size': sz, 'entry': entry,
+            'sl': sl, 'tp': tp, 'high': entry,
+            'time': datetime.now(), 'conf': conf
+        }
         self.positions[symbol] = pos
         self.save()
-        logger.info(f"🔵 OPEN {symbol} | {sz:.4f} @ {entry:.2f}")
+        logger.info(f"🔵 OPEN {symbol} | {sz:.4f} @ {entry:.2f} | Risk: {self.experience['risk_multiplier']:.1f}x")
         return pos
     
     def update(self, symbol: str, price: float, atr: float) -> Optional[Dict]:
         if symbol not in self.positions: return None
         p = self.positions[symbol]
         p['high'] = max(p['high'], price)
-        if (price-p['entry'])/p['entry'] > cfg.trailing_pct:
+        
+        if (price - p['entry']) / p['entry'] > cfg.trailing_pct:
             p['sl'] = p['high'] * (1 - cfg.trailing_pct)
+        
         if price >= p['tp']: return self.close(symbol, price, "TAKE_PROFIT")
         if price <= p['sl']: return self.close(symbol, price, "STOP_LOSS")
         return None
@@ -839,41 +981,57 @@ class TradingEngine:
         p = self.positions.pop(symbol)
         pnl = (price - p['entry']) * p['size']
         self.balance += p['size'] * price
+        
         self.consecutive_losses = 0 if pnl > 0 else self.consecutive_losses + 1
-        t = {'symbol': symbol, 'entry': p['entry'], 'exit': price, 'pnl': pnl, 'reason': reason, 'time': datetime.now().isoformat()}
+        
+        t = {
+            'symbol': symbol, 'entry': p['entry'], 'exit': price,
+            'pnl': pnl, 'reason': reason, 'time': datetime.now().isoformat(),
+            'hour': datetime.now().hour
+        }
         self.history.append(t)
+        
+        # Update experience
+        sym_perf = self.experience.get('symbol_performance', {})
+        sym_perf[symbol] = sym_perf.get(symbol, 0) + pnl
+        self.experience['symbol_performance'] = sym_perf
+        
+        self.learn_from_history()
         self.save()
+        
         logger.info(f"{'🟢' if pnl>0 else '🔴'} CLOSE {symbol} | ${pnl:+.2f} | {reason}")
         return t
+    
+    def get_stats(self) -> Dict:
+        total = max(1, len(self.history))
+        wins = len([t for t in self.history if t['pnl'] > 0])
+        return {
+            'balance': self.balance,
+            'pnl': sum(t['pnl'] for t in self.history),
+            'total': total,
+            'wins': wins,
+            'win_rate': wins/total*100,
+            'experience': self.experience
+        }
 
-trader = TradingEngine()
-
-# ============================================================
-# CACHE
-# ============================================================
-class Cache:
-    _d: Dict[str, Tuple[Any, float]] = {}
-    @classmethod
-    def get(cls, k: str, ttl: float = 15) -> Optional[Any]:
-        if k in cls._d:
-            v, ts = cls._d[k]
-            if time.time() - ts < ttl: return v
-            del cls._d[k]
-        return None
-    @classmethod
-    def set(cls, k: str, v: Any): cls._d[k] = (v, time.time())
+trader = SelfLearningTrader()
 
 # ============================================================
-# FORMATTER
+# FORMATTER WITH DATE/TIME
 # ============================================================
 class Formatter:
     @staticmethod
-    def signal_msg(analysis: Dict, ai_tech: str = None, ai_fund: str = None, ai_pa: str = None) -> str:
+    def header() -> str:
+        return dtm.timestamp_header()
+    
+    @staticmethod
+    def signal_msg(analysis: Dict, ai_analyses: Dict = None) -> str:
         s = analysis['symbol'].replace('/USDT','')
         i = analysis['indicators']
-        pats = [k.replace('_',' ') for k,v in i.items() if isinstance(v,bool) and v]
+        pats = [k for k,v in i.items() if isinstance(v,bool) and v]
         
         msg = f"""
+{Formatter.header()}
 ╔══════════════════════════════════════════════╗
 ║       🔥 سیگنال {s} 🔥                  ║
 ╚══════════════════════════════════════════════╝
@@ -884,83 +1042,63 @@ class Formatter:
 🎯 *سیگنال:* {analysis['signal']}
 💪 اطمینان: {analysis['confidence']}% | امتیاز: {analysis['score']}/1000
 
-📈 *اندیکاتورها:*
-• RSI(14): {i['RSI_14']:.1f} | RSI(7): {i['RSI_7']:.1f}
-• MACD: {'صعودی' if i['MACD_HIST']>0 else 'نزولی'}
-• ADX: {i['ADX']:.1f} | DI+: {i['DI+']:.1f} | DI-: {i['DI-']:.1f}
-• CCI: {i['CCI']:.1f} | MFI: {i['MFI']:.1f}
-• Stoch K: {i['STOCH_K']:.1f} | Stoch D: {i['STOCH_D']:.1f}
-• ATR: {i['ATR_14']:.4f} | Vol: {i['VOL_RATIO']:.1f}x
-• BB Width: {i['BB_WIDTH']:.4f} | %B: {i['BB_PCT']:.2f}
-• Williams %R: {i['WILLIAMS_R']:.1f}
+📈 *انواع EMA:*
+• EMA_7: ${i.get('EMA_7',0):,.2f} | EMA_20: ${i.get('EMA_20',0):,.2f}
+• EMA_50: ${i.get('EMA_50',0):,.2f} | EMA_200: ${i.get('EMA_200',0):,.2f}
+• DEMA_20: ${i.get('DEMA_20',0):,.2f} | TEMA_20: ${i.get('TEMA_20',0):,.2f}
+• HMA_20: ${i.get('HMA_20',0):,.2f} | KAMA: ${i.get('KAMA',0):,.2f}
+• FRAMA_20: ${i.get('FRAMA_20',0):,.2f} | JMA_20: ${i.get('JMA_20',0):,.2f}
+
+📊 *اندیکاتورها:*
+• RSI(14): {i['RSI_14']:.1f} | MACD: {'صعودی' if i['MACD_HIST']>0 else 'نزولی'}
+• ADX: {i['ADX']:.1f} | CCI: {i['CCI']:.1f} | MFI: {i['MFI']:.1f}
+• BB Width: {i['BB_WIDTH']:.4f} | Vol: {i['VOL_RATIO']:.1f}x
 
 🕯️ *الگوها:* {', '.join(pats) if pats else 'بدون الگو'}
 🔄 *واگرایی:* {i.get('DIVERGENCE','NONE')}
 
 🔑 *سطوح:*
-• مقاومت: ${i['RESISTANCE']:,.4f} | R1: ${i['R1']:,.4f}
-• پیوت: ${i['PIVOT']:,.4f}
-• حمایت: ${i['SUPPORT']:,.4f} | S1: ${i['S1']:,.4f}
+• مقاومت: ${i['RESISTANCE']:,.4f}
+• حمایت: ${i['SUPPORT']:,.4f}
 • Fib 0.618: ${i.get('FIB_618',0):,.4f}
 
 ⚠️ حد ضرر: ${analysis['price']-i['ATR_14']*cfg.atr_sl:,.4f}
-🎯 حد سود: ${analysis['price']+i['ATR_14']*cfg.atr_tp:,.4f}
-📊 ریسک/ریوارد: 1:{cfg.atr_tp/cfg.atr_sl:.1f}"""
+🎯 حد سود: ${analysis['price']+i['ATR_14']*cfg.atr_tp:,.4f}"""
         
-        if ai_tech:
-            msg += f"""
-
-🧠 *تحلیل تکنیکال AI:*
-{ai_tech[:500]}..."""
+        if ai_analyses:
+            if ai_analyses.get('tech'):
+                msg += f"\n\n🧠 *تحلیل تکنیکال AI:*\n{ai_analyses['tech'][:600]}..."
+            if ai_analyses.get('prediction'):
+                msg += f"\n\n🔮 *پیش‌بینی AI:*\n{ai_analyses['prediction'][:400]}..."
         
-        if ai_pa:
-            msg += f"""
-
-📊 *تحلیل پرایس اکشن AI:*
-{ai_pa[:400]}..."""
-        
-        if ai_fund:
-            msg += f"""
-
-📰 *تحلیل فاندامنتال AI:*
-{ai_fund[:300]}..."""
-        
-        msg += f"""
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━
-⏰ {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
-✨ @CryptoPulse606"""
-        
+        msg += f"\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━\n✨ @CryptoPulse606 | {dtm.now_str()}"
         return msg
     
     @staticmethod
-    def edu_msg() -> str:
-        topics = [
-            "تحلیل تکنیکال", "پرایس اکشن", "فاندامنتال",
-            "مدیریت ریسک", "روانشناسی بازار", "الگوهای کندلی",
-            "استراتژی معاملاتی", "ایچیموکو", "فیبوناچی",
-            "بولینگر باند", "مکدی", "آراس‌آی"
-        ]
+    def education_msg(ai_content: str = None) -> str:
+        if ai_content:
+            return f"""
+{Formatter.header()}
+🧠 *آموزش تخصصی هوش مصنوعی*
+
+{ai_content}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━
+✨ @CryptoPulse606 | {dtm.now_str()}"""
+        
         return f"""
+{Formatter.header()}
 📚 *آموزش تخصصی*
 
-📖 {random.choice(topics)}
+📖 درس امروز: تحلیل حرفه‌ای بازار
 
-🔍 *اصول طلایی:*
-۱. روند دوست شماست
-۲. ریسک/ریوارد ≥ ۱:۲
-۳. حداکثر ۲٪ ریسک
-۴. حد ضرر اجباری
-۵. بعد ۳ ضرر استراحت
-۶. ژورنال معاملاتی
-۷. صبوری = سودآوری
+🔍 نکات کلیدی:
+• روند دوست شماست
+• ریسک/ریوارد ≥ ۱:۲
+• حد ضرر اجباری
 
-💡 *رمز موفقیت:*
-۲۰٪ استراتژی + ۳۰٪ ریسک + ۵۰٪ روانشناسی
-
-━━━━━━━━━━━━━━━━━━━━━━
-✨ @CryptoPulse606 | {datetime.now().strftime('%H:%M')}
-"""
+━━━━━━━━━━━━━━━━━━━━━━━━━━
+✨ @CryptoPulse606 | {dtm.now_str()}"""
 
 fmt = Formatter()
 
@@ -975,21 +1113,19 @@ class Menu:
              InlineKeyboardButton("🎯 سیگنال BTC", callback_data="s_BTC/USDT"),
              InlineKeyboardButton("🔍 اسکن", callback_data="scan")],
             [InlineKeyboardButton("📈 تحلیل تکنیکال", callback_data="tech"),
-             InlineKeyboardButton("⏰ مولتی‌تایم", callback_data="mtf"),
-             InlineKeyboardButton("🧠 AI تحلیل", callback_data="ai_BTC/USDT")],
-            [InlineKeyboardButton("📰 فاندامنتال AI", callback_data="fund_BTC/USDT"),
-             InlineKeyboardButton("📊 پرایس اکشن AI", callback_data="pa_BTC/USDT"),
+             InlineKeyboardButton("🧠 AI کامل", callback_data="ai_BTC/USDT"),
              InlineKeyboardButton("🔮 پیش‌بینی", callback_data="pred_BTC/USDT")],
+            [InlineKeyboardButton("📰 بازار AI", callback_data="market_ai"),
+             InlineKeyboardButton("📊 استراتژی", callback_data="strat_BTC/USDT"),
+             InlineKeyboardButton("💭 احساسات", callback_data="sent_BTC/USDT")],
             [InlineKeyboardButton("💰 پورتفوی", callback_data="port"),
              InlineKeyboardButton("📊 عملکرد", callback_data="perf"),
-             InlineKeyboardButton("📋 تاریخچه", callback_data="hist")],
+             InlineKeyboardButton("🧠 تجربه", callback_data="exp")],
             [InlineKeyboardButton("🤖 خودکار", callback_data="auto"),
              InlineKeyboardButton("⚙️ تنظیمات", callback_data="set"),
-             InlineKeyboardButton("🔑 وضعیت", callback_data="status")],
-            [InlineKeyboardButton("📚 آموزش", callback_data="edu"),
-             InlineKeyboardButton("🕯️ الگوها", callback_data="patt"),
              InlineKeyboardButton("⏸️ توقف", callback_data="stop")],
-            [InlineKeyboardButton("🔄 بروزرسانی", callback_data="ref"),
+            [InlineKeyboardButton("📚 آموزش", callback_data="edu"),
+             InlineKeyboardButton("🔄 بروز", callback_data="ref"),
              InlineKeyboardButton("❓ راهنما", callback_data="help")]
         ])
     
@@ -1008,12 +1144,13 @@ class Menu:
 # ============================================================
 async def cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "🤖 *Crypto Pulse Ultimate AI v7.0*\n\n"
+        f"{fmt.header()}"
+        "🤖 *Crypto Pulse Ultimate v8.0*\n\n"
         "🧠 Groq AI (Llama 3.3 70B)\n"
-        "📊 ۲۵+ اندیکاتور قدرتمند\n"
+        "📊 ۷ نوع EMA | ۲۵+ اندیکاتور\n"
         "⏰ ۱۱ تایم‌فریم | ۳۰ ارز\n"
-        "📰 تحلیل تکنیکال + فاندامنتال + پرایس اکشن\n"
-        "📢 سیگنال خودکار هر ۱۰ دقیقه\n\n"
+        "🎓 یادگیری از تجربه معاملات\n"
+        "📢 سیگنال + آموزش هر ۱۰ دقیقه\n\n"
         "👇 انتخاب کنید:",
         parse_mode="Markdown", reply_markup=Menu.main()
     )
@@ -1031,26 +1168,25 @@ async def full_signal_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE, sy
         await q.edit_message_text("❌ خطا", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]]))
         return
     
-    ind = ti.calculate_all(df)
+    ind = ui.calculate_all(df)
     
-    # MTF
     mtf = {}
     for tf_name, tf_val in cfg.timeframes.items():
         dft = exchange_mgr.ohlcv(symbol, tf_val, 100)
-        if dft is not None: mtf[tf_name] = ti.calculate_all(dft)
+        if dft is not None: mtf[tf_name] = ui.calculate_all(dft)
     
     sig, conf, score = sg.generate(ind, t['last'], mtf)
     pats = [k for k,v in ind.items() if isinstance(v,bool) and v]
     
-    # AI Analyses
-    ai_tech = await ai.technical_analysis(symbol, ind, t['last'], t.get('percentage',0), pats, mtf)
-    ai_fund = await ai.fundamental_analysis(symbol, t['last'], t.get('percentage',0))
-    ai_pa = await ai.price_action_analysis(symbol, ind, t['last'], pats)
+    ai_analyses = {}
+    if ai.enabled:
+        ai_analyses['tech'] = await ai.technical_analysis(symbol, ind, t['last'], t.get('percentage',0), pats, mtf)
+        ai_analyses['prediction'] = await ai.market_prediction(symbol, ind, t['last'])
     
     analysis = {'symbol': symbol, 'price': t['last'], 'change': t.get('percentage',0),
                 'indicators': ind, 'signal': sig, 'confidence': conf, 'score': score}
     
-    msg = fmt.signal_msg(analysis, ai_tech, ai_fund, ai_pa)
+    msg = fmt.signal_msg(analysis, ai_analyses)
     
     await q.edit_message_text(msg, parse_mode="Markdown",
         reply_markup=InlineKeyboardMarkup([[
@@ -1060,122 +1196,74 @@ async def full_signal_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE, sy
             InlineKeyboardButton("🔙", callback_data="back")
         ]]))
 
-async def ai_tech_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE, symbol: str = "BTC/USDT"):
+async def market_ai_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query
     await q.answer()
-    await q.edit_message_text(f"🧠 تحلیل تکنیکال AI برای {symbol.replace('/USDT','')}...")
+    await q.edit_message_text("📰 تحلیل بازار با AI...")
     
-    t = exchange_mgr.ticker(symbol)
-    df = exchange_mgr.ohlcv(symbol, '1h', 200)
-    if not t or df is None:
-        await q.edit_message_text("❌ خطا", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]]))
-        return
-    
-    ind = ti.calculate_all(df)
-    pats = [k for k,v in ind.items() if isinstance(v,bool) and v]
-    mtf = {}
-    for tf_name, tf_val in list(cfg.timeframes.items())[:6]:
-        dft = exchange_mgr.ohlcv(symbol, tf_val, 100)
-        if dft is not None: mtf[tf_name] = ti.calculate_all(dft)
-    
-    ai_tech = await ai.technical_analysis(symbol, ind, t['last'], t.get('percentage',0), pats, mtf)
-    
-    if ai_tech:
-        await q.edit_message_text(f"🧠 *تحلیل تکنیکال AI - {symbol.replace('/USDT','')}*\n\n{ai_tech}\n\n━━━━━━━━━━━━━━━━━━━━━━\n✨ @CryptoPulse606",
-            parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[
-                InlineKeyboardButton("🔄", callback_data=f"ai_{symbol}"),
-                InlineKeyboardButton("📊 سیگنال", callback_data=f"s_{symbol}"),
-                InlineKeyboardButton("🔙", callback_data="back")
-            ]]))
-    else:
-        await q.edit_message_text("❌ AI فعال نیست. GROQ_API_KEY را تنظیم کنید.",
-            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]]))
-
-async def ai_fundamental_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE, symbol: str = "BTC/USDT"):
-    q = update.callback_query
-    await q.answer()
-    await q.edit_message_text(f"📰 تحلیل فاندامنتال AI...")
-    
-    t = exchange_mgr.ticker(symbol)
-    if not t:
-        await q.edit_message_text("❌ خطا", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]]))
-        return
-    
-    ai_fund = await ai.fundamental_analysis(symbol, t['last'], t.get('percentage',0))
-    
-    if ai_fund:
-        await q.edit_message_text(f"📰 *فاندامنتال AI - {symbol.replace('/USDT','')}*\n\n{ai_fund}\n\n━━━━━━━━━━━━━━━━━━━━━━\n✨ @CryptoPulse606",
-            parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[
-                InlineKeyboardButton("🔄", callback_data=f"fund_{symbol}"),
-                InlineKeyboardButton("🔙", callback_data="back")
-            ]]))
-    else:
-        await q.edit_message_text("❌ AI فعال نیست.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]]))
-
-async def ai_price_action_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE, symbol: str = "BTC/USDT"):
-    q = update.callback_query
-    await q.answer()
-    await q.edit_message_text(f"📊 تحلیل پرایس اکشن AI...")
-    
-    t = exchange_mgr.ticker(symbol)
-    df = exchange_mgr.ohlcv(symbol, '1h', 200)
-    if not t or df is None:
-        await q.edit_message_text("❌ خطا", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]]))
-        return
-    
-    ind = ti.calculate_all(df)
-    pats = [k for k,v in ind.items() if isinstance(v,bool) and v]
-    ai_pa = await ai.price_action_analysis(symbol, ind, t['last'], pats)
-    
-    if ai_pa:
-        await q.edit_message_text(f"📊 *پرایس اکشن AI - {symbol.replace('/USDT','')}*\n\n{ai_pa}\n\n━━━━━━━━━━━━━━━━━━━━━━\n✨ @CryptoPulse606",
-            parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[
-                InlineKeyboardButton("🔄", callback_data=f"pa_{symbol}"),
-                InlineKeyboardButton("🔙", callback_data="back")
-            ]]))
-    else:
-        await q.edit_message_text("❌ AI فعال نیست.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]]))
-
-async def prices_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-    q = update.callback_query
-    await q.answer()
-    await q.edit_message_text("🔄 دریافت...")
-    if not exchange_mgr.connected: exchange_mgr.connect()
-    
-    txt = "💰 *قیمت‌ها*\n\n"
-    for sym in cfg.symbols[:20]:
+    top = []
+    for sym in cfg.symbols[:15]:
         t = exchange_mgr.ticker(sym)
         if t:
-            e = "🟢" if t.get('percentage',0)>0 else "🔴"
-            txt += f"{e} {sym.replace('/USDT','')}: ${t['last']:,.4f} ({t.get('percentage',0):+.1f}%)\n"
+            top.append({'symbol': sym.replace('/USDT',''), 'price': t['last'], 'change': t.get('percentage',0)})
     
-    await q.edit_message_text(txt, parse_mode="Markdown",
-        reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔄", callback_data="p"), InlineKeyboardButton("🔙", callback_data="back")]]))
+    ai_overview = await ai.market_overview(top)
+    
+    if ai_overview:
+        await q.edit_message_text(f"{fmt.header()}📰 *تحلیل جامع بازار*\n\n{ai_overview}\n\n━━━━━━━━━━━━━━━━━━━━━━\n✨ @CryptoPulse606",
+            parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔄", callback_data="market_ai"), InlineKeyboardButton("🔙", callback_data="back")]]))
+    else:
+        await q.edit_message_text("❌ AI فعال نیست", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]]))
 
-async def scan_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+async def strategy_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE, symbol: str = "BTC/USDT"):
     q = update.callback_query
     await q.answer()
-    await q.edit_message_text("🔍 اسکن ۳۰ ارز...")
-    if not exchange_mgr.connected: exchange_mgr.connect()
+    await q.edit_message_text("📊 استراتژی معاملاتی با AI...")
     
-    res = []
-    for sym in cfg.symbols:
-        t = exchange_mgr.ticker(sym)
-        df = exchange_mgr.ohlcv(sym, '1h', 100)
-        if t and df is not None:
-            ind = ti.calculate_all(df)
-            sig, conf, score = sg.generate(ind, t['last'])
-            res.append({'symbol': sym, 'price': t['last'], 'signal': sig, 'confidence': conf, 'score': score})
+    t = exchange_mgr.ticker(symbol)
+    df = exchange_mgr.ohlcv(symbol, '1h', 200)
+    if not t or df is None:
+        await q.edit_message_text("❌ خطا", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]]))
+        return
     
-    res.sort(key=lambda x: abs(x['score']), reverse=True)
+    ind = ui.calculate_all(df)
+    ai_strat = await ai.trading_strategy(symbol, ind, t['last'])
     
-    txt = "🔍 *اسکن بازار*\n\n"
-    for i, r in enumerate(res[:15], 1):
-        e = "🟢" if "خرید" in r['signal'] else "🔴" if "فروش" in r['signal'] else "⚪"
-        txt += f"{i}. {e} {r['symbol'].replace('/USDT','')}: ${r['price']:,.4f} | {r['signal'][:12]} | {r['confidence']}%\n"
+    if ai_strat:
+        await q.edit_message_text(f"{fmt.header()}📊 *استراتژی {symbol.replace('/USDT','')}*\n\n{ai_strat}\n\n━━━━━━━━━━━━━━━━━━━━━━\n✨ @CryptoPulse606",
+            parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔄", callback_data=f"strat_{symbol}"), InlineKeyboardButton("🔙", callback_data="back")]]))
+    else:
+        await q.edit_message_text("❌ AI فعال نیست", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]]))
+
+async def experience_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    q = update.callback_query
+    await q.answer()
+    
+    exp = trader.experience
+    txt = f"""
+{fmt.header()}
+🧠 *تجربه و یادگیری ربات*
+
+📊 *آمار معاملات:*
+• کل: {exp['total_trades']} | برد: {exp['wins']} | باخت: {exp['losses']}
+• بهترین: ${exp['best_trade']:+,.2f}
+• بدترین: ${exp['worst_trade']:+,.2f}
+• میانگین برد: ${exp['avg_win']:+,.2f}
+• میانگین باخت: ${exp['avg_loss']:+,.2f}
+
+⚙️ *تنظیمات خودکار:*
+• آستانه اطمینان: {exp['confidence_threshold']}%
+• ضریب ریسک: {exp['risk_multiplier']:.1f}x
+
+💡 *یادگیری:*
+ربات از {exp['total_trades']} معامله قبلی تجربه کسب کرده
+و پارامترهای معاملاتی را بهینه کرده است.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━
+✨ @CryptoPulse606 | {dtm.now_str()}"""
     
     await q.edit_message_text(txt, parse_mode="Markdown",
-        reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔄", callback_data="scan"), InlineKeyboardButton("🔙", callback_data="back")]]))
+        reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔄", callback_data="exp"), InlineKeyboardButton("🔙", callback_data="back")]]))
 
 async def trade_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE, symbol: str):
     q = update.callback_query
@@ -1185,10 +1273,8 @@ async def trade_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE, symbol: 
     df = exchange_mgr.ohlcv(symbol, '1h', 200)
     if not t or df is None: await q.answer("❌"); return
     
-    ind = ti.calculate_all(df)
+    ind = ui.calculate_all(df)
     sig, conf, _ = sg.generate(ind, t['last'])
-    
-    if conf < 60: await q.answer("⚠️ اطمینان کم"); return
     
     atr = ind['ATR_14']
     sl = t['last'] - atr * cfg.atr_sl
@@ -1196,84 +1282,69 @@ async def trade_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE, symbol: 
     
     r = trader.open(symbol, t['last'], sl, tp, conf)
     if r:
-        await q.edit_message_text(f"🤖 *باز شد*\n📊 {symbol}\n💰 ${t['last']:,.4f}\n🛑 ${sl:,.4f}\n🎯 ${tp:,.4f}",
+        await q.edit_message_text(
+            f"{fmt.header()}🤖 *باز شد*\n📊 {symbol}\n💰 ${t['last']:,.4f}\n🛑 ${sl:,.4f}\n🎯 ${tp:,.4f}\n🧠 تجربه: {trader.experience['confidence_threshold']}% آستانه",
             parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]]))
     else:
         await q.answer("⚠️ شرایط فراهم نیست", show_alert=True)
-
-async def portfolio_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-    q = update.callback_query
-    await q.answer()
-    
-    pnl = sum(t['pnl'] for t in trader.history)
-    w = len([t for t in trader.history if t['pnl'] > 0])
-    total = max(1, len(trader.history))
-    
-    txt = f"💰 *پورتفوی*\n💵 ${trader.balance:,.2f}\n📈 PnL: ${pnl:+,.2f}\n📊 پوزیشن: {len(trader.positions)}\n📋 {total} | برد: {w} ({w/total*100:.0f}%)"
-    
-    if trader.positions:
-        txt += "\n\n*باز:*\n"
-        for s, p in trader.positions.items():
-            try:
-                ct = exchange_mgr.ticker(s)
-                cp = ct['last']; pp = (cp-p['entry'])/p['entry']*100
-                txt += f"• {s.replace('/USDT','')}: ${cp:,.4f} | {pp:+.1f}%\n"
-            except:
-                txt += f"• {s.replace('/USDT','')}: ${p['entry']:,.4f}\n"
-    
-    await q.edit_message_text(txt, parse_mode="Markdown",
-        reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔄", callback_data="port"), InlineKeyboardButton("🔙", callback_data="back")]]))
-
-async def edu_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-    q = update.callback_query
-    await q.answer()
-    await q.edit_message_text(fmt.edu_msg(), parse_mode="Markdown",
-        reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔄", callback_data="edu"), InlineKeyboardButton("🔙", callback_data="back")]]))
-
-async def auto_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-    q = update.callback_query
-    await q.answer()
-    txt = f"🤖 *خودکار*\n🎮 دمو: {'✅' if cfg.demo_trading else '❌'}\n💹 واقعی: {'✅' if cfg.real_trading else '❌'}"
-    kb = [
-        [InlineKeyboardButton(f"دمو: {'✅' if cfg.demo_trading else '❌'}", callback_data="td")],
-        [InlineKeyboardButton(f"واقعی: {'✅' if cfg.real_trading else '❌'}", callback_data="tr")],
-        [InlineKeyboardButton("🔙", callback_data="back")]
-    ]
-    await q.edit_message_text(txt, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(kb))
-
-async def settings_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-    q = update.callback_query
-    await q.answer()
-    await q.edit_message_text(
-        f"⚙️ *تنظیمات*\n🔌 صرافی: {'✅' if exchange_mgr.connected else '❌'}\n🧠 AI: {'✅' if ai.enabled else '❌'}\n📢 کانال: {cfg.channel_id or '❌'}\n📊 ارز: {len(cfg.symbols)}\n⏰ TF: {len(cfg.timeframes)}",
-        parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]]))
 
 async def button_router(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query
     d = q.data
     try:
         if d == "back": await q.edit_message_text("🤖 *منو*", parse_mode="Markdown", reply_markup=Menu.main())
-        elif d == "p": await prices_handler(update, ctx)
+        elif d == "p":
+            if not exchange_mgr.connected: exchange_mgr.connect()
+            txt = f"{fmt.header()}💰 *قیمت‌ها*\n\n"
+            for sym in cfg.symbols[:20]:
+                t = exchange_mgr.ticker(sym)
+                if t:
+                    e = "🟢" if t.get('percentage',0)>0 else "🔴"
+                    txt += f"{e} {sym.replace('/USDT','')}: ${t['last']:,.4f} ({t.get('percentage',0):+.1f}%)\n"
+            await q.edit_message_text(txt, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔄", callback_data="p"), InlineKeyboardButton("🔙", callback_data="back")]]))
         elif d.startswith("s_"): await full_signal_handler(update, ctx, d[2:])
-        elif d.startswith("ai_"): await ai_tech_handler(update, ctx, d[3:] if len(d)>3 else "BTC/USDT")
-        elif d == "ai": await ai_tech_handler(update, ctx)
-        elif d.startswith("fund_"): await ai_fundamental_handler(update, ctx, d[5:] if len(d)>5 else "BTC/USDT")
-        elif d.startswith("pa_"): await ai_price_action_handler(update, ctx, d[3:] if len(d)>3 else "BTC/USDT")
+        elif d.startswith("ai_"): await full_signal_handler(update, ctx, d[3:] if len(d)>3 else "BTC/USDT")
+        elif d == "market_ai": await market_ai_handler(update, ctx)
+        elif d.startswith("strat_"): await strategy_handler(update, ctx, d[6:] if len(d)>6 else "BTC/USDT")
         elif d.startswith("pred_"): await full_signal_handler(update, ctx, d[5:] if len(d)>5 else "BTC/USDT")
-        elif d == "scan": await scan_handler(update, ctx)
+        elif d.startswith("sent_"): await full_signal_handler(update, ctx, d[5:] if len(d)>5 else "BTC/USDT")
+        elif d == "scan":
+            if not exchange_mgr.connected: exchange_mgr.connect()
+            res = []
+            for sym in cfg.symbols:
+                t = exchange_mgr.ticker(sym)
+                df = exchange_mgr.ohlcv(sym, '1h', 100)
+                if t and df is not None:
+                    ind = ui.calculate_all(df)
+                    sig, conf, score = sg.generate(ind, t['last'])
+                    res.append({'symbol': sym, 'price': t['last'], 'signal': sig, 'confidence': conf, 'score': score})
+            res.sort(key=lambda x: abs(x['score']), reverse=True)
+            txt = f"{fmt.header()}🔍 *اسکن*\n\n"
+            for i, r in enumerate(res[:15], 1):
+                e = "🟢" if "خرید" in r['signal'] else "🔴" if "فروش" in r['signal'] else "⚪"
+                txt += f"{i}. {e} {r['symbol'].replace('/USDT','')}: ${r['price']:,.4f} | {r['signal'][:12]} | {r['confidence']}%\n"
+            await q.edit_message_text(txt, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔄", callback_data="scan"), InlineKeyboardButton("🔙", callback_data="back")]]))
         elif d == "tech": await q.edit_message_text("📈 *انتخاب:*", parse_mode="Markdown", reply_markup=Menu.technical())
         elif d.startswith("trade_"): await trade_handler(update, ctx, d[6:])
-        elif d == "port": await portfolio_handler(update, ctx)
-        elif d in ["perf", "hist"]: await portfolio_handler(update, ctx)
-        elif d == "auto": await auto_handler(update, ctx)
-        elif d == "td": cfg.demo_trading = not cfg.demo_trading; await auto_handler(update, ctx)
+        elif d == "port":
+            stats = trader.get_stats()
+            txt = f"{fmt.header()}💰 *پورتفوی*\n💵 ${stats['balance']:,.2f}\n📈 PnL: ${stats['pnl']:+,.2f}\n📊 پوزیشن: {len(trader.positions)}\n📋 {stats['total']} | برد: {stats['wins']} ({stats['win_rate']:.0f}%)"
+            await q.edit_message_text(txt, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔄", callback_data="port"), InlineKeyboardButton("🔙", callback_data="back")]]))
+        elif d == "exp": await experience_handler(update, ctx)
+        elif d == "perf":
+            stats = trader.get_stats()
+            await q.edit_message_text(f"{fmt.header()}📊 *عملکرد*\n💰 ${stats['balance']:,.2f}\n📈 PnL: ${stats['pnl']:+,.2f}", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]]))
+        elif d == "auto":
+            await q.edit_message_text(f"🤖 *خودکار*\n🎮 دمو: {'✅' if cfg.demo_trading else '❌'}\n💹 واقعی: {'✅' if cfg.real_trading else '❌'}", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton(f"دمو: {'✅' if cfg.demo_trading else '❌'}", callback_data="td"), InlineKeyboardButton(f"واقعی: {'✅' if cfg.real_trading else '❌'}", callback_data="tr"), InlineKeyboardButton("🔙", callback_data="back")]]))
+        elif d == "td": cfg.demo_trading = not cfg.demo_trading
         elif d == "tr":
             if exchange_mgr.read_only: await q.answer("❌ API نیست"); return
-            cfg.real_trading = not cfg.real_trading; await auto_handler(update, ctx)
-        elif d == "set": await settings_handler(update, ctx)
-        elif d == "status": await settings_handler(update, ctx)
-        elif d == "edu": await edu_handler(update, ctx)
-        elif d == "patt": await full_signal_handler(update, ctx)
+            cfg.real_trading = not cfg.real_trading
+        elif d == "set":
+            await q.edit_message_text(f"{fmt.header()}⚙️ *تنظیمات*\n🔌 صرافی: {'✅' if exchange_mgr.connected else '❌'}\n🧠 AI: {'✅' if ai.enabled else '❌'}\n📢 کانال: {cfg.channel_id or '❌'}", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]]))
+        elif d == "edu":
+            ai_content = await ai.educational_content()
+            await q.edit_message_text(fmt.education_msg(ai_content), parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔄", callback_data="edu"), InlineKeyboardButton("🔙", callback_data="back")]]))
         elif d == "stop":
             for s in list(trader.positions.keys()):
                 t = exchange_mgr.ticker(s)
@@ -1292,130 +1363,114 @@ async def text_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
 async def error_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     logger.error(f"Error: {ctx.error}")
-    if isinstance(ctx.error, Conflict):
-        ProcessLock.release()
-        sys.exit(1)
+    if isinstance(ctx.error, Conflict): ProcessLock.release(); sys.exit(1)
 
 # ============================================================
-# AUTO SIGNALS - هر ۱۰ دقیقه به کانال
+# AUTO TASKS - هر ۱۰ دقیقه
 # ============================================================
 async def auto_signals_loop(app: Application):
-    """ارسال سیگنال خودکار هر ۱۰ دقیقه"""
     await asyncio.sleep(10)
-    logger.info("📢 Auto Signal Loop Started (Every 10 min)")
+    logger.info("📢 Auto Signal Loop Started (Every 10 minutes)")
     
     while True:
         try:
             if not cfg.channel_id or not cfg.auto_send:
-                await asyncio.sleep(60)
-                continue
+                await asyncio.sleep(60); continue
             
-            if not exchange_mgr.connected:
-                exchange_mgr.connect()
+            if not exchange_mgr.connected: exchange_mgr.connect()
             
-            # سیگنال‌های اصلی
-            priority_symbols = ["BTC/USDT", "ETH/USDT", "SOL/USDT", "BNB/USDT", "XRP/USDT"]
+            priority_symbols = ["BTC/USDT", "ETH/USDT", "SOL/USDT", "BNB/USDT", "XRP/USDT", "ADA/USDT", "DOGE/USDT"]
             
             for sym in priority_symbols:
                 try:
                     t = exchange_mgr.ticker(sym)
                     df = exchange_mgr.ohlcv(sym, '1h', 200)
-                    
                     if t and df is not None:
-                        ind = ti.calculate_all(df)
-                        
-                        # MTF
+                        ind = ui.calculate_all(df)
                         mtf = {}
                         for tf_name, tf_val in list(cfg.timeframes.items())[:6]:
                             dft = exchange_mgr.ohlcv(sym, tf_val, 100)
-                            if dft is not None:
-                                mtf[tf_name] = ti.calculate_all(dft)
+                            if dft is not None: mtf[tf_name] = ui.calculate_all(dft)
                         
                         sig, conf, score = sg.generate(ind, t['last'], mtf)
                         pats = [k for k,v in ind.items() if isinstance(v,bool) and v]
                         
-                        # AI Analysis (only for BTC & ETH to save API calls)
-                        ai_tech = None
-                        ai_fund = None
-                        ai_pa = None
+                        ai_analyses = {}
+                        if ai.enabled and sym in ["BTC/USDT", "ETH/USDT"]:
+                            ai_analyses['tech'] = await ai.technical_analysis(sym, ind, t['last'], t.get('percentage',0), pats, mtf)
+                            ai_analyses['prediction'] = await ai.market_prediction(sym, ind, t['last'])
                         
-                        if sym in ["BTC/USDT", "ETH/USDT"] and ai.enabled:
-                            ai_tech = await ai.technical_analysis(sym, ind, t['last'], t.get('percentage',0), pats, mtf)
-                            ai_fund = await ai.fundamental_analysis(sym, t['last'], t.get('percentage',0))
-                            ai_pa = await ai.price_action_analysis(sym, ind, t['last'], pats)
+                        analysis = {'symbol': sym, 'price': t['last'], 'change': t.get('percentage',0),
+                                   'indicators': ind, 'signal': sig, 'confidence': conf, 'score': score}
                         
-                        analysis = {
-                            'symbol': sym,
-                            'price': t['last'],
-                            'change': t.get('percentage', 0),
-                            'indicators': ind,
-                            'signal': sig,
-                            'confidence': conf,
-                            'score': score
-                        }
-                        
-                        msg = fmt.signal_msg(analysis, ai_tech, ai_fund, ai_pa)
+                        msg = fmt.signal_msg(analysis, ai_analyses)
                         await app.bot.send_message(cfg.channel_id, msg, parse_mode="Markdown")
                         logger.info(f"📤 Signal sent: {sym}")
-                        
-                        await asyncio.sleep(90)  # فاصله بین پیام‌ها
-                        
+                        await asyncio.sleep(60)
                 except Exception as e:
                     logger.error(f"Signal error for {sym}: {e}")
                     continue
             
-            # بررسی پوزیشن‌های باز
+            # بررسی پوزیشن‌ها
             for sym in list(trader.positions.keys()):
                 try:
                     t = exchange_mgr.ticker(sym)
                     df = exchange_mgr.ohlcv(sym, '1h', 100)
                     if t and df is not None:
-                        ind = ti.calculate_all(df)
+                        ind = ui.calculate_all(df)
                         result = trader.update(sym, t['last'], ind['ATR_14'])
                         if result:
                             emoji = "🟢" if result['pnl'] > 0 else "🔴"
-                            await app.bot.send_message(
-                                cfg.channel_id,
-                                f"{emoji} *پوزیشن بسته شد*\n📊 {sym}\n💰 ${result['pnl']:+,.2f}\n📋 {result['reason']}",
-                                parse_mode="Markdown"
-                            )
+                            await app.bot.send_message(cfg.channel_id,
+                                f"{fmt.header()}{emoji} *پوزیشن بسته شد*\n📊 {sym}\n💰 ${result['pnl']:+,.2f}\n📋 {result['reason']}",
+                                parse_mode="Markdown")
                 except Exception as e:
                     logger.error(f"Position check error: {e}")
             
-            logger.info(f"✅ Signal cycle completed at {datetime.now().strftime('%H:%M:%S')}")
-            
+            logger.info(f"✅ Signal cycle completed at {dtm.now_str()}")
         except Exception as e:
             logger.error(f"Auto signal loop error: {e}")
-        
         await asyncio.sleep(cfg.signal_interval)
 
 async def auto_education_loop(app: Application):
-    """ارسال محتوای آموزشی هر ۱ ساعت"""
     await asyncio.sleep(30)
-    logger.info("📚 Auto Education Loop Started (Every 1 hour)")
+    logger.info("📚 Auto Education Loop Started (Every 10 minutes)")
     
     while True:
         try:
-            if cfg.channel_id and cfg.auto_send:
-                msg = fmt.edu_msg()
-                await app.bot.send_message(cfg.channel_id, msg, parse_mode="Markdown")
-                logger.info("📚 Education sent")
+            if cfg.channel_id and cfg.auto_send and ai.enabled:
+                # محتوای آموزشی حجیم
+                ai_content = await ai.educational_content()
+                if ai_content:
+                    msg = fmt.education_msg(ai_content)
+                    await app.bot.send_message(cfg.channel_id, msg, parse_mode="Markdown")
+                    logger.info("📚 Educational content sent")
+                
+                await asyncio.sleep(120)
+                
+                # تحلیل بازار
+                top = []
+                for sym in cfg.symbols[:10]:
+                    t = exchange_mgr.ticker(sym)
+                    if t: top.append({'symbol': sym.replace('/USDT',''), 'price': t['last'], 'change': t.get('percentage',0)})
+                
+                market_ai = await ai.market_overview(top)
+                if market_ai:
+                    await app.bot.send_message(cfg.channel_id,
+                        f"{fmt.header()}📰 *تحلیل بازار*\n\n{market_ai}\n\n━━━━━━━━━━━━━━━━━━━━━━\n✨ @CryptoPulse606",
+                        parse_mode="Markdown")
+                    logger.info("📰 Market overview sent")
         except Exception as e:
             logger.error(f"Education error: {e}")
-        
         await asyncio.sleep(cfg.education_interval)
 
 # ============================================================
 # MAIN
 # ============================================================
 async def main():
-    if not ProcessLock.acquire():
-        sys.exit(1)
-    
+    if not ProcessLock.acquire(): sys.exit(1)
     if not cfg.token:
-        logger.critical("❌ TELEGRAM_BOT_TOKEN not set!")
-        ProcessLock.release()
-        return
+        logger.critical("❌ No token!"); ProcessLock.release(); return
     
     exchange_mgr.connect()
     
@@ -1425,46 +1480,32 @@ async def main():
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_handler))
     app.add_error_handler(error_handler)
     
-    # Start background tasks
     asyncio.create_task(auto_signals_loop(app))
     asyncio.create_task(auto_education_loop(app))
     
-    logger.info("="*60)
-    logger.info("🚀 CRYPTO PULSE ULTIMATE AI v7.0 LAUNCHED")
-    logger.info(f"🧠 Groq AI: {'✅ Llama 3.3 70B' if ai.enabled else '❌ No API Key'}")
-    logger.info(f"📊 25+ Technical Indicators & Oscillators")
-    logger.info(f"⏰ 11 Timeframes: {', '.join(cfg.timeframes)}")
-    logger.info(f"📢 Auto Signals Every {cfg.signal_interval//60} Minutes")
-    logger.info(f"📚 Auto Education Every {cfg.education_interval//3600} Hour")
-    logger.info(f"💰 {len(cfg.symbols)} Cryptocurrencies")
-    logger.info(f"🔌 Exchange: {'✅ Connected' if exchange_mgr.connected else '❌ Disconnected'}")
-    logger.info("="*60)
+    logger.info("="*70)
+    logger.info("🚀 CRYPTO PULSE ULTIMATE v8.0 - THE FINAL BOSS")
+    logger.info(f"🧠 Groq AI: {'✅ Llama 3.3 70B' if ai.enabled else '❌'}")
+    logger.info(f"📊 7 EMA Types + 25+ Indicators")
+    logger.info(f"⏰ 11 Timeframes | 30 Coins")
+    logger.info(f"📢 Auto Signals + Education Every 10 Minutes")
+    logger.info(f"🎓 Self-Learning Engine Active")
+    logger.info(f"📅 {dtm.now_persian()}")
+    logger.info("="*70)
     
     try:
         await app.initialize()
         await app.start()
         await app.updater.start_polling(drop_pending_updates=True)
         await asyncio.Event().wait()
-    except Conflict:
-        logger.critical("❌ Conflict - Another instance running!")
-    except Exception as e:
-        logger.critical(f"❌ Fatal error: {e}")
+    except Conflict: logger.critical("❌ Conflict!")
+    except Exception as e: logger.critical(f"❌ {e}")
     finally:
-        try:
-            await app.updater.stop()
-            await app.stop()
-            await app.shutdown()
-        except:
-            pass
+        try: await app.updater.stop(); await app.stop(); await app.shutdown()
+        except: pass
         ProcessLock.release()
-        logger.info("👋 Bot shutdown complete")
 
 if __name__ == "__main__":
-    try:
-        asyncio.run(main())
-    except KeyboardInterrupt:
-        ProcessLock.release()
-        logger.info("👋 Stopped by user")
-    except Exception as e:
-        logger.critical(f"❌ Critical: {e}")
-        ProcessLock.release()
+    try: asyncio.run(main())
+    except KeyboardInterrupt: ProcessLock.release()
+    except Exception as e: logger.critical(f"Fatal: {e}"); ProcessLock.release()
