@@ -6,4 +6,4 @@ ta>=0.10
 httpx>=0.24
 python-dotenv>=1.0
 matplotlib>=3.7
-mplfinance>=0.12
+mplfinance>=0.11.0
