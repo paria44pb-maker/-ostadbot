@@ -1,1101 +1,1229 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Ultra Professional Crypto Trading Bot v4.0
--------------------------------------------
-Advanced Technical Analysis & Signal Generation
-Multi-Timeframe | 100+ Indicators | Auto Trading
+╔══════════════════════════════════════════════════════════════╗
+║     CRYPTO PULSE ULTRA PROFESSIONAL TRADING BOT v5.0        ║
+║     Advanced Multi-Timeframe Analysis & Auto Trading        ║
+║     25+ Indicators | Candle Patterns | ML Prediction        ║
+╚══════════════════════════════════════════════════════════════╝
 """
 
-import os
-import sys
-import logging
-import asyncio
-import time
-import json
-import random
-import signal
-from typing import Dict, List, Optional, Tuple, Any
+import os, sys, logging, asyncio, time, json, random, signal, hashlib
+from typing import Dict, List, Optional, Tuple, Any, Union
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
-from enum import Enum
-
+from enum import Enum, auto
+from collections import deque
 import numpy as np
 import pandas as pd
 import ccxt
 from dotenv import load_dotenv
-
-# Telegram imports
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import (
-    Application,
-    CommandHandler,
-    CallbackQueryHandler,
-    MessageHandler,
-    filters,
-    ContextTypes
-)
-from telegram.error import (
-    TelegramError,
-    RetryAfter,
-    TimedOut,
-    Conflict,
-    NetworkError
-)
-
-# Technical Analysis imports
-from ta.volatility import (
-    BollingerBands,
-    AverageTrueRange,
-    KeltnerChannel,
-    DonchianChannel,
-    UlcerIndex
-)
-from ta.trend import (
-    MACD,
-    ADXIndicator,
-    IchimokuIndicator,
-    PSARIndicator,
-    CCIIndicator,
-    AroonIndicator,
-    VortexIndicator,
-    MassIndex,
-    STCIndicator,
-    TRIXIndicator
-)
-from ta.momentum import (
-    RSIIndicator,
-    StochasticOscillator,
-    WilliamsRIndicator,
-    UltimateOscillator,
-    ROCIndicator,
-    AwesomeOscillatorIndicator,
-    KAMAIndicator
-)
-from ta.volume import (
-    MFIIndicator,
-    OnBalanceVolumeIndicator,
-    AccDistIndexIndicator,
-    EaseOfMovementIndicator,
-    ForceIndexIndicator,
-    VolumePriceTrendIndicator
-)
-
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, BotCommand
+from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, filters, ContextTypes
+from telegram.error import TelegramError, RetryAfter, TimedOut, Conflict, NetworkError
 import warnings
 warnings.filterwarnings('ignore')
 
 # ============================================================
-# CONFIGURATION
+# ENVIRONMENT SETUP
 # ============================================================
 load_dotenv()
 
-class Config:
-    """Global Configuration"""
-    # Telegram
-    TOKEN: str = os.getenv("TELEGRAM_BOT_TOKEN", "")
-    CHANNEL_ID: str = os.getenv("CHANNEL_ID", "")
-    
-    # Exchange API
-    EXCHANGE_API_KEY: str = os.getenv("COINEX_API_KEY", "")
-    EXCHANGE_SECRET: str = os.getenv("COINEX_SECRET_KEY", "")
-    EXCHANGE_PASSPHRASE: str = os.getenv("COINEX_PASSPHRASE", "")
-    
-    # Trading Pairs
-    SYMBOLS: List[str] = [
-        "BTC/USDT", "ETH/USDT", "BNB/USDT", "XRP/USDT", "ADA/USDT",
-        "SOL/USDT", "DOGE/USDT", "DOT/USDT", "MATIC/USDT", "AVAX/USDT",
-        "LINK/USDT", "UNI/USDT", "ATOM/USDT", "LTC/USDT", "ETC/USDT",
-        "XLM/USDT", "FIL/USDT", "TRX/USDT", "VET/USDT", "ALGO/USDT"
-    ]
-    
-    # Timeframes
-    TIMEFRAMES: List[str] = ["15m", "1h", "4h", "1d"]
-    
-    # Auto Post Intervals (seconds)
-    SIGNAL_INTERVAL: int = 600  # 10 minutes
-    ANALYSIS_INTERVAL: int = 3600  # 1 hour
-    
-    # Trading Parameters
-    RISK_PER_TRADE: float = 0.02
-    MAX_POSITIONS: int = 5
-    ATR_MULTIPLIER: float = 2.0
-
 # ============================================================
-# LOGGING SETUP
+# LOGGING - Professional Multi-Handler
 # ============================================================
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s',
+    format='%(asctime)s | %(levelname)-7s | %(name)-15s | %(message)s',
     handlers=[
-        logging.FileHandler('bot.log', encoding='utf-8'),
-        logging.StreamHandler()
+        logging.FileHandler('crypto_pulse.log', encoding='utf-8'),
+        logging.StreamHandler(),
+        logging.handlers.RotatingFileHandler('crypto_pulse_detailed.log', maxBytes=10*1024*1024, backupCount=5)
     ]
 )
-logger = logging.getLogger(__name__)
+logger = logging.getLogger('CryptoPulse')
 
-# Silence noisy libraries
-for lib in ['httpx', 'httpcore', 'telegram', 'ccxt', 'urllib3']:
-    logging.getLogger(lib).setLevel(logging.ERROR)
+for noisy_lib in ['httpx', 'httpcore', 'telegram', 'ccxt', 'apscheduler', 'urllib3', 'asyncio']:
+    logging.getLogger(noisy_lib).setLevel(logging.ERROR)
 
 # ============================================================
-# LOCK MECHANISM (Prevent Multiple Instances)
+# CONFIGURATION - Centralized & Type-Safe
+# ============================================================
+@dataclass
+class BotConfig:
+    """Ultra Professional Configuration"""
+    # Telegram
+    token: str = os.getenv("TELEGRAM_BOT_TOKEN", "")
+    channel_id: str = os.getenv("CHANNEL_ID", "")
+    
+    # Exchange API
+    api_key: str = os.getenv("COINEX_API_KEY", "")
+    api_secret: str = os.getenv("COINEX_SECRET_KEY", "")
+    api_passphrase: str = os.getenv("COINEX_PASSPHRASE", "")
+    
+    # Trading Symbols (Top 30)
+    symbols: List[str] = field(default_factory=lambda: [
+        "BTC/USDT", "ETH/USDT", "BNB/USDT", "XRP/USDT", "ADA/USDT",
+        "SOL/USDT", "DOGE/USDT", "DOT/USDT", "MATIC/USDT", "AVAX/USDT",
+        "LINK/USDT", "UNI/USDT", "ATOM/USDT", "LTC/USDT", "ETC/USDT",
+        "XLM/USDT", "FIL/USDT", "TRX/USDT", "VET/USDT", "ALGO/USDT",
+        "ICP/USDT", "SAND/USDT", "AXS/USDT", "FTM/USDT", "MANA/USDT",
+        "GALA/USDT", "ENJ/USDT", "CHZ/USDT", "NEAR/USDT", "APT/USDT"
+    ])
+    
+    # Timeframes for Analysis
+    timeframes: List[str] = field(default_factory=lambda: [
+        "5m", "15m", "30m", "1h", "2h", "4h", "6h", "12h", "1d", "3d", "1w"
+    ])
+    
+    # Trading Parameters
+    initial_balance: float = 100000.0
+    risk_per_trade: float = 0.02
+    max_positions: int = 5
+    atr_multiplier_sl: float = 2.0
+    atr_multiplier_tp: float = 4.0
+    trailing_stop_pct: float = 0.03
+    max_daily_loss: float = 5000.0
+    max_consecutive_losses: int = 5
+    
+    # Auto Trading
+    demo_trading: bool = True
+    real_trading: bool = False
+    
+    # Post Intervals
+    signal_interval: int = 600  # 10 min
+    education_interval: int = 3600  # 1 hour
+    price_update_interval: int = 300  # 5 min
+
+cfg = BotConfig()
+
+# ============================================================
+# PROCESS LOCK - Prevent Duplicate Instances
 # ============================================================
 class ProcessLock:
-    """Ensures only one bot instance runs at a time"""
-    LOCK_FILE = "bot.lock"
+    """Ensures single bot instance"""
+    _lock_file = "crypto_pulse.lock"
     
     @classmethod
     def acquire(cls) -> bool:
         try:
-            if os.path.exists(cls.LOCK_FILE):
-                with open(cls.LOCK_FILE, 'r') as f:
+            if os.path.exists(cls._lock_file):
+                with open(cls._lock_file) as f:
                     old_pid = int(f.read().strip() or 0)
-                if old_pid and cls._is_process_alive(old_pid):
-                    logger.error(f"❌ Instance already running (PID: {old_pid})")
+                if old_pid and cls._is_alive(old_pid):
+                    logger.critical(f"❌ Already running (PID: {old_pid})")
                     return False
-                os.remove(cls.LOCK_FILE)
-            
-            with open(cls.LOCK_FILE, 'w') as f:
+                os.remove(cls._lock_file)
+            with open(cls._lock_file, 'w') as f:
                 f.write(str(os.getpid()))
-            logger.info(f"🔒 Lock acquired (PID: {os.getpid()})")
             return True
-        except Exception as e:
-            logger.error(f"Lock error: {e}")
+        except:
             return True
     
     @classmethod
     def release(cls):
         try:
-            if os.path.exists(cls.LOCK_FILE):
-                os.remove(cls.LOCK_FILE)
+            if os.path.exists(cls._lock_file):
+                os.remove(cls._lock_file)
         except:
             pass
     
     @staticmethod
-    def _is_process_alive(pid: int) -> bool:
+    def _is_alive(pid: int) -> bool:
         try:
             os.kill(pid, 0)
             return True
         except (OSError, ProcessLookupError):
             return False
 
-# Signal handlers for graceful shutdown
-signal.signal(signal.SIGINT, lambda s, f: (ProcessLock.release(), sys.exit(0)))
-signal.signal(signal.SIGTERM, lambda s, f: (ProcessLock.release(), sys.exit(0)))
+for sig in [signal.SIGINT, signal.SIGTERM]:
+    signal.signal(sig, lambda s, f: (ProcessLock.release(), sys.exit(0)))
 
 # ============================================================
-# EXCHANGE CONNECTION MANAGER
+# EXCHANGE CONNECTION - Robust & Auto-Recovery
 # ============================================================
 class ExchangeManager:
-    """Manages exchange connection with auto-reconnect"""
+    """Ultra-Reliable Exchange Connection"""
     
     def __init__(self):
-        self.exchange: Optional[ccxt.Exchange] = None
-        self.is_connected: bool = False
+        self._exchange: Optional[ccxt.Exchange] = None
+        self.connected: bool = False
+        self.read_only: bool = True
         self.last_error: str = ""
+        self._reconnect_count: int = 0
+    
+    @property
+    def exchange(self) -> Optional[ccxt.Exchange]:
+        return self._exchange
     
     def connect(self) -> bool:
-        """Establish connection to exchange"""
         try:
-            if not Config.EXCHANGE_API_KEY:
-                logger.warning("⚠️ No API keys - running in read-only mode")
-                self.exchange = ccxt.coinex({
-                    'enableRateLimit': True,
-                    'timeout': 30000,
-                    'options': {'defaultType': 'spot'}
-                })
-            else:
-                self.exchange = ccxt.coinex({
-                    'apiKey': Config.EXCHANGE_API_KEY,
-                    'secret': Config.EXCHANGE_SECRET,
-                    'password': Config.EXCHANGE_PASSPHRASE,
-                    'enableRateLimit': True,
-                    'timeout': 30000,
-                    'options': {'defaultType': 'spot'}
-                })
+            params = {
+                'enableRateLimit': True,
+                'timeout': 30000,
+                'options': {'defaultType': 'spot'}
+            }
             
-            self.exchange.load_markets()
-            self.is_connected = True
-            logger.info("✅ Exchange connected successfully")
+            if cfg.api_key and cfg.api_secret:
+                params.update({
+                    'apiKey': cfg.api_key,
+                    'secret': cfg.api_secret,
+                    'password': cfg.api_passphrase
+                })
+                self.read_only = False
+            
+            self._exchange = ccxt.coinex(params)
+            self._exchange.load_markets()
+            self.connected = True
+            self._reconnect_count = 0
+            mode = "FULL" if not self.read_only else "READ-ONLY"
+            logger.info(f"✅ Exchange Connected ({mode} Mode) | Markets: {len(self._exchange.markets)}")
             return True
-            
         except Exception as e:
-            self.is_connected = False
+            self.connected = False
             self.last_error = str(e)
-            logger.error(f"❌ Exchange connection failed: {e}")
-            # Try without API keys for public data
+            logger.error(f"❌ Connection Failed: {e}")
+            
+            # Fallback to read-only
             try:
-                self.exchange = ccxt.coinex({'enableRateLimit': True, 'timeout': 30000})
-                self.exchange.load_markets()
-                self.is_connected = True
-                logger.info("✅ Connected in read-only mode")
+                self._exchange = ccxt.coinex({'enableRateLimit': True, 'timeout': 30000})
+                self._exchange.load_markets()
+                self.connected = True
+                self.read_only = True
+                logger.info("✅ Connected (READ-ONLY Fallback)")
                 return True
             except:
                 return False
     
-    def get_ticker(self, symbol: str) -> Optional[Dict]:
-        """Fetch ticker safely"""
-        if not self.is_connected or not self.exchange:
+    def fetch_ticker(self, symbol: str) -> Optional[Dict]:
+        if not self.connected:
             return None
         try:
-            return self.exchange.fetch_ticker(symbol)
+            return self._exchange.fetch_ticker(symbol)
         except Exception as e:
-            logger.error(f"Ticker error for {symbol}: {e}")
+            logger.debug(f"Ticker error {symbol}: {e}")
             return None
     
-    def get_ohlcv(self, symbol: str, timeframe: str, limit: int = 200) -> Optional[pd.DataFrame]:
-        """Fetch OHLCV data safely"""
-        if not self.is_connected or not self.exchange:
+    def fetch_ohlcv(self, symbol: str, timeframe: str, limit: int = 200) -> Optional[pd.DataFrame]:
+        if not self.connected:
             return None
         try:
-            data = self.exchange.fetch_ohlcv(symbol, timeframe, limit=limit)
+            data = self._exchange.fetch_ohlcv(symbol, timeframe, limit=limit)
             if data and len(data) > 30:
                 return pd.DataFrame(data, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
         except Exception as e:
-            logger.error(f"OHLCV error for {symbol}: {e}")
+            logger.debug(f"OHLCV error {symbol} {timeframe}: {e}")
         return None
+    
+    def create_order(self, symbol: str, side: str, amount: float, price: Optional[float] = None) -> Optional[Dict]:
+        if self.read_only or not self.connected:
+            return None
+        try:
+            order_type = 'limit' if price else 'market'
+            return self._exchange.create_order(symbol, order_type, side, amount, price)
+        except Exception as e:
+            logger.error(f"Order error: {e}")
+            return None
 
-# Global exchange instance
-exchange_mgr = ExchangeManager()
+ex = ExchangeManager()
 
 # ============================================================
-# TECHNICAL ANALYSIS ENGINE
+# ULTRA TECHNICAL ANALYZER - 25+ Powerful Indicators
 # ============================================================
-class TechnicalAnalyzer:
-    """Advanced technical analysis with 100+ indicators"""
+class UltraAnalyzer:
+    """25+ Professional Technical Indicators & Candlestick Patterns"""
     
     @staticmethod
-    def analyze(df: pd.DataFrame) -> Dict[str, float]:
-        """Calculate comprehensive technical indicators"""
+    def full_analysis(df: pd.DataFrame) -> Dict[str, Any]:
+        """Complete technical analysis"""
         close = df['close'].astype(float)
         high = df['high'].astype(float)
         low = df['low'].astype(float)
         volume = df['volume'].astype(float)
+        open_ = df['open'].astype(float)
         
-        indicators = {}
+        ind = {}
         
-        # --- Moving Averages ---
-        for period in [7, 14, 20, 50, 100, 200]:
-            indicators[f'EMA_{period}'] = float(close.ewm(span=period).mean().iloc[-1])
-            indicators[f'SMA_{period}'] = float(close.rolling(period).mean().iloc[-1])
+        # ===== 1. MOVING AVERAGES (Multiple Types) =====
+        for p in [7, 14, 20, 50, 100, 200]:
+            ind[f'EMA_{p}'] = float(close.ewm(span=p, adjust=False).mean().iloc[-1])
+            ind[f'SMA_{p}'] = float(close.rolling(p).mean().iloc[-1])
+            if p <= 50:
+                weights = np.arange(1, p+1)
+                ind[f'WMA_{p}'] = float(close.rolling(p).apply(lambda x: np.average(x, weights=weights[:len(x)])).iloc[-1])
         
-        # --- RSI ---
-        rsi = RSIIndicator(close, window=14)
-        indicators['RSI'] = float(rsi.rsi().iloc[-1])
-        indicators['RSI_7'] = float(RSIIndicator(close, window=7).rsi().iloc[-1])
+        # ===== 2. RSI (Multiple Periods) =====
+        from ta.momentum import RSIIndicator
+        for p in [7, 14, 21]:
+            ind[f'RSI_{p}'] = float(RSIIndicator(close, window=p).rsi().iloc[-1])
         
-        # --- MACD ---
-        macd = MACD(close, window_slow=26, window_fast=12, window_sign=9)
-        indicators['MACD'] = float(macd.macd().iloc[-1])
-        indicators['MACD_SIGNAL'] = float(macd.macd_signal().iloc[-1])
-        indicators['MACD_HIST'] = float(macd.macd_diff().iloc[-1])
+        # ===== 3. MACD =====
+        from ta.trend import MACD
+        macd = MACD(close, 12, 26, 9)
+        ind['MACD_LINE'] = float(macd.macd().iloc[-1])
+        ind['MACD_SIGNAL'] = float(macd.macd_signal().iloc[-1])
+        ind['MACD_HIST'] = float(macd.macd_diff().iloc[-1])
         
-        # --- Bollinger Bands ---
-        bb = BollingerBands(close, window=20, window_dev=2)
-        indicators['BB_UPPER'] = float(bb.bollinger_hband().iloc[-1])
-        indicators['BB_MIDDLE'] = float(bb.bollinger_mavg().iloc[-1])
-        indicators['BB_LOWER'] = float(bb.bollinger_lband().iloc[-1])
-        indicators['BB_WIDTH'] = float(bb.bollinger_wband().iloc[-1])
-        indicators['BB_POSITION'] = float(bb.bollinger_pband().iloc[-1])
+        # ===== 4. STOCHASTIC =====
+        from ta.momentum import StochasticOscillator
+        stoch = StochasticOscillator(high, low, close, 14, 3)
+        ind['STOCH_K'] = float(stoch.stoch().iloc[-1])
+        ind['STOCH_D'] = float(stoch.stoch_signal().iloc[-1])
         
-        # --- Stochastic ---
-        stoch = StochasticOscillator(high, low, close)
-        indicators['STOCH_K'] = float(stoch.stoch().iloc[-1])
-        indicators['STOCH_D'] = float(stoch.stoch_signal().iloc[-1])
+        # ===== 5. BOLLINGER BANDS =====
+        from ta.volatility import BollingerBands
+        bb = BollingerBands(close, 20, 2)
+        ind['BB_UPPER'] = float(bb.bollinger_hband().iloc[-1])
+        ind['BB_MIDDLE'] = float(bb.bollinger_mavg().iloc[-1])
+        ind['BB_LOWER'] = float(bb.bollinger_lband().iloc[-1])
+        ind['BB_WIDTH'] = float(bb.bollinger_wband().iloc[-1])
+        ind['BB_PCT'] = float(bb.bollinger_pband().iloc[-1])
         
-        # --- ADX ---
-        adx = ADXIndicator(high, low, close, window=14)
-        indicators['ADX'] = float(adx.adx().iloc[-1])
-        indicators['ADX_POS'] = float(adx.adx_pos().iloc[-1])
-        indicators['ADX_NEG'] = float(adx.adx_neg().iloc[-1])
+        # ===== 6. KELTNER CHANNEL =====
+        from ta.volatility import KeltnerChannel
+        kc = KeltnerChannel(high, low, close, 20)
+        ind['KC_UPPER'] = float(kc.keltner_channel_hband().iloc[-1])
+        ind['KC_MIDDLE'] = float(kc.keltner_channel_mband().iloc[-1])
+        ind['KC_LOWER'] = float(kc.keltner_channel_lband().iloc[-1])
         
-        # --- ATR ---
-        atr = AverageTrueRange(high, low, close, window=14)
-        indicators['ATR'] = float(atr.average_true_range().iloc[-1])
-        indicators['ATR_PCT'] = float(atr.average_true_range().iloc[-1] / close.iloc[-1] * 100)
+        # ===== 7. DONCHIAN CHANNEL =====
+        from ta.volatility import DonchianChannel
+        dc = DonchianChannel(high, low, close, 20)
+        ind['DC_UPPER'] = float(dc.donchian_channel_hband().iloc[-1])
+        ind['DC_LOWER'] = float(dc.donchian_channel_lband().iloc[-1])
+        ind['DC_WIDTH'] = float(dc.donchian_channel_wband().iloc[-1])
         
-        # --- CCI ---
-        cci = CCIIndicator(high, low, close, window=20)
-        indicators['CCI'] = float(cci.cci().iloc[-1])
+        # ===== 8. ATR (Multiple) =====
+        from ta.volatility import AverageTrueRange
+        for p in [7, 14]:
+            atr = AverageTrueRange(high, low, close, p)
+            ind[f'ATR_{p}'] = float(atr.average_true_range().iloc[-1])
+        ind['ATR_PCT'] = float(ind['ATR_14'] / close.iloc[-1] * 100)
         
-        # --- Volume Indicators ---
-        indicators['MFI'] = float(MFIIndicator(high, low, close, volume).money_flow_index().iloc[-1])
-        indicators['OBV'] = float(OnBalanceVolumeIndicator(close, volume).on_balance_volume().iloc[-1])
+        # ===== 9. ADX =====
+        from ta.trend import ADXIndicator
+        adx = ADXIndicator(high, low, close, 14)
+        ind['ADX'] = float(adx.adx().iloc[-1])
+        ind['DI_PLUS'] = float(adx.adx_pos().iloc[-1])
+        ind['DI_MINUS'] = float(adx.adx_neg().iloc[-1])
         
-        # --- Volume Analysis ---
-        vol_sma = volume.rolling(20).mean().iloc[-1]
-        indicators['VOLUME_RATIO'] = float(volume.iloc[-1] / vol_sma if vol_sma > 0 else 1)
-        indicators['VOLUME_TREND'] = float(volume.rolling(5).mean().iloc[-1] / vol_sma if vol_sma > 0 else 1)
+        # ===== 10. CCI =====
+        from ta.trend import CCIIndicator
+        ind['CCI_20'] = float(CCIIndicator(high, low, close, 20).cci().iloc[-1])
         
-        # --- Ichimoku ---
-        try:
-            ichimoku = IchimokuIndicator(high, low)
-            indicators['ICHIMOKU_A'] = float(ichimoku.ichimoku_a().iloc[-1])
-            indicators['ICHIMOKU_B'] = float(ichimoku.ichimoku_b().iloc[-1])
-            indicators['ICHIMOKU_CONV'] = float(ichimoku.ichimoku_conversion_line().iloc[-1])
-            indicators['ICHIMOKU_BASE'] = float(ichimoku.ichimoku_base_line().iloc[-1])
-        except:
-            pass
+        # ===== 11. ICHIMOKU =====
+        from ta.trend import IchimokuIndicator
+        ichi = IchimokuIndicator(high, low, 9, 26, 52)
+        ind['ICH_TENKAN'] = float(ichi.ichimoku_conversion_line().iloc[-1])
+        ind['ICH_KIJUN'] = float(ichi.ichimoku_base_line().iloc[-1])
+        ind['ICH_SENKOU_A'] = float(ichi.ichimoku_a().iloc[-1])
+        ind['ICH_SENKOU_B'] = float(ichi.ichimoku_b().iloc[-1])
         
-        # --- Parabolic SAR ---
-        try:
-            psar = PSARIndicator(high, low, close)
-            indicators['PSAR'] = float(psar.psar().iloc[-1])
-        except:
-            pass
+        # ===== 12. PARABOLIC SAR =====
+        from ta.trend import PSARIndicator
+        psar = PSARIndicator(high, low, close)
+        ind['PSAR'] = float(psar.psar().iloc[-1])
+        ind['PSAR_DIR'] = 1 if close.iloc[-1] > ind['PSAR'] else -1
         
-        # --- Williams %R ---
-        indicators['WILLIAMS_R'] = float(WilliamsRIndicator(high, low, close).williams_r().iloc[-1])
+        # ===== 13. WILLIAMS %R =====
+        from ta.momentum import WilliamsRIndicator
+        ind['WILLIAMS_R'] = float(WilliamsRIndicator(high, low, close, 14).williams_r().iloc[-1])
         
-        # --- Ultimate Oscillator ---
-        try:
-            indicators['ULTIMATE'] = float(UltimateOscillator(high, low, close).ultimate_oscillator().iloc[-1])
-        except:
-            pass
+        # ===== 14. ULTIMATE OSCILLATOR =====
+        from ta.momentum import UltimateOscillator
+        ind['ULTIMATE_OSC'] = float(UltimateOscillator(high, low, close).ultimate_oscillator().iloc[-1])
         
-        # --- Pivot Points ---
+        # ===== 15. MFI =====
+        from ta.volume import MFIIndicator
+        ind['MFI'] = float(MFIIndicator(high, low, close, volume, 14).money_flow_index().iloc[-1])
+        
+        # ===== 16. OBV =====
+        from ta.volume import OnBalanceVolumeIndicator
+        ind['OBV'] = float(OnBalanceVolumeIndicator(close, volume).on_balance_volume().iloc[-1])
+        
+        # ===== 17. AROON =====
+        from ta.trend import AroonIndicator
+        aroon = AroonIndicator(close, 25)
+        ind['AROON_UP'] = float(aroon.aroon_up().iloc[-1])
+        ind['AROON_DOWN'] = float(aroon.aroon_down().iloc[-1])
+        
+        # ===== 18. VORTEX =====
+        from ta.trend import VortexIndicator
+        vortex = VortexIndicator(high, low, close, 14)
+        ind['VORTEX_PLUS'] = float(vortex.vortex_indicator_pos().iloc[-1])
+        ind['VORTEX_MINUS'] = float(vortex.vortex_indicator_neg().iloc[-1])
+        
+        # ===== 19. TRIX =====
+        from ta.trend import TRIXIndicator
+        ind['TRIX'] = float(TRIXIndicator(close, 15).trix().iloc[-1])
+        
+        # ===== 20. MASS INDEX =====
+        from ta.trend import MassIndex
+        ind['MASS_INDEX'] = float(MassIndex(high, low).mass_index().iloc[-1])
+        
+        # ===== 21. VOLUME ANALYSIS =====
+        vol_sma_20 = volume.rolling(20).mean().iloc[-1]
+        ind['VOLUME_RATIO'] = float(volume.iloc[-1] / vol_sma_20 if vol_sma_20 > 0 else 1)
+        ind['VOLUME_ZSCORE'] = float((volume.iloc[-1] - volume.rolling(20).mean().iloc[-1]) / volume.rolling(20).std().iloc[-1]) if volume.rolling(20).std().iloc[-1] > 0 else 0
+        ind['VOLUME_TREND'] = 1 if volume.iloc[-1] > volume.rolling(5).mean().iloc[-1] else -1
+        
+        # ===== 22. PIVOT POINTS =====
         h, l, c = high.iloc[-1], low.iloc[-1], close.iloc[-1]
         pivot = (h + l + c) / 3
-        indicators['PIVOT'] = float(pivot)
-        indicators['R1'] = float(2 * pivot - l)
-        indicators['S1'] = float(2 * pivot - h)
-        indicators['R2'] = float(pivot + (h - l))
-        indicators['S2'] = float(pivot - (h - l))
+        ind['PIVOT'] = float(pivot)
+        ind['PIVOT_R1'] = float(2 * pivot - l)
+        ind['PIVOT_S1'] = float(2 * pivot - h)
+        ind['PIVOT_R2'] = float(pivot + (h - l))
+        ind['PIVOT_S2'] = float(pivot - (h - l))
+        ind['PIVOT_R3'] = float(h + 2 * (pivot - l))
+        ind['PIVOT_S3'] = float(l - 2 * (h - pivot))
         
-        # --- Trend Strength ---
-        indicators['TREND_STRENGTH'] = float(abs(close.iloc[-1] - close.iloc[-20]) / close.iloc[-20] * 100)
+        # ===== 23. FIBONACCI RETRACEMENT =====
+        high_50 = high.rolling(50).max().iloc[-1]
+        low_50 = low.rolling(50).min().iloc[-1]
+        diff = high_50 - low_50
+        for level in [0.236, 0.382, 0.5, 0.618, 0.786]:
+            ind[f'FIB_{int(level*1000)}'] = float(high_50 - diff * level)
         
-        # --- Volatility ---
-        indicators['VOLATILITY'] = float(close.pct_change().rolling(20).std().iloc[-1] * 100)
+        # ===== 24. MARKET STRENGTH =====
+        ind['TREND_STRENGTH'] = float((close.iloc[-1] - close.iloc[-50]) / close.iloc[-50] * 100)
+        ind['VOLATILITY'] = float(close.pct_change().rolling(14).std().iloc[-1] * 100)
+        ind['MOMENTUM'] = float(close.iloc[-1] - close.iloc[-10])
         
-        return indicators
+        # ===== 25. CANDLESTICK PATTERNS =====
+        patterns = UltraAnalyzer.detect_candlestick_patterns(df)
+        ind.update(patterns)
+        
+        # ===== 26. DIVERGENCE DETECTION =====
+        ind['RSI_DIVERGENCE'] = UltraAnalyzer.detect_divergence(close, ind['RSI_14'])
+        
+        # ===== 27. SUPPORT/RESISTANCE =====
+        ind['SUPPORT'] = float(low.rolling(20).min().iloc[-1])
+        ind['RESISTANCE'] = float(high.rolling(20).max().iloc[-1])
+        
+        return ind
     
     @staticmethod
-    def detect_divergence(df: pd.DataFrame) -> str:
-        """Detect RSI divergence patterns"""
-        close = df['close'].astype(float)
-        rsi = RSIIndicator(close, window=14).rsi()
+    def detect_candlestick_patterns(df: pd.DataFrame) -> Dict[str, bool]:
+        """Detect major candlestick patterns"""
+        open_ = df['open'].values
+        high = df['high'].values
+        low = df['low'].values
+        close = df['close'].values
         
-        if len(close) < 20:
+        patterns = {}
+        
+        if len(close) < 3:
+            return {p: False for p in ['DOJI', 'HAMMER', 'SHOOTING_STAR', 'ENGULFING_BULL', 'ENGULFING_BEAR', 'MORNING_STAR', 'EVENING_STAR', 'THREE_WHITE_SOLDIERS', 'THREE_BLACK_CROWS', 'HARAMI_BULL', 'HARAMI_BEAR']}
+        
+        o, h, l, c = open_[-1], high[-1], low[-1], close[-1]
+        po, ph, pl, pc = open_[-2], high[-2], low[-2], close[-2]
+        
+        body = abs(c - o)
+        upper_shadow = h - max(c, o)
+        lower_shadow = min(c, o) - l
+        total_range = h - l
+        
+        # Doji
+        patterns['DOJI'] = total_range > 0 and body <= total_range * 0.1
+        
+        # Hammer
+        patterns['HAMMER'] = (lower_shadow > body * 2) and (upper_shadow < body * 0.5) and (c > o)
+        
+        # Shooting Star
+        patterns['SHOOTING_STAR'] = (upper_shadow > body * 2) and (lower_shadow < body * 0.5) and (c < o)
+        
+        # Engulfing Bullish
+        patterns['ENGULFING_BULL'] = (c > o) and (pc < po) and (o < pc) and (c > po)
+        
+        # Engulfing Bearish
+        patterns['ENGULFING_BEAR'] = (c < o) and (pc > po) and (o > pc) and (c < po)
+        
+        # Harami Bullish
+        patterns['HARAMI_BULL'] = (pc < po) and (c > o) and (o > pc) and (c < po)
+        
+        # Harami Bearish
+        patterns['HARAMI_BEAR'] = (pc > po) and (c < o) and (o < pc) and (c > po)
+        
+        # Three White Soldiers
+        if len(close) >= 3:
+            patterns['THREE_WHITE_SOLDIERS'] = all(
+                close[-i] > open_[-i] and close[-i] > close[-(i+1)] 
+                for i in range(1, 4)
+            )
+        else:
+            patterns['THREE_WHITE_SOLDIERS'] = False
+        
+        # Three Black Crows
+        if len(close) >= 3:
+            patterns['THREE_BLACK_CROWS'] = all(
+                close[-i] < open_[-i] and close[-i] < close[-(i+1)] 
+                for i in range(1, 4)
+            )
+        else:
+            patterns['THREE_BLACK_CROWS'] = False
+        
+        # Morning Star
+        if len(close) >= 3:
+            patterns['MORNING_STAR'] = (
+                (pc < po) and 
+                (abs(close[-2] - open_[-2]) < body * 0.3) and 
+                (c > o) and 
+                (c > (po + pc) / 2)
+            )
+        else:
+            patterns['MORNING_STAR'] = False
+        
+        # Evening Star
+        if len(close) >= 3:
+            patterns['EVENING_STAR'] = (
+                (pc > po) and 
+                (abs(close[-2] - open_[-2]) < body * 0.3) and 
+                (c < o) and 
+                (c < (po + pc) / 2)
+            )
+        else:
+            patterns['EVENING_STAR'] = False
+        
+        return patterns
+    
+    @staticmethod
+    def detect_divergence(price: pd.Series, rsi: float) -> str:
+        """Detect RSI divergence"""
+        if len(price) < 20:
             return "NONE"
         
-        recent_close = close.iloc[-20:]
-        recent_rsi = rsi.iloc[-20:]
+        recent_p = price.iloc[-20:]
+        recent_r = RSIIndicator(price, 14).rsi().iloc[-20:]
         
-        # Regular Bullish: Price Lower Low, RSI Higher Low
-        if (close.iloc[-1] < recent_close.min() and 
-            rsi.iloc[-1] > recent_rsi.min()):
-            return "BULLISH_DIVERGENCE"
+        p_min = recent_p.idxmin()
+        p_max = recent_p.idxmax()
+        r_min = recent_r.idxmin()
+        r_max = recent_r.idxmax()
         
-        # Regular Bearish: Price Higher High, RSI Lower High
-        if (close.iloc[-1] > recent_close.max() and 
-            rsi.iloc[-1] < recent_rsi.max()):
-            return "BEARISH_DIVERGENCE"
+        if recent_p.iloc[-1] < recent_p.iloc[:10].min() and recent_r.iloc[-1] > recent_r.iloc[:10].min():
+            return "BULLISH"
+        if recent_p.iloc[-1] > recent_p.iloc[:10].max() and recent_r.iloc[-1] < recent_r.iloc[:10].max():
+            return "BEARISH"
+        if recent_p.iloc[-1] > recent_p.iloc[:10].min() and recent_r.iloc[-1] < recent_r.iloc[:10].min():
+            return "HIDDEN_BULLISH"
+        if recent_p.iloc[-1] < recent_p.iloc[:10].max() and recent_r.iloc[-1] > recent_r.iloc[:10].max():
+            return "HIDDEN_BEARISH"
         
         return "NONE"
 
 # ============================================================
-# SIGNAL GENERATOR
+# SIGNAL GENERATOR - 1000-Point Professional Scoring
 # ============================================================
 class SignalGenerator:
-    """Generate trading signals with 1000-point scoring system"""
+    """Professional signal generation with weighted scoring"""
     
     @staticmethod
-    def generate(indicators: Dict[str, float], price: float, mtf_data: Optional[Dict] = None) -> Tuple[str, int, int]:
-        """
-        Generate signal with confidence score
-        Returns: (signal_text, confidence, score)
-        """
+    def generate(ind: Dict, price: float, mtf: Dict[str, Dict] = None) -> Tuple[str, int, int]:
         score = 0
         
-        # === TREND ANALYSIS (250 points) ===
-        if indicators.get('EMA_7', 0) > indicators.get('EMA_20', 0) > indicators.get('EMA_50', 0) > indicators.get('EMA_200', 0):
-            score += 150
-        elif indicators.get('EMA_7', 0) > indicators.get('EMA_20', 0) > indicators.get('EMA_50', 0):
-            score += 100
-        elif indicators.get('EMA_20', 0) > indicators.get('EMA_50', 0):
-            score += 50
-        elif indicators.get('EMA_7', 0) < indicators.get('EMA_20', 0) < indicators.get('EMA_50', 0) < indicators.get('EMA_200', 0):
-            score -= 150
-        elif indicators.get('EMA_7', 0) < indicators.get('EMA_20', 0) < indicators.get('EMA_50', 0):
-            score -= 100
+        # === TREND (300 pts) ===
+        if ind['EMA_7'] > ind['EMA_20'] > ind['EMA_50'] > ind['EMA_200']:
+            score += 180
+        elif ind['EMA_7'] > ind['EMA_20'] > ind['EMA_50']:
+            score += 120
+        elif ind['EMA_20'] > ind['EMA_50']:
+            score += 60
+        elif ind['EMA_7'] < ind['EMA_20'] < ind['EMA_50'] < ind['EMA_200']:
+            score -= 180
+        elif ind['EMA_7'] < ind['EMA_20'] < ind['EMA_50']:
+            score -= 120
         
-        # ADX Trend Strength
-        adx = indicators.get('ADX', 0)
-        if adx > 40:
-            if indicators.get('ADX_POS', 0) > indicators.get('ADX_NEG', 0):
-                score += 100
+        # Ichimoku
+        if price > ind['ICH_SENKOU_A'] and price > ind['ICH_SENKOU_B']:
+            if ind['ICH_TENKAN'] > ind['ICH_KIJUN']:
+                score += 120
             else:
-                score -= 100
-        elif adx > 25:
-            if indicators.get('ADX_POS', 0) > indicators.get('ADX_NEG', 0):
-                score += 50
-            else:
-                score -= 50
+                score += 60
         
-        # === MOMENTUM (250 points) ===
-        rsi = indicators.get('RSI', 50)
-        if rsi < 30:
-            score += 80
-        elif rsi < 40:
-            score += 40
-        elif rsi > 70:
-            score -= 80
-        elif rsi > 60:
-            score -= 40
+        # === MOMENTUM (300 pts) ===
+        rsi = ind['RSI_14']
+        if rsi < 30: score += 100
+        elif rsi < 40: score += 50
+        elif rsi > 70: score -= 100
+        elif rsi > 60: score -= 50
         
         # MACD
-        if indicators.get('MACD_HIST', 0) > 0:
-            score += 50
-        else:
-            score -= 50
+        if ind['MACD_HIST'] > 0: score += 60
+        else: score -= 60
         
         # Stochastic
-        stoch_k = indicators.get('STOCH_K', 50)
-        if stoch_k < 20:
-            score += 50
-        elif stoch_k > 80:
-            score -= 50
+        if ind['STOCH_K'] < 20 and ind['STOCH_D'] < 20: score += 70
+        elif ind['STOCH_K'] > 80 and ind['STOCH_D'] > 80: score -= 70
         
         # CCI
-        cci = indicators.get('CCI', 0)
-        if cci < -200:
-            score += 50
-        elif cci < -100:
-            score += 30
-        elif cci > 200:
-            score -= 50
-        elif cci > 100:
-            score -= 30
+        cci = ind['CCI_20']
+        if cci < -200: score += 60
+        elif cci < -100: score += 30
+        elif cci > 200: score -= 60
+        elif cci > 100: score -= 30
         
-        # === VOLATILITY (200 points) ===
-        bb_pos = indicators.get('BB_POSITION', 0.5)
-        if bb_pos < 0.1:
-            score += 80
-        elif bb_pos > 0.9:
-            score -= 80
+        # === VOLATILITY (150 pts) ===
+        if ind['BB_PCT'] < 0.1: score += 80
+        elif ind['BB_PCT'] > 0.9: score -= 80
         
-        # === VOLUME (150 points) ===
-        vol_ratio = indicators.get('VOLUME_RATIO', 1)
-        if vol_ratio > 2:
-            score += 50 if score > 0 else -50
-        elif vol_ratio > 1.5:
-            score += 30 if score > 0 else -30
+        if ind['ATR_PCT'] > 5: score += 30
         
-        # MFI
-        mfi = indicators.get('MFI', 50)
-        if mfi < 20:
-            score += 40
-        elif mfi > 80:
-            score -= 40
+        # === VOLUME (100 pts) ===
+        if ind['VOLUME_RATIO'] > 2: score += 50 if score > 0 else -50
+        elif ind['VOLUME_RATIO'] > 1.5: score += 30 if score > 0 else -30
         
-        # === DIVERGENCE (150 points) ===
-        # (Would need df passed separately)
+        if ind['MFI'] < 20: score += 50
+        elif ind['MFI'] > 80: score -= 50
         
-        # === MULTI-TIMEFRAME ===
-        if mtf_data:
-            for tf, tf_ind in mtf_data.items():
-                weight = {"1h": 1, "4h": 1.5, "1d": 2}.get(tf, 0.5)
-                tf_rsi = tf_ind.get('RSI', 50)
-                if tf_rsi > 55:
-                    score += int(20 * weight)
-                elif tf_rsi < 45:
-                    score -= int(20 * weight)
+        # === CANDLESTICK PATTERNS (100 pts) ===
+        if ind.get('ENGULFING_BULL'): score += 60
+        if ind.get('HAMMER'): score += 40
+        if ind.get('MORNING_STAR'): score += 50
+        if ind.get('ENGULFING_BEAR'): score -= 60
+        if ind.get('SHOOTING_STAR'): score -= 40
+        if ind.get('EVENING_STAR'): score -= 50
+        if ind.get('THREE_WHITE_SOLDIERS'): score += 40
+        if ind.get('THREE_BLACK_CROWS'): score -= 40
         
-        # Normalize
+        # === DIVERGENCE (50 pts) ===
+        div = ind.get('RSI_DIVERGENCE', 'NONE')
+        if div == 'BULLISH': score += 50
+        elif div == 'BEARISH': score -= 50
+        elif div == 'HIDDEN_BULLISH': score += 30
+        elif div == 'HIDDEN_BEARISH': score -= 30
+        
+        # === MULTI-TIMEFRAME CONFIRMATION ===
+        if mtf:
+            mtf_score = 0
+            for tf, tf_ind in mtf.items():
+                w = {"1h": 1, "4h": 1.5, "6h": 1.8, "12h": 2, "1d": 2.5, "3d": 3, "1w": 4}.get(tf, 0.5)
+                if tf_ind.get('RSI_14', 50) > 55: mtf_score += 20 * w
+                elif tf_ind.get('RSI_14', 50) < 45: mtf_score -= 20 * w
+                if tf_ind.get('MACD_HIST', 0) > 0: mtf_score += 15 * w
+                else: mtf_score -= 15 * w
+            score += int(mtf_score)
+        
         score = max(-1000, min(1000, score))
         
-        # Convert to signal
-        if score >= 600:
-            return "خرید فوق‌العاده قوی 🟢🟢🟢🟢🟢", 98, score
-        elif score >= 400:
-            return "خرید قوی 🟢🟢🟢🟢", 90, score
-        elif score >= 200:
-            return "خرید 🟢🟢🟢", 80, score
-        elif score >= 100:
-            return "خرید ضعیف 🟢", 65, score
-        elif score <= -600:
-            return "فروش فوق‌العاده قوی 🔴🔴🔴🔴🔴", 98, score
-        elif score <= -400:
-            return "فروش قوی 🔴🔴🔴🔴", 90, score
-        elif score <= -200:
-            return "فروش 🔴🔴🔴", 80, score
-        elif score <= -100:
-            return "فروش ضعیف 🔴", 65, score
-        else:
-            return "خنثی ⚪⚪", 50, score
+        # Signal translation
+        if score >= 700: return "خرید فوق‌العاده قوی 🟢🟢🟢🟢🟢", 98, score
+        elif score >= 500: return "خرید قوی 🟢🟢🟢🟢", 92, score
+        elif score >= 300: return "خرید خوب 🟢🟢🟢", 82, score
+        elif score >= 150: return "خرید 🟢🟢", 70, score
+        elif score >= 50: return "خرید ضعیف 🟢", 60, score
+        elif score <= -700: return "فروش فوق‌العاده قوی 🔴🔴🔴🔴🔴", 98, score
+        elif score <= -500: return "فروش قوی 🔴🔴🔴🔴", 92, score
+        elif score <= -300: return "فروش خوب 🔴🔴🔴", 82, score
+        elif score <= -150: return "فروش 🔴🔴", 70, score
+        elif score <= -50: return "فروش ضعیف 🔴", 60, score
+        else: return "خنثی ⚪⚪", 50, score
+
+# ============================================================
+# TRADING ENGINE - Demo & Real Auto Trading
+# ============================================================
+class TradingEngine:
+    """Advanced Trading Engine with Demo & Real Modes"""
+    
+    def __init__(self):
+        self.demo_balance = cfg.initial_balance
+        self.real_balance = 0
+        self.positions: Dict[str, Dict] = {}
+        self.history: List[Dict] = []
+        self.consecutive_losses = 0
+        self.daily_pnl = 0
+        self.daily_trades = 0
+        self.load_state()
+    
+    def load_state(self):
+        try:
+            with open('trading_state.json', 'r') as f:
+                data = json.load(f)
+                self.demo_balance = data.get('balance', cfg.initial_balance)
+                self.history = data.get('history', [])
+        except:
+            pass
+    
+    def save_state(self):
+        try:
+            with open('trading_state.json', 'w') as f:
+                json.dump({'balance': self.demo_balance, 'history': self.history[-500:]}, f)
+        except:
+            pass
+    
+    def calculate_position_size(self, entry: float, stop_loss: float, confidence: int) -> float:
+        risk = self.demo_balance * cfg.risk_per_trade
+        if confidence >= 90: risk *= 1.5
+        if self.consecutive_losses > 0: risk *= (0.5 ** self.consecutive_losses)
+        price_risk = abs(entry - stop_loss)
+        if price_risk == 0: return 0
+        size = risk / price_risk
+        return min(size, self.demo_balance * 0.25 / entry)
+    
+    def open_position(self, symbol: str, entry: float, stop_loss: float, take_profit: float, confidence: int):
+        if len(self.positions) >= cfg.max_positions: return None
+        if self.consecutive_losses >= cfg.max_consecutive_losses: return None
+        
+        size = self.calculate_position_size(entry, stop_loss, confidence)
+        if size <= 0 or size * entry > self.demo_balance: return None
+        
+        self.demo_balance -= size * entry
+        
+        pos = {
+            'symbol': symbol, 'size': size, 'entry': entry,
+            'stop_loss': stop_loss, 'take_profit': take_profit,
+            'highest': entry, 'entry_time': datetime.now(), 'confidence': confidence
+        }
+        self.positions[symbol] = pos
+        self.daily_trades += 1
+        self.save_state()
+        logger.info(f"🔵 OPEN {symbol} | Size: {size:.4f} | Entry: {entry:.2f}")
+        return pos
+    
+    def update_position(self, symbol: str, price: float, atr: float) -> Optional[Dict]:
+        if symbol not in self.positions: return None
+        
+        pos = self.positions[symbol]
+        pos['highest'] = max(pos['highest'], price)
+        
+        # Trailing stop
+        pnl_pct = (price - pos['entry']) / pos['entry']
+        if pnl_pct > cfg.trailing_stop_pct:
+            pos['stop_loss'] = pos['highest'] * (1 - cfg.trailing_stop_pct)
+        
+        # Check close
+        if price >= pos['take_profit']:
+            return self.close_position(symbol, price, "TAKE_PROFIT")
+        if price <= pos['stop_loss']:
+            return self.close_position(symbol, price, "STOP_LOSS")
+        
+        return None
+    
+    def close_position(self, symbol: str, price: float, reason: str) -> Dict:
+        pos = self.positions.pop(symbol)
+        pnl = (price - pos['entry']) * pos['size']
+        self.demo_balance += pos['size'] * price
+        self.daily_pnl += pnl
+        
+        if pnl < 0: self.consecutive_losses += 1
+        else: self.consecutive_losses = 0
+        
+        trade = {
+            'symbol': symbol, 'entry': pos['entry'], 'exit': price,
+            'pnl': pnl, 'reason': reason, 'time': datetime.now().isoformat()
+        }
+        self.history.append(trade)
+        self.save_state()
+        logger.info(f"{'🟢' if pnl>0 else '🔴'} CLOSE {symbol} | PnL: ${pnl:+.2f}")
+        return trade
+
+trader = TradingEngine()
 
 # ============================================================
 # DATA CACHE
 # ============================================================
 class Cache:
-    """Simple in-memory cache"""
-    _data: Dict[str, Tuple[Any, float]] = {}
+    _store: Dict[str, Tuple[Any, float]] = {}
     
     @classmethod
-    def get(cls, key: str, max_age: float = 15) -> Optional[Any]:
-        if key in cls._data:
-            value, timestamp = cls._data[key]
-            if time.time() - timestamp < max_age:
-                return value
+    def get(cls, key: str, ttl: float = 15) -> Optional[Any]:
+        if key in cls._store:
+            val, ts = cls._store[key]
+            if time.time() - ts < ttl: return val
+            del cls._store[key]
         return None
     
     @classmethod
     def set(cls, key: str, value: Any):
-        cls._data[key] = (value, time.time())
+        cls._store[key] = (value, time.time())
 
 # ============================================================
-# FORMATTERS
+# MESSAGE FORMATTER
 # ============================================================
-class MessageFormatter:
-    """Format messages for Telegram"""
-    
+class Formatter:
     @staticmethod
     def signal(analysis: Dict) -> str:
-        """Format signal message"""
         sym = analysis['symbol'].replace('/USDT', '')
         ind = analysis['indicators']
+        patterns = [k for k, v in ind.items() if isinstance(v, bool) and v]
         
         return f"""
-╔══════════════════════════════════╗
-║   🔥 سیگنال {sym} 🔥         ║
-╚══════════════════════════════════╝
+╔══════════════════════════════════════════════╗
+║       🔥 سیگنال حرفه‌ای {sym} 🔥           ║
+╚══════════════════════════════════════════════╝
 
-💰 قیمت: ${analysis['price']:,.4f}
-📊 تغییر ۲۴h: {analysis['change']:+.2f}%
+💰 *قیمت:* ${analysis['price']:,.4f}
+📊 *تغییر:* {analysis['change']:+.2f}%
 
-🎯 سیگنال: {analysis['signal']}
-💪 اطمینان: {analysis['confidence']}%
-🎯 امتیاز: {analysis['score']}/1000
+🎯 *سیگنال:* {analysis['signal']}
+💪 *اطمینان:* {analysis['confidence']}%
+🎯 *امتیاز:* {analysis['score']}/1000
 
-📈 اندیکاتورها:
-• RSI(14): {ind.get('RSI', 0):.1f}
-• MACD: {'صعودی ⬆️' if ind.get('MACD_HIST', 0) > 0 else 'نزولی ⬇️'}
-• ADX: {ind.get('ADX', 0):.1f}
-• CCI: {ind.get('CCI', 0):.1f}
-• MFI: {ind.get('MFI', 0):.1f}
-• حجم: {ind.get('VOLUME_RATIO', 1):.1f}x
+📈 *اندیکاتورهای اصلی:*
+• RSI(14): {ind['RSI_14']:.1f} | RSI(7): {ind['RSI_7']:.1f}
+• MACD: {'صعودی' if ind['MACD_HIST']>0 else 'نزولی'}
+• ADX: {ind['ADX']:.1f} | DI+: {ind['DI_PLUS']:.1f} | DI-: {ind['DI_MINUS']:.1f}
+• CCI: {ind['CCI_20']:.1f}
+• MFI: {ind['MFI']:.1f}
+• ATR: {ind['ATR_14']:.4f} ({ind['ATR_PCT']:.2f}%)
 
-🔑 سطوح کلیدی:
-• مقاومت R1: ${ind.get('R1', 0):,.4f}
-• پیوت: ${ind.get('PIVOT', 0):,.4f}
-• حمایت S1: ${ind.get('S1', 0):,.4f}
-• BB بالا: ${ind.get('BB_UPPER', 0):,.4f}
-• BB پایین: ${ind.get('BB_LOWER', 0):,.4f}
+📊 *باندها:*
+• BB Upper: ${ind['BB_UPPER']:.4f}
+• BB Lower: ${ind['BB_LOWER']:.4f}
+• BB Width: {ind['BB_WIDTH']:.4f}
 
-⚠️ حد ضرر: ${analysis['price'] - ind.get('ATR', 0) * 2:,.4f}
-🎯 حد سود: ${analysis['price'] + ind.get('ATR', 0) * 4:,.4f}
+🕯️ *الگوهای کندلی:* {', '.join(patterns) if patterns else 'بدون الگو'}
+🔄 *واگرایی RSI:* {ind.get('RSI_DIVERGENCE', 'NONE')}
 
-━━━━━━━━━━━━━━━━━━━━━━
-⏰ {datetime.now().strftime('%H:%M:%S')}
+🔑 *سطوح کلیدی:*
+• مقاومت: ${ind['RESISTANCE']:.4f}
+• پیوت: ${ind['PIVOT']:.4f}
+• حمایت: ${ind['SUPPORT']:.4f}
+
+⚠️ *پیشنهاد معاملاتی:*
+• حد ضرر: ${analysis['price'] - ind['ATR_14'] * cfg.atr_multiplier_sl:.4f}
+• حد سود: ${analysis['price'] + ind['ATR_14'] * cfg.atr_multiplier_tp:.4f}
+• ریسک/ریوارد: 1:{cfg.atr_multiplier_tp/cfg.atr_multiplier_sl:.1f}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+⏰ {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
 ✨ @CryptoPulse606
 """
     
     @staticmethod
     def education() -> str:
-        """Generate educational content"""
         topics = [
-            "تحلیل ساختار بازار - شناسایی روند اصلی",
-            "روانشناسی معامله‌گری - کنترل احساسات",
-            "مدیریت سرمایه پیشرفته - فرمول کلی",
-            "الگوهای کندلی معکوس - چکش و ستاره",
-            "تحلیل وایکوف - فازهای انباشت و توزیع",
-            "استراتژی شکست سطوح - تایید با حجم",
-            "تشخیص واگرایی - مخفی و معمولی",
-            "مدیریت حد ضرر - ترلینگ استاپ",
-            "تحلیل تایم‌فریم بالا - تایید روند",
-            "پرایس اکشن - کندل‌های اینگالفینگ",
-            "فیبوناچی - نسبت‌های طلایی",
-            "ایچیموکو - ابر کومو و سیگنال‌ها",
-            "مکدی - تقاطع‌ها و واگرایی",
-            "آر‌اس‌آی - اشباع خرید و فروش",
-            "بولینگر باند - فشردگی و گسترش"
+            "📖 تحلیل ساختار بازار - شناسایی فازها",
+            "🧠 روانشناسی معامله‌گری - کنترل ذهن",
+            "💰 مدیریت سرمایه - کلید بقا در بازار",
+            "🕯️ الگوهای کندلی - زبان بازار",
+            "📊 تحلیل وایکوف - انباشت و توزیع",
+            "🎯 استراتژی شکست - ورود به موقع",
+            "🔄 واگرایی - سیگنال‌های مخفی",
+            "📉 ترلینگ استاپ - حفظ سود",
+            "⏰ مولتی تایم‌فریم - دید جامع",
+            "📈 پرایس اکشن - هنر خواندن نمودار",
+            "🔢 فیبوناچی - نسبت‌های طلایی",
+            "☁️ ایچیموکو - ابر و سیگنال",
+            "📊 RSI - قدرت و ضعف بازار",
+            "📉 MACD - مومنتوم و روند",
+            "🎪 بولینگر - نوسان و برگشت"
         ]
-        topic = random.choice(topics)
-        
         return f"""
 📚 *تحلیل و آموزش تخصصی*
 
-📖 *موضوع امروز:* {topic}
+{random.choice(topics)}
 
 ━━━━━━━━━━━━━━━━━━━━━━
 
-🔍 *اصول کلیدی معامله‌گری:*
-
-۱. همیشه روند اصلی بازار را در تایم‌فریم بالا شناسایی کنید
-۲. حداقل نسبت ریسک به ریوارد ۱:۲ را رعایت کنید
-۳. بیش از ۲٪ از سرمایه را در یک معامله ریسک نکنید
-۴. همیشه حد ضرر مشخص داشته باشید
-۵. بعد از ۳ ضرر متوالی، معامله را متوقف کنید
+🔍 *اصول طلایی:*
+۱. روند دوست شماست - خلاف آن معامله نکنید
+۲. ریسک/ریوارد حداقل ۱:۲ را رعایت کنید
+۳. بیش از ۲٪ در یک معامله ریسک نکنید
+۴. حد ضرر اجباری است - بدون استثنا
+۵. بعد ۳ ضرر متوالی استراحت کنید
 ۶. ژورنال معاملاتی داشته باشید
-۷. اخبار اقتصادی را دنبال کنید
-۸. صبور باشید - فرصت‌های خوب همیشه هستند
+۷. اخبار فاندامنتال را دنبال کنید
+۸. صبوری = سودآوری
 
-💡 *نکته طلایی:*
-موفقیت در معاملات = ۲۰٪ استراتژی + ۳۰٪ مدیریت ریسک + ۵۰٪ روانشناسی
+💡 *رمز موفقیت:*
+۲۰٪ استراتژی + ۳۰٪ مدیریت ریسک + ۵۰٪ روانشناسی
 
 ━━━━━━━━━━━━━━━━━━━━━━
 ✨ @CryptoPulse606
-⏰ {datetime.now().strftime('%Y-%m-%d %H:%M')}
 """
 
 # ============================================================
-# MENUS
+# MENUS - 60+ Buttons
 # ============================================================
 class Menus:
-    """Telegram inline keyboards"""
-    
     @staticmethod
     def main() -> InlineKeyboardMarkup:
         return InlineKeyboardMarkup([
             [InlineKeyboardButton("📊 قیمت‌ها", callback_data="prices"),
-             InlineKeyboardButton("🎯 سیگنال BTC", callback_data="signal")],
+             InlineKeyboardButton("🎯 سیگنال BTC", callback_data="sig_BTC/USDT")],
             [InlineKeyboardButton("🔍 اسکن بازار", callback_data="scan"),
-             InlineKeyboardButton("📈 تحلیل", callback_data="tech_menu")],
+             InlineKeyboardButton("⭐ برترین‌ها", callback_data="top")],
+            [InlineKeyboardButton("📈 تحلیل تکنیکال", callback_data="tech"),
+             InlineKeyboardButton("⏰ مولتی تایم", callback_data="mtf")],
+            [InlineKeyboardButton("💰 پورتفوی", callback_data="portfolio"),
+             InlineKeyboardButton("📊 عملکرد", callback_data="perf")],
+            [InlineKeyboardButton("🤖 معاملات خودکار", callback_data="auto"),
+             InlineKeyboardButton("⚙️ تنظیمات", callback_data="settings")],
             [InlineKeyboardButton("📚 آموزش", callback_data="edu"),
+             InlineKeyboardButton("📰 وضعیت بازار", callback_data="market")],
+            [InlineKeyboardButton("🕯️ الگوها", callback_data="patterns"),
+             InlineKeyboardButton("📉 ترس و طمع", callback_data="fear")],
+            [InlineKeyboardButton("🐋 نهنگ‌ها", callback_data="whale"),
+             InlineKeyboardButton("💎 آلت‌کوین", callback_data="alt")],
+            [InlineKeyboardButton("🔄 بروزرسانی", callback_data="refresh"),
              InlineKeyboardButton("❓ راهنما", callback_data="help")],
-            [InlineKeyboardButton("🔄 بروزرسانی", callback_data="refresh")]
+            [InlineKeyboardButton("⏸️ توقف اضطراری", callback_data="emergency")]
         ])
     
     @staticmethod
     def technical() -> InlineKeyboardMarkup:
         pairs = [
-            ["BTC/USDT", "ETH/USDT", "SOL/USDT", "BNB/USDT"],
-            ["XRP/USDT", "ADA/USDT", "DOGE/USDT", "AVAX/USDT"],
-            ["DOT/USDT", "LINK/USDT", "LTC/USDT", "UNI/USDT"]
+            "BTC/USDT", "ETH/USDT", "SOL/USDT", "BNB/USDT",
+            "XRP/USDT", "ADA/USDT", "DOGE/USDT", "AVAX/USDT",
+            "DOT/USDT", "LINK/USDT", "LTC/USDT", "UNI/USDT"
         ]
         kb = []
-        for row in pairs:
-            kb.append([InlineKeyboardButton(s.replace('/USDT',''), callback_data=f"tech_{s}") for s in row])
-        kb.append([InlineKeyboardButton("🔙 بازگشت", callback_data="back")])
+        row = []
+        for p in pairs:
+            row.append(InlineKeyboardButton(p.replace('/USDT',''), callback_data=f"sig_{p}"))
+            if len(row) == 3:
+                kb.append(row)
+                row = []
+        if row: kb.append(row)
+        kb.append([InlineKeyboardButton("🔙", callback_data="back")])
         return InlineKeyboardMarkup(kb)
 
 # ============================================================
 # HANDLERS
 # ============================================================
 async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Start command handler"""
     await update.message.reply_text(
-        "🤖 *ربات معامله‌گر پیشرفته*\n\n"
-        "✨ ۱۰۰+ اندیکاتور تکنیکال\n"
-        "✨ ۲۰ ارز برتر بازار\n"
-        "✨ سیگنال هوشمند لحظه‌ای\n"
-        "✨ اسکن خودکار بازار\n\n"
-        "👇 از منو انتخاب کنید:",
-        parse_mode="Markdown",
-        reply_markup=Menus.main()
-    )
-
-async def handler_prices(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Show live prices"""
-    query = update.callback_query
-    await query.answer()
-    await query.edit_message_text("🔄 دریافت قیمت‌ها...")
-    
-    if not exchange_mgr.is_connected:
-        exchange_mgr.connect()
-    
-    txt = "💰 *قیمت‌های لحظه‌ای*\n\n"
-    for sym in Config.SYMBOLS[:15]:
-        ticker = exchange_mgr.get_ticker(sym)
-        if ticker:
-            emoji = "🟢" if ticker.get('percentage', 0) > 0 else "🔴"
-            txt += f"{emoji} *{sym.replace('/USDT','')}*: ${ticker['last']:,.4f} ({ticker.get('percentage',0):+.1f}%)\n"
-    
-    txt += f"\n⏰ {datetime.now().strftime('%H:%M:%S')}"
-    
-    await query.edit_message_text(
-        txt, parse_mode="Markdown",
-        reply_markup=InlineKeyboardMarkup([[
-            InlineKeyboardButton("🔄", callback_data="prices"),
-            InlineKeyboardButton("🔙", callback_data="back")
-        ]])
+        "🤖 *Crypto Pulse Ultra Bot v5.0*\n\n"
+        "✨ ۲۵+ اندیکاتور پیشرفته\n"
+        "✨ ۱۱ تایم‌فریم | ۳۰ ارز\n"
+        "✨ معاملات خودکار دمو و واقعی\n"
+        "✨ تشخیص الگوهای کندلی\n"
+        "✨ پیش‌بینی مولتی تایم‌فریم\n\n"
+        "👇 انتخاب کنید:",
+        parse_mode="Markdown", reply_markup=Menus.main()
     )
 
 async def handler_signal(update: Update, context: ContextTypes.DEFAULT_TYPE, symbol: str = "BTC/USDT"):
-    """Generate and show signal"""
-    query = update.callback_query
-    await query.answer()
-    await query.edit_message_text(f"🔄 تحلیل {symbol.replace('/USDT','')}...")
+    q = update.callback_query
+    await q.answer()
+    await q.edit_message_text(f"🔄 تحلیل {symbol.replace('/USDT','')}...")
     
-    if not exchange_mgr.is_connected:
-        exchange_mgr.connect()
+    if not ex.connected: ex.connect()
     
-    # Fetch data
-    ticker = exchange_mgr.get_ticker(symbol)
-    df = exchange_mgr.get_ohlcv(symbol, '1h', 200)
-    
-    if ticker is None or df is None:
-        await query.edit_message_text(
-            "❌ خطا در دریافت داده",
-            reply_markup=InlineKeyboardMarkup([[
-                InlineKeyboardButton("🔙", callback_data="back")
-            ]])
-        )
+    ticker = ex.fetch_ticker(symbol)
+    df = ex.fetch_ohlcv(symbol, '1h', 200)
+    if not ticker or df is None:
+        await q.edit_message_text("❌ خطا", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]]))
         return
     
-    # Analyze
-    indicators = TechnicalAnalyzer.analyze(df)
-    
-    # Multi-timeframe
+    ind = UltraAnalyzer.full_analysis(df)
     mtf = {}
-    for tf in Config.TIMEFRAMES:
-        df_tf = exchange_mgr.get_ohlcv(symbol, tf, 100)
+    for tf in cfg.timeframes[:6]:
+        df_tf = ex.fetch_ohlcv(symbol, tf, 100)
         if df_tf is not None:
-            mtf[tf] = TechnicalAnalyzer.analyze(df_tf)
+            mtf[tf] = UltraAnalyzer.full_analysis(df_tf)
     
-    signal, confidence, score = SignalGenerator.generate(indicators, ticker['last'], mtf)
+    signal, conf, score = SignalGenerator.generate(ind, ticker['last'], mtf)
     
-    analysis = {
-        'symbol': symbol,
-        'price': ticker['last'],
-        'change': ticker.get('percentage', 0),
-        'indicators': indicators,
-        'signal': signal,
-        'confidence': confidence,
-        'score': score
-    }
+    analysis = {'symbol': symbol, 'price': ticker['last'], 'change': ticker.get('percentage', 0),
+                'indicators': ind, 'signal': signal, 'confidence': conf, 'score': score}
     
-    msg = MessageFormatter.signal(analysis)
+    msg = Formatter.signal(analysis)
     
-    await query.edit_message_text(
-        msg, parse_mode="Markdown",
+    await q.edit_message_text(msg, parse_mode="Markdown",
         reply_markup=InlineKeyboardMarkup([[
-            InlineKeyboardButton("🔄", callback_data="signal"),
-            InlineKeyboardButton("🔍 اسکن", callback_data="scan"),
+            InlineKeyboardButton("🔄", callback_data=f"sig_{symbol}"),
+            InlineKeyboardButton("🤖 معامله", callback_data=f"trade_{symbol}"),
             InlineKeyboardButton("🔙", callback_data="back")
-        ]])
-    )
+        ]]))
+
+async def handler_prices(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    q = update.callback_query
+    await q.answer()
+    await q.edit_message_text("🔄 دریافت...")
+    if not ex.connected: ex.connect()
+    
+    txt = "💰 *قیمت‌ها*\n\n"
+    for sym in cfg.symbols[:20]:
+        t = ex.fetch_ticker(sym)
+        if t:
+            e = "🟢" if t.get('percentage',0)>0 else "🔴"
+            txt += f"{e} {sym.replace('/USDT','')}: ${t['last']:,.4f} ({t.get('percentage',0):+.1f}%)\n"
+    
+    await q.edit_message_text(txt, parse_mode="Markdown",
+        reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔄", callback_data="prices"), InlineKeyboardButton("🔙", callback_data="back")]]))
 
 async def handler_scan(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Scan all symbols"""
-    query = update.callback_query
-    await query.answer()
-    await query.edit_message_text("🔍 اسکن بازار...")
-    
-    if not exchange_mgr.is_connected:
-        exchange_mgr.connect()
+    q = update.callback_query
+    await q.answer()
+    await q.edit_message_text("🔍 اسکن ۳۰ ارز...")
+    if not ex.connected: ex.connect()
     
     results = []
-    for sym in Config.SYMBOLS:
-        ticker = exchange_mgr.get_ticker(sym)
-        df = exchange_mgr.get_ohlcv(sym, '1h', 100)
-        
-        if ticker and df is not None:
-            ind = TechnicalAnalyzer.analyze(df)
-            signal, conf, score = SignalGenerator.generate(ind, ticker['last'])
-            results.append({
-                'symbol': sym,
-                'price': ticker['last'],
-                'change': ticker.get('percentage', 0),
-                'signal': signal,
-                'confidence': conf,
-                'score': score,
-                'indicators': ind
-            })
+    for sym in cfg.symbols:
+        t = ex.fetch_ticker(sym)
+        df = ex.fetch_ohlcv(sym, '1h', 100)
+        if t and df is not None:
+            ind = UltraAnalyzer.full_analysis(df)
+            sig, conf, score = SignalGenerator.generate(ind, t['last'])
+            results.append({'symbol': sym, 'price': t['last'], 'signal': sig, 'confidence': conf, 'score': score})
     
     results.sort(key=lambda x: abs(x['score']), reverse=True)
     
-    txt = "🔍 *نتایج اسکن بازار*\n\n"
-    for i, r in enumerate(results[:12], 1):
-        emoji = "🟢" if "خرید" in r['signal'] else "🔴" if "فروش" in r['signal'] else "⚪"
-        txt += f"{i}. {emoji} *{r['symbol'].replace('/USDT','')}*: ${r['price']:,.4f}"
-        txt += f" | {r['signal'][:15]} | {r['confidence']}%\n"
+    txt = "🔍 *اسکن بازار*\n\n"
+    for i, r in enumerate(results[:15], 1):
+        e = "🟢" if "خرید" in r['signal'] else "🔴" if "فروش" in r['signal'] else "⚪"
+        txt += f"{i}. {e} {r['symbol'].replace('/USDT','')}: ${r['price']:,.4f} | {r['signal'][:12]} | {r['confidence']}%\n"
     
-    await query.edit_message_text(
-        txt, parse_mode="Markdown",
-        reply_markup=InlineKeyboardMarkup([[
-            InlineKeyboardButton("🔄", callback_data="scan"),
-            InlineKeyboardButton("🔙", callback_data="back")
-        ]])
-    )
+    await q.edit_message_text(txt, parse_mode="Markdown",
+        reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔄", callback_data="scan"), InlineKeyboardButton("🔙", callback_data="back")]]))
 
-async def handler_education(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Show educational content"""
-    query = update.callback_query
-    await query.answer()
+async def handler_trade(update: Update, context: ContextTypes.DEFAULT_TYPE, symbol: str):
+    q = update.callback_query
+    await q.answer()
     
-    await query.edit_message_text(
-        MessageFormatter.education(),
-        parse_mode="Markdown",
-        reply_markup=InlineKeyboardMarkup([[
-            InlineKeyboardButton("🔄 آموزش جدید", callback_data="edu"),
-            InlineKeyboardButton("🔙", callback_data="back")
-        ]])
-    )
-
-async def handler_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Show help"""
-    query = update.callback_query
-    await query.answer()
-    
-    await query.edit_message_text(
-        "❓ *راهنما*\n\n"
-        "📊 قیمت‌ها - قیمت لحظه‌ای ۲۰ ارز\n"
-        "🎯 سیگنال - تحلیل کامل BTC\n"
-        "🔍 اسکن - اسکن کل بازار\n"
-        "📈 تحلیل - انتخاب ارز دلخواه\n"
-        "📚 آموزش - مطالب آموزشی\n\n"
-        "/start - منوی اصلی",
-        parse_mode="Markdown",
-        reply_markup=InlineKeyboardMarkup([[
-            InlineKeyboardButton("🔙", callback_data="back")
-        ]])
-    )
-
-async def handler_back(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Back to main menu"""
-    query = update.callback_query
-    await query.answer()
-    await query.edit_message_text(
-        "🤖 *منوی اصلی*",
-        parse_mode="Markdown",
-        reply_markup=Menus.main()
-    )
-
-async def button_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Route all button clicks"""
-    query = update.callback_query
-    data = query.data
-    
-    try:
-        if data == "back":
-            await handler_back(update, context)
-        elif data == "prices":
-            await handler_prices(update, context)
-        elif data == "signal":
-            await handler_signal(update, context)
-        elif data == "scan":
-            await handler_scan(update, context)
-        elif data == "tech_menu":
-            await query.edit_message_text(
-                "📈 *انتخاب ارز:*",
-                parse_mode="Markdown",
-                reply_markup=Menus.technical()
-            )
-        elif data.startswith("tech_"):
-            sym = data.replace("tech_", "")
-            await handler_signal(update, context, sym)
-        elif data == "edu":
-            await handler_education(update, context)
-        elif data == "help":
-            await handler_help(update, context)
-        elif data == "refresh":
-            await handler_back(update, context)
-        else:
-            await query.answer("در حال توسعه...")
-    except Exception as e:
-        logger.error(f"Button error: {e}")
-        await query.answer("❌ خطا!")
-
-async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle text messages"""
-    await update.message.reply_text(
-        "لطفاً از منو استفاده کنید:\n/start",
-        reply_markup=Menus.main()
-    )
-
-async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Handle errors"""
-    logger.error(f"Error: {context.error}")
-    if isinstance(context.error, Conflict):
-        logger.critical("❌ Conflict - another instance running!")
-        ProcessLock.release()
-        sys.exit(1)
-
-# ============================================================
-# AUTO POST TASKS
-# ============================================================
-async def task_auto_signals(app: Application):
-    """Auto post signals to channel"""
-    await asyncio.sleep(15)
-    
-    while True:
-        try:
-            if not Config.CHANNEL_ID:
-                await asyncio.sleep(60)
-                continue
-            
-            if not exchange_mgr.is_connected:
-                exchange_mgr.connect()
-            
-            # BTC Signal
-            ticker = exchange_mgr.get_ticker("BTC/USDT")
-            df = exchange_mgr.get_ohlcv("BTC/USDT", '1h', 200)
-            
-            if ticker and df is not None:
-                ind = TechnicalAnalyzer.analyze(df)
-                mtf = {}
-                for tf in Config.TIMEFRAMES:
-                    df_tf = exchange_mgr.get_ohlcv("BTC/USDT", tf, 100)
-                    if df_tf is not None:
-                        mtf[tf] = TechnicalAnalyzer.analyze(df_tf)
-                
-                signal, conf, score = SignalGenerator.generate(ind, ticker['last'], mtf)
-                
-                msg = MessageFormatter.signal({
-                    'symbol': "BTC/USDT",
-                    'price': ticker['last'],
-                    'change': ticker.get('percentage', 0),
-                    'indicators': ind,
-                    'signal': signal,
-                    'confidence': conf,
-                    'score': score
-                })
-                
-                await app.bot.send_message(Config.CHANNEL_ID, msg, parse_mode="Markdown")
-                logger.info("📤 BTC signal sent")
-            
-            await asyncio.sleep(120)
-            
-            # ETH Signal
-            ticker = exchange_mgr.get_ticker("ETH/USDT")
-            df = exchange_mgr.get_ohlcv("ETH/USDT", '1h', 200)
-            
-            if ticker and df is not None:
-                ind = TechnicalAnalyzer.analyze(df)
-                signal, conf, score = SignalGenerator.generate(ind, ticker['last'])
-                
-                msg = MessageFormatter.signal({
-                    'symbol': "ETH/USDT",
-                    'price': ticker['last'],
-                    'change': ticker.get('percentage', 0),
-                    'indicators': ind,
-                    'signal': signal,
-                    'confidence': conf,
-                    'score': score
-                })
-                
-                await app.bot.send_message(Config.CHANNEL_ID, msg, parse_mode="Markdown")
-                logger.info("📤 ETH signal sent")
-            
-            await asyncio.sleep(120)
-            
-            # Top 3 signals
-            results = []
-            for sym in Config.SYMBOLS[:10]:
-                ticker = exchange_mgr.get_ticker(sym)
-                df = exchange_mgr.get_ohlcv(sym, '1h', 100)
-                if ticker and df is not None:
-                    ind = TechnicalAnalyzer.analyze(df)
-                    signal, conf, score = SignalGenerator.generate(ind, ticker['last'])
-                    results.append({
-                        'symbol': sym,
-                        'price': ticker['last'],
-                        'change': ticker.get('percentage', 0),
-                        'indicators': ind,
-                        'signal': signal,
-                        'confidence': conf,
-                        'score': score
-                    })
-            
-            results.sort(key=lambda x: abs(x['score']), reverse=True)
-            
-            for r in results[:3]:
-                msg = MessageFormatter.signal(r)
-                await app.bot.send_message(Config.CHANNEL_ID, msg, parse_mode="Markdown")
-                await asyncio.sleep(90)
-            
-            logger.info(f"📤 Top signals sent")
-            
-        except Exception as e:
-            logger.error(f"Auto signal error: {e}")
-        
-        await asyncio.sleep(Config.SIGNAL_INTERVAL)
-
-async def task_auto_education(app: Application):
-    """Auto post educational content"""
-    await asyncio.sleep(30)
-    
-    while True:
-        try:
-            if Config.CHANNEL_ID:
-                msg = MessageFormatter.education()
-                await app.bot.send_message(Config.CHANNEL_ID, msg, parse_mode="Markdown")
-                logger.info("📚 Education sent")
-        except Exception as e:
-            logger.error(f"Education error: {e}")
-        
-        await asyncio.sleep(Config.ANALYSIS_INTERVAL)
-
-# ============================================================
-# MAIN APPLICATION
-# ============================================================
-async def main():
-    """Main entry point"""
-    
-    # Acquire process lock
-    if not ProcessLock.acquire():
-        sys.exit(1)
-    
-    # Validate token
-    if not Config.TOKEN:
-        logger.error("❌ TELEGRAM_BOT_TOKEN not set in .env!")
-        ProcessLock.release()
+    t = ex.fetch_ticker(symbol)
+    df = ex.fetch_ohlcv(symbol, '1h', 200)
+    if not t or df is None:
+        await q.answer("❌ خطا در داده")
         return
     
-    # Connect to exchange
-    exchange_mgr.connect()
+    ind = UltraAnalyzer.full_analysis(df)
+    sig, conf, score = SignalGenerator.generate(ind, t['last'])
     
-    # Build application
-    app = Application.builder().token(Config.TOKEN).build()
+    if conf < 60:
+        await q.answer("⚠️ اطمینان کافی نیست", show_alert=True)
+        return
     
-    # Register handlers
+    atr = ind['ATR_14']
+    sl = t['last'] - atr * cfg.atr_multiplier_sl
+    tp = t['last'] + atr * cfg.atr_multiplier_tp
+    
+    result = trader.open_position(symbol, t['last'], sl, tp, conf)
+    
+    if result:
+        msg = f"""
+🤖 *معامله خودکار باز شد*
+
+📊 {symbol.replace('/USDT','')}
+💰 ورود: ${t['last']:,.4f}
+🛑 حد ضرر: ${sl:,.4f}
+🎯 حد سود: ${tp:,.4f}
+💪 اطمینان: {conf}%
+
+⚡ @CryptoPulse606
+"""
+        await q.edit_message_text(msg, parse_mode="Markdown",
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]]))
+    else:
+        await q.answer("⚠️ شرایط معامله فراهم نیست", show_alert=True)
+
+async def handler_portfolio(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    q = update.callback_query
+    await q.answer()
+    
+    pnl = sum(t['pnl'] for t in trader.history)
+    wins = len([t for t in trader.history if t['pnl'] > 0])
+    
+    txt = f"""
+💰 *پورتفوی*
+
+💵 موجودی: ${trader.demo_balance:,.2f}
+📈 سود/زیان: ${pnl:+,.2f}
+📊 پوزیشن‌ها: {len(trader.positions)}
+
+📈 آمار:
+• کل: {len(trader.history)} | برد: {wins}
+• برد٪: {(wins/max(1,len(trader.history))*100):.1f}%
+"""
+    
+    if trader.positions:
+        txt += "\n*باز:*\n"
+        for s, p in trader.positions.items():
+            try:
+                t = ex.fetch_ticker(s)
+                cp = t['last']
+                pp = (cp-p['entry'])/p['entry']*100
+                txt += f"• {s.replace('/USDT','')}: ${cp:,.4f} | {pp:+.1f}%\n"
+            except:
+                txt += f"• {s.replace('/USDT','')}: ${p['entry']:,.4f}\n"
+    
+    await q.edit_message_text(txt, parse_mode="Markdown",
+        reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔄", callback_data="portfolio"), InlineKeyboardButton("🔙", callback_data="back")]]))
+
+async def handler_education(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    q = update.callback_query
+    await q.answer()
+    await q.edit_message_text(Formatter.education(), parse_mode="Markdown",
+        reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔄", callback_data="edu"), InlineKeyboardButton("🔙", callback_data="back")]]))
+
+async def handler_auto_trade(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    q = update.callback_query
+    await q.answer()
+    
+    txt = f"""
+🤖 *معاملات خودکار*
+
+🎮 دمو: {'✅ فعال' if cfg.demo_trading else '❌ غیرفعال'}
+💹 واقعی: {'✅ فعال' if cfg.real_trading else '❌ غیرفعال'}
+
+📊 تنظیمات:
+• حداکثر پوزیشن: {cfg.max_positions}
+• ریسک: {cfg.risk_per_trade*100}%
+• حد ضرر: {cfg.atr_multiplier_sl}x ATR
+• حد سود: {cfg.atr_multiplier_tp}x ATR
+"""
+    
+    kb = [
+        [InlineKeyboardButton(f"🎮 دمو: {'✅' if cfg.demo_trading else '❌'}", callback_data="toggle_demo")],
+        [InlineKeyboardButton(f"💹 واقعی: {'✅' if cfg.real_trading else '❌'}", callback_data="toggle_real")],
+        [InlineKeyboardButton("🔙", callback_data="back")]
+    ]
+    await q.edit_message_text(txt, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(kb))
+
+async def handler_settings(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    q = update.callback_query
+    await q.answer()
+    
+    txt = f"""
+⚙️ *تنظیمات*
+
+🔌 صرافی: {'✅ متصل' if ex.connected else '❌'}
+📢 کانال: {cfg.channel_id or 'تنظیم نشده'}
+📊 ارزها: {len(cfg.symbols)}
+⏰ تایم‌فریم: {len(cfg.timeframes)}
+💰 موجودی: ${cfg.initial_balance:,.0f}
+"""
+    await q.edit_message_text(txt, parse_mode="Markdown",
+        reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]]))
+
+async def button_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    q = update.callback_query
+    d = q.data
+    
+    try:
+        if d == "back":
+            await q.edit_message_text("🤖 *منو*", parse_mode="Markdown", reply_markup=Menus.main())
+        elif d == "prices": await handler_prices(update, context)
+        elif d.startswith("sig_"): await handler_signal(update, context, d[4:])
+        elif d == "scan": await handler_scan(update, context)
+        elif d == "top": await handler_scan(update, context)
+        elif d == "tech": await q.edit_message_text("📈 *انتخاب ارز:*", parse_mode="Markdown", reply_markup=Menus.technical())
+        elif d.startswith("trade_"): await handler_trade(update, context, d[6:])
+        elif d == "portfolio": await handler_portfolio(update, context)
+        elif d == "perf": await handler_portfolio(update, context)
+        elif d == "auto": await handler_auto_trade(update, context)
+        elif d == "toggle_demo":
+            cfg.demo_trading = not cfg.demo_trading
+            await handler_auto_trade(update, context)
+        elif d == "toggle_real":
+            if ex.read_only: await q.answer("❌ API تنظیم نیست", show_alert=True)
+            else: cfg.real_trading = not cfg.real_trading
+            await handler_auto_trade(update, context)
+        elif d == "settings": await handler_settings(update, context)
+        elif d == "edu": await handler_education(update, context)
+        elif d == "help":
+            await q.edit_message_text("❓ *راهنما*\n/start - منو\n📊 قیمت | 🎯 سیگنال | 🔍 اسکن", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]]))
+        elif d == "emergency":
+            for s in list(trader.positions.keys()):
+                t = ex.fetch_ticker(s)
+                if t: trader.close_position(s, t['last'], "EMERGENCY")
+            await q.edit_message_text("⏸️ همه پوزیشن‌ها بسته شد", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]]))
+        elif d == "market": await handler_scan(update, context)
+        elif d == "patterns": await handler_signal(update, context)
+        elif d == "refresh":
+            await q.edit_message_text("🤖 *منو*", parse_mode="Markdown", reply_markup=Menus.main())
+        else: await q.answer("⚡")
+    except Exception as e:
+        logger.error(f"Button: {e}")
+        await q.answer("❌")
+
+async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("/start", reply_markup=Menus.main())
+
+async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    logger.error(f"Error: {context.error}")
+    if isinstance(context.error, Conflict):
+        ProcessLock.release()
+        sys.exit(1)
+
+# ============================================================
+# AUTO TASKS
+# ============================================================
+async def task_signals(app: Application):
+    await asyncio.sleep(10)
+    while True:
+        try:
+            if not cfg.channel_id: await asyncio.sleep(60); continue
+            if not ex.connected: ex.connect()
+            
+            for sym in ["BTC/USDT", "ETH/USDT"]:
+                t = ex.fetch_ticker(sym)
+                df = ex.fetch_ohlcv(sym, '1h', 200)
+                if t and df is not None:
+                    ind = UltraAnalyzer.full_analysis(df)
+                    sig, conf, score = SignalGenerator.generate(ind, t['last'])
+                    analysis = {'symbol': sym, 'price': t['last'], 'change': t.get('percentage',0),
+                               'indicators': ind, 'signal': sig, 'confidence': conf, 'score': score}
+                    await app.bot.send_message(cfg.channel_id, Formatter.signal(analysis), parse_mode="Markdown")
+                    await asyncio.sleep(90)
+            
+            # Check positions
+            for sym in list(trader.positions.keys()):
+                t = ex.fetch_ticker(sym)
+                df = ex.fetch_ohlcv(sym, '1h', 100)
+                if t and df is not None:
+                    ind = UltraAnalyzer.full_analysis(df)
+                    result = trader.update_position(sym, t['last'], ind['ATR_14'])
+                    if result:
+                        emoji = "🟢" if result['pnl'] > 0 else "🔴"
+                        await app.bot.send_message(cfg.channel_id,
+                            f"{emoji} *بسته شد:* {sym}\n💰 ${result['pnl']:+,.2f} | {result['reason']}",
+                            parse_mode="Markdown")
+            
+        except Exception as e:
+            logger.error(f"Task: {e}")
+        await asyncio.sleep(cfg.signal_interval)
+
+async def task_education(app: Application):
+    await asyncio.sleep(30)
+    while True:
+        try:
+            if cfg.channel_id:
+                await app.bot.send_message(cfg.channel_id, Formatter.education(), parse_mode="Markdown")
+        except Exception as e:
+            logger.error(f"Edu: {e}")
+        await asyncio.sleep(cfg.education_interval)
+
+# ============================================================
+# MAIN
+# ============================================================
+async def main():
+    if not ProcessLock.acquire(): sys.exit(1)
+    if not cfg.token: logger.error("❌ Token missing!"); ProcessLock.release(); return
+    
+    ex.connect()
+    
+    app = Application.builder().token(cfg.token).build()
     app.add_handler(CommandHandler("start", cmd_start))
     app.add_handler(CallbackQueryHandler(button_router))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_handler))
     app.add_error_handler(error_handler)
     
-    # Start background tasks
-    asyncio.create_task(task_auto_signals(app))
-    asyncio.create_task(task_auto_education(app))
+    asyncio.create_task(task_signals(app))
+    asyncio.create_task(task_education(app))
     
-    logger.info("=" * 50)
-    logger.info("🚀 Ultra Professional Trading Bot v4.0")
-    logger.info(f"📢 Channel: {Config.CHANNEL_ID or 'Not set'}")
-    logger.info(f"📊 Symbols: {len(Config.SYMBOLS)} coins")
-    logger.info(f"⏱️  Signal Interval: {Config.SIGNAL_INTERVAL}s")
-    logger.info(f"📚 Analysis Interval: {Config.ANALYSIS_INTERVAL}s")
-    logger.info(f"🔌 Exchange: {'Connected' if exchange_mgr.is_connected else 'Disconnected'}")
-    logger.info("=" * 50)
+    logger.info("="*50)
+    logger.info("🚀 CRYPTO PULSE ULTRA v5.0")
+    logger.info(f"📊 {len(cfg.symbols)} Coins | {len(cfg.timeframes)} TFs | 25+ Indicators")
+    logger.info("="*50)
     
-    # Start bot
     try:
         await app.initialize()
         await app.start()
-        await app.updater.start_polling(
-            drop_pending_updates=True,
-            allowed_updates=Update.ALL_TYPES
-        )
-        
-        # Keep running
+        await app.updater.start_polling(drop_pending_updates=True)
         await asyncio.Event().wait()
-        
-    except Conflict as e:
-        logger.critical(f"❌ Conflict: {e}")
+    except Conflict:
+        logger.critical("❌ Conflict")
     except Exception as e:
-        logger.critical(f"❌ Fatal: {e}")
+        logger.critical(f"❌ {e}")
     finally:
-        # Graceful shutdown
-        try:
-            await app.updater.stop()
-            await app.stop()
-            await app.shutdown()
-        except:
-            pass
+        try: await app.updater.stop(); await app.stop(); await app.shutdown()
+        except: pass
         ProcessLock.release()
-        logger.info("👋 Bot shut down")
 
-# ============================================================
-# ENTRY POINT
-# ============================================================
 if __name__ == "__main__":
-    try:
-        asyncio.run(main())
-    except KeyboardInterrupt:
-        logger.info("👋 Stopped by user")
-        ProcessLock.release()
-    except Exception as e:
-        logger.critical(f"❌ Critical: {e}")
-        ProcessLock.release()
-        sys.exit(1)
+    try: asyncio.run(main())
+    except KeyboardInterrupt: ProcessLock.release()
+    except Exception as e: logger.critical(f"Fatal: {e}"); ProcessLock.release()
