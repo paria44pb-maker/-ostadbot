@@ -1,9 +1,13 @@
 import os
+import sys
 import logging
 import asyncio
 import time
 import json
 import random
+import signal
+import socket
+import hashlib
 import numpy as np
 import pandas as pd
 import ta
@@ -17,12 +21,84 @@ import httpx
 from datetime import datetime, timedelta
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, BotCommand
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, filters, ContextTypes, JobQueue
-from telegram.error import TelegramError, RetryAfter, TimedOut
+from telegram.error import TelegramError, RetryAfter, TimedOut, Conflict, NetworkError
 from dotenv import load_dotenv
 import warnings
 warnings.filterwarnings('ignore')
 
+# لود فایل .env
 load_dotenv()
+
+# ================================ LOCK FILE برای جلوگیری از اجرای همزمان ================================
+LOCK_FILE = "ultra_bot.lock"
+PID_FILE = "ultra_bot.pid"
+
+def create_lock():
+    """ایجاد فایل قفل برای جلوگیری از اجرای چندگانه"""
+    try:
+        # بررسی وجود نمونه قبلی
+        if os.path.exists(LOCK_FILE):
+            with open(LOCK_FILE, 'r') as f:
+                old_pid = f.read().strip()
+            
+            # بررسی اینکه آیا پروسه قبلی هنوز زنده است
+            if old_pid:
+                try:
+                    old_pid = int(old_pid)
+                    if sys.platform != 'win32':
+                        os.kill(old_pid, 0)
+                        logger.error(f"❌ یک نمونه دیگر با PID {old_pid} در حال اجراست!")
+                        return False
+                    else:
+                        import ctypes
+                        kernel32 = ctypes.windll.kernel32
+                        handle = kernel32.OpenProcess(1, False, old_pid)
+                        if handle:
+                            kernel32.CloseHandle(handle)
+                            logger.error(f"❌ یک نمونه دیگر با PID {old_pid} در حال اجراست!")
+                            return False
+                except (OSError, ProcessLookupError):
+                    # پروسه قبلی مرده، پاکسازی کن
+                    os.remove(LOCK_FILE)
+                    if os.path.exists(PID_FILE):
+                        os.remove(PID_FILE)
+        
+        # ایجاد فایل قفل جدید
+        with open(LOCK_FILE, 'w') as f:
+            f.write(str(os.getpid()))
+        
+        with open(PID_FILE, 'w') as f:
+            f.write(str(os.getpid()))
+        
+        logger.info(f"🔒 فایل قفل ایجاد شد (PID: {os.getpid()})")
+        return True
+        
+    except Exception as e:
+        logger.error(f"❌ خطا در ایجاد فایل قفل: {e}")
+        return False
+
+def remove_lock():
+    """حذف فایل قفل"""
+    try:
+        if os.path.exists(LOCK_FILE):
+            os.remove(LOCK_FILE)
+        if os.path.exists(PID_FILE):
+            os.remove(PID_FILE)
+        logger.info("🔓 فایل قفل حذف شد")
+    except Exception as e:
+        logger.error(f"❌ خطا در حذف فایل قفل: {e}")
+
+def signal_handler(signum, frame):
+    """مدیریت سیگنال‌های خروج"""
+    logger.info(f"📡 دریافت سیگنال {signum}...")
+    remove_lock()
+    sys.exit(0)
+
+# ثبت هندلرهای سیگنال
+signal.signal(signal.SIGINT, signal_handler)
+signal.signal(signal.SIGTERM, signal_handler)
+if sys.platform != 'win32':
+    signal.signal(signal.SIGHUP, signal_handler)
 
 # ================================ تنظیمات لاگینگ ================================
 logging.basicConfig(
@@ -36,7 +112,7 @@ logging.basicConfig(
 logger = logging.getLogger('UltraBot')
 
 # کاهش نویز لاگ‌ها
-for lib in ['httpx', 'httpcore', 'telegram', 'ccxt', 'apscheduler', 'urllib3']:
+for lib in ['httpx', 'httpcore', 'telegram', 'ccxt', 'apscheduler', 'urllib3', 'asyncio']:
     logging.getLogger(lib).setLevel(logging.ERROR)
 
 # ================================ تنظیمات اصلی ================================
@@ -45,6 +121,7 @@ class Config:
     GROQ_API_KEY = os.getenv("GROQ_API_KEY")
     CHANNEL_ID = os.getenv("CHANNEL_ID", "@CryptoPulse606")
     ADMIN_IDS = [int(x) for x in os.getenv("ADMIN_IDS", "0").split(",") if x]
+    OWNER_ID = int(os.getenv("OWNER_ID", "0"))
     
     # CoinEx
     COINEX_API_KEY = os.getenv("COINEX_API_KEY", "")
@@ -66,34 +143,73 @@ class Config:
         "1h": "1h", "4h": "4h", "1d": "1d", "1w": "1w"
     }
     
-    MAX_POSITIONS = 5
-    RISK_PER_TRADE = 0.015  # 1.5%
-    ATR_MULTIPLIER_SL = 2.0
-    RR_RATIO_MIN = 2.5
-    LEVERAGE = 1  # اسپات
+    MAX_POSITIONS = int(os.getenv("MAX_POSITIONS", "5"))
+    RISK_PER_TRADE = float(os.getenv("RISK_PER_TRADE", "0.015"))
+    ATR_MULTIPLIER_SL = float(os.getenv("ATR_MULTIPLIER_SL", "2.0"))
+    RR_RATIO_MIN = float(os.getenv("RR_RATIO_MIN", "2.5"))
+    LEVERAGE = int(os.getenv("LEVERAGE", "1"))
     
-    AUTO_TRADE = False
-    REAL_TRADE = False
-    SIGNAL_INTERVAL = 600  # ۱۰ دقیقه
-    ANALYSIS_INTERVAL = 3600  # ۱ ساعت
+    AUTO_TRADE = os.getenv("TRADING_MODE", "demo") in ["demo", "real"]
+    REAL_TRADE = os.getenv("TRADING_MODE", "demo") == "real"
+    SIGNAL_INTERVAL = int(os.getenv("SIGNAL_INTERVAL", "600"))
+    ANALYSIS_INTERVAL = int(os.getenv("ANALYSIS_INTERVAL", "3600"))
+    INITIAL_BALANCE = float(os.getenv("INITIAL_BALANCE", "100000"))
 
 config = Config()
 
-# ================================ صرافی ================================
-exchange = None
-try:
-    exchange = ccxt.coinex({
-        'apiKey': config.COINEX_API_KEY,
-        'secret': config.COINEX_SECRET_KEY,
-        'password': config.COINEX_PASSPHRASE,
-        'enableRateLimit': True,
-        'timeout': 30000,
-        'options': {'defaultType': 'spot'}
-    })
-    exchange.load_markets()
-    logger.info("✅ CoinEx Connected")
-except Exception as e:
-    logger.error(f"❌ CoinEx Connection Failed: {e}")
+# ================================ صرافی با مدیریت اتصال ================================
+class ExchangeManager:
+    def __init__(self):
+        self.exchange = None
+        self.connected = False
+        self.last_error = None
+        self.reconnect_attempts = 0
+        self.max_reconnect = 5
+    
+    def connect(self):
+        """اتصال به صرافی"""
+        try:
+            self.exchange = ccxt.coinex({
+                'apiKey': config.COINEX_API_KEY,
+                'secret': config.COINEX_SECRET_KEY,
+                'password': config.COINEX_PASSPHRASE,
+                'enableRateLimit': True,
+                'timeout': 30000,
+                'options': {'defaultType': 'spot'}
+            })
+            self.exchange.load_markets()
+            self.connected = True
+            self.reconnect_attempts = 0
+            logger.info("✅ اتصال به CoinEx با موفقیت برقرار شد")
+            return True
+        except Exception as e:
+            self.connected = False
+            self.last_error = str(e)
+            logger.error(f"❌ خطا در اتصال به CoinEx: {e}")
+            return False
+    
+    async def reconnect(self):
+        """تلاش مجدد برای اتصال"""
+        while self.reconnect_attempts < self.max_reconnect:
+            self.reconnect_attempts += 1
+            wait_time = 2 ** self.reconnect_attempts
+            logger.info(f"🔄 تلاش مجدد {self.reconnect_attempts}/{self.max_reconnect} در {wait_time} ثانیه...")
+            await asyncio.sleep(wait_time)
+            if self.connect():
+                return True
+        return False
+    
+    def is_connected(self):
+        return self.connected and self.exchange is not None
+    
+    def get_exchange(self):
+        return self.exchange
+
+exchange_mgr = ExchangeManager()
+
+# مقداردهی اولیه
+if config.COINEX_API_KEY and config.COINEX_SECRET_KEY:
+    exchange_mgr.connect()
 
 # ================================ تحلیل تکنیکال فوق پیشرفته ================================
 class UltraTechnicalAnalyzer:
@@ -114,7 +230,6 @@ class UltraTechnicalAnalyzer:
             ind[f'EMA_{period}'] = float(close.ewm(span=period).mean().iloc[-1])
             if period <= 50:
                 ind[f'WMA_{period}'] = float(close.rolling(period).apply(lambda x: np.average(x, weights=range(1, period+1))).iloc[-1])
-                ind[f'HMA_{period}'] = float(close.rolling(period).apply(lambda x: np.average(x)).iloc[-1])  # Simplified
         
         # ایچیموکو
         ichimoku = IchimokuIndicator(high, low, window1=9, window2=26, window3=52)
@@ -126,8 +241,6 @@ class UltraTechnicalAnalyzer:
         # Parabolic SAR
         psar = PSARIndicator(high, low, close)
         ind['PSAR'] = float(psar.psar().iloc[-1])
-        ind['PSAR_UP'] = float(psar.psar_up().iloc[-1])
-        ind['PSAR_DOWN'] = float(psar.psar_down().iloc[-1])
         
         # ADX
         adx = ADXIndicator(high, low, close, window=14)
@@ -139,19 +252,17 @@ class UltraTechnicalAnalyzer:
         aroon = AroonIndicator(close, window=25)
         ind['AROON_UP'] = float(aroon.aroon_up().iloc[-1])
         ind['AROON_DOWN'] = float(aroon.aroon_down().iloc[-1])
-        ind['AROON_IND'] = float(aroon.aroon_indicator().iloc[-1])
         
         # Vortex
         vortex = VortexIndicator(high, low, close, window=14)
         ind['VORTEX_POS'] = float(vortex.vortex_indicator_pos().iloc[-1])
         ind['VORTEX_NEG'] = float(vortex.vortex_indicator_neg().iloc[-1])
-        ind['VORTEX_DIFF'] = float(vortex.vortex_indicator_diff().iloc[-1])
         
         # Mass Index
         mass_idx = MassIndex(high, low)
         ind['MASS_INDEX'] = float(mass_idx.mass_index().iloc[-1])
         
-        # STC (Schaff Trend Cycle)
+        # STC
         stc = STCIndicator(close)
         ind['STC'] = float(stc.stc().iloc[-1])
         
@@ -165,15 +276,9 @@ class UltraTechnicalAnalyzer:
         ind['STOCH_K'] = float(stoch.stoch().iloc[-1])
         ind['STOCH_D'] = float(stoch.stoch_signal().iloc[-1])
         
-        # Stochastic RSI
-        stoch_rsi = StochasticOscillator(high, low, close)
-        ind['STOCH_RSI_K'] = float(stoch_rsi.stoch().iloc[-1])
-        ind['STOCH_RSI_D'] = float(stoch_rsi.stoch_signal().iloc[-1])
-        
         ind['WILLIAMS_R'] = float(WilliamsRIndicator(high, low, close).williams_r().iloc[-1])
         ind['ULTIMATE_OSC'] = float(UltimateOscillator(high, low, close).ultimate_oscillator().iloc[-1])
         ind['ROC'] = float(ROCIndicator(close).roc().iloc[-1])
-        ind['ROC_10'] = float(ROCIndicator(close, window=10).roc().iloc[-1])
         
         awesome = AwesomeOscillatorIndicator(high, low)
         ind['AO'] = float(awesome.awesome_oscillator().iloc[-1])
@@ -220,7 +325,6 @@ class UltraTechnicalAnalyzer:
         ind['DC_UPPER'] = float(dc.donchian_channel_hband().iloc[-1])
         ind['DC_MIDDLE'] = float(dc.donchian_channel_mband().iloc[-1])
         ind['DC_LOWER'] = float(dc.donchian_channel_lband().iloc[-1])
-        ind['DC_WIDTH'] = float(dc.donchian_channel_wband().iloc[-1])
         
         # Ulcer Index
         ui = UlcerIndex(close, window=14)
@@ -247,11 +351,9 @@ class UltraTechnicalAnalyzer:
         ind['OBV'] = float(OnBalanceVolumeIndicator(close, volume).on_balance_volume().iloc[-1])
         ind['VPT'] = float(VolumePriceTrendIndicator(close, volume).volume_price_trend().iloc[-1])
         
-        # Volume Profile (ساده شده)
+        # Volume Ratio
         volume_sma_20 = volume.rolling(20).mean().iloc[-1]
         ind['VOLUME_RATIO'] = float(volume.iloc[-1] / volume_sma_20 if volume_sma_20 > 0 else 1)
-        ind['VOLUME_SMA_20'] = float(volume_sma_20)
-        ind['VOLUME_STD'] = float(volume.rolling(20).std().iloc[-1])
         ind['VOLUME_ZSCORE'] = float((volume.iloc[-1] - volume_sma_20) / volume.rolling(20).std().iloc[-1] if volume.rolling(20).std().iloc[-1] > 0 else 0)
         
         # === MACD (چندتایی) ===
@@ -279,18 +381,15 @@ class UltraTechnicalAnalyzer:
         # === واگرایی (Divergence) ===
         ind['DIVERGENCE'] = UltraTechnicalAnalyzer.detect_divergence(close, rsi.rsi())
         
-        # === میانگین‌های متحرک کانال ===
-        for period in [20, 50, 100]:
-            sma = close.rolling(period).mean()
-            std = close.rolling(period).std()
-            ind[f'RAIL_UPPER_{period}'] = float((sma + 2*std).iloc[-1])
-            ind[f'RAIL_LOWER_{period}'] = float((sma - 2*std).iloc[-1])
+        # === CCI ===
+        cci = CCIIndicator(high, low, close, window=20)
+        ind['CCI'] = float(cci.cci().iloc[-1])
         
         return ind
     
     @staticmethod
     def detect_divergence(price, rsi_series):
-        """تشخیص واگرایی مخفی و معمولی"""
+        """تشخیص واگرایی"""
         if len(price) < 20:
             return "NONE"
         
@@ -302,10 +401,10 @@ class UltraTechnicalAnalyzer:
         rsi_high = recent_rsi.max()
         rsi_low = recent_rsi.min()
         
-        # واگرایی معمولی صعودی (Higher Low in RSI, Lower Low in Price)
+        # واگرایی معمولی صعودی
         if rsi_low > recent_rsi.iloc[:10].min() and price_low < recent_price.iloc[:10].min():
             return "BULLISH"
-        # واگرایی معمولی نزولی (Lower High in RSI, Higher High in Price)
+        # واگرایی معمولی نزولی
         elif rsi_high < recent_rsi.iloc[:10].max() and price_high > recent_price.iloc[:10].max():
             return "BEARISH"
         # واگرایی مخفی صعودی
@@ -325,7 +424,6 @@ class UltraSignalGenerator:
         score = 0
         
         # === روند (۲۵۰ امتیاز) ===
-        # EMA alignment
         if ind['EMA_7'] > ind['EMA_20'] > ind['EMA_50'] > ind['EMA_200']:
             score += 150
         elif ind['EMA_7'] > ind['EMA_20'] > ind['EMA_50']:
@@ -349,14 +447,13 @@ class UltraSignalGenerator:
             score += 50 if ind['ADX_POS'] > ind['ADX_NEG'] else -50
         
         # === مومنتوم (۲۵۰ امتیاز) ===
-        # RSI
         rsi = ind['RSI']
         if 30 <= rsi <= 70:
-            score += int((rsi - 50) * 2)  # -40 to +40
+            score += int((rsi - 50) * 2)
         elif rsi < 30:
-            score += 80  # Oversold
+            score += 80
         elif rsi > 70:
-            score -= 80  # Overbought
+            score -= 80
         
         # Stochastic
         if ind['STOCH_K'] < 20 and ind['STOCH_D'] < 20:
@@ -366,15 +463,9 @@ class UltraSignalGenerator:
         
         # MACD اصلی
         if ind['MACD_12_26_9_HIST'] > 0:
-            if ind['MACD_12_26_9_HIST'] > ind.get('MACD_12_26_9_HIST_PREV', 0):
-                score += 60
-            else:
-                score += 30
+            score += 50
         else:
-            if ind['MACD_12_26_9_HIST'] < ind.get('MACD_12_26_9_HIST_PREV', 0):
-                score -= 60
-            else:
-                score -= 30
+            score -= 50
         
         # CCI
         cci = ind.get('CCI', 0)
@@ -388,24 +479,21 @@ class UltraSignalGenerator:
             score -= 30
         
         # === نوسان (۲۰۰ امتیاز) ===
-        # Bollinger Bands
         bb_pct = ind['BB_PCT']
         if bb_pct < 0.1:
-            score += 80  # Near lower band
+            score += 80
         elif bb_pct > 0.9:
-            score -= 80  # Near upper band
+            score -= 80
         
-        # Keltner vs Bollinger (Squeeze)
         if ind['BB_WIDTH'] < 0.03:
-            score += 40  # Potential breakout
+            score += 40
         
-        # Ulcer Index (ریسک پایین)
         if ind['ULCER_INDEX'] < 0.02:
             score += 30
         
         # === حجم (۱۵۰ امتیاز) ===
         if ind['VOLUME_RATIO'] > 2.0:
-            score += 50 if score > 0 else -50  # Amplify existing trend
+            score += 50 if score > 0 else -50
         elif ind['VOLUME_RATIO'] > 1.5:
             score += 30 if score > 0 else -30
         
@@ -433,7 +521,7 @@ class UltraSignalGenerator:
         elif divergence == "HIDDEN_BEARISH":
             score -= 60
         
-        # === مولتی تایم‌فریم (MTF Confirmation) ===
+        # === مولتی تایم‌فریم ===
         if mtf_data:
             mtf_score = 0
             for tf, tf_ind in mtf_data.items():
@@ -460,7 +548,7 @@ class UltraSignalGenerator:
             else:
                 score -= 40
         
-        # نرمال‌سازی امتیاز
+        # نرمال‌سازی
         max_possible = 1000
         score = max(-max_possible, min(max_possible, score))
         
@@ -500,22 +588,22 @@ class AdvancedTradingEngine:
     def __init__(self):
         self.positions = {}
         self.history = []
-        self.balance = 100000  # موجودی دمو
-        self.initial_balance = 100000
-        self.peak_balance = 100000
+        self.balance = config.INITIAL_BALANCE
+        self.initial_balance = config.INITIAL_BALANCE
+        self.peak_balance = config.INITIAL_BALANCE
         self.consecutive_losses = 0
         self.daily_pnl = 0
         self.daily_trades = 0
-        self.max_daily_loss = 5000
+        self.max_daily_loss = float(os.getenv("MAX_DAILY_LOSS", "5000"))
         self.load()
     
     def load(self):
         try:
             with open('trading_engine.json', 'r') as f:
                 data = json.load(f)
-                self.balance = data.get('balance', 100000)
+                self.balance = data.get('balance', config.INITIAL_BALANCE)
                 self.history = data.get('history', [])
-                self.peak_balance = data.get('peak', 100000)
+                self.peak_balance = data.get('peak', config.INITIAL_BALANCE)
         except:
             pass
     
@@ -531,13 +619,11 @@ class AdvancedTradingEngine:
             logger.error(f"Save error: {e}")
     
     def calculate_position_size(self, entry, stop_loss, confidence):
-        """محاسبه حجم پوزیشن بر اساس فرمول کِلی و مدیریت ریسک"""
         if not self.can_trade():
             return 0
         
         risk_amount = self.balance * config.RISK_PER_TRADE
         
-        # تنظیم ریسک بر اساس اطمینان
         if confidence >= 90:
             risk_amount *= 1.5
         elif confidence >= 80:
@@ -545,7 +631,6 @@ class AdvancedTradingEngine:
         elif confidence < 70:
             risk_amount *= 0.5
         
-        # تنظیم بر اساس ضررهای متوالی
         if self.consecutive_losses > 0:
             risk_amount *= (0.5 ** self.consecutive_losses)
         
@@ -554,22 +639,20 @@ class AdvancedTradingEngine:
             return 0
         
         position_size = risk_amount / price_risk
-        
-        # محدودیت‌ها
-        max_size = self.balance * 0.25 / entry  # ۲۵٪ موجودی
+        max_size = self.balance * 0.25 / entry
         position_size = min(position_size, max_size)
         
         return position_size if position_size * entry <= self.balance else self.balance * 0.25 / entry
     
     def can_trade(self):
-        if self.consecutive_losses >= 5:
+        if self.consecutive_losses >= int(os.getenv("MAX_CONSECUTIVE_LOSSES", "5")):
             return False
         if self.daily_pnl < -self.max_daily_loss:
             return False
         drawdown = (self.peak_balance - self.balance) / self.peak_balance
-        if drawdown > 0.2:  # ۲۰٪
+        if drawdown > 0.2:
             return False
-        if self.daily_trades >= 20:
+        if self.daily_trades >= int(os.getenv("MAX_DAILY_TRADES", "20")):
             return False
         return True
     
@@ -617,37 +700,34 @@ class AdvancedTradingEngine:
         pos = self.positions[symbol]
         pnl_pct = (current_price - pos['entry']) / pos['entry']
         
-        # بروزرسانی highest/lowest
         pos['highest_price'] = max(pos['highest_price'], current_price)
         pos['lowest_price'] = min(pos['lowest_price'], current_price)
         
-        # === ترلینگ استاپ داینامیک ===
-        if pnl_pct > 0.03:  # ۳٪ سود
+        # ترلینگ استاپ
+        if pnl_pct > float(os.getenv("TRAILING_STOP_ACTIVATION", "0.03")):
             pos['trailing_activated'] = True
             atr = current_indicators.get('ATR', current_price * 0.02)
             
-            # ترلینگ استاپ بر اساس ATR و درصد سود
             if pnl_pct > 0.10:
-                trail_pct = 0.05  # ۵٪ برای سودهای بالا
+                trail_pct = 0.05
             elif pnl_pct > 0.05:
                 trail_pct = 0.03
             else:
-                trail_pct = 0.02
+                trail_pct = float(os.getenv("TRAILING_STOP_PERCENT", "0.02"))
             
             new_stop = pos['highest_price'] * (1 - trail_pct)
             new_stop_atr = pos['highest_price'] - (atr * 2.5)
             
             pos['current_stop'] = max(pos['current_stop'], new_stop, new_stop_atr)
         
-        # === حد سود جزئی ===
-        if pnl_pct > 0.04 and not pos['partial_tp_hit']:
+        # حد سود جزئی
+        if pnl_pct > float(os.getenv("PARTIAL_TP_PERCENT", "0.04")) and not pos['partial_tp_hit']:
             pos['partial_tp_hit'] = True
-            partial_size = pos['size'] * 0.3  # بستن ۳۰٪
+            partial_size = pos['size'] * float(os.getenv("PARTIAL_TP_SIZE", "0.30"))
             self.balance += partial_size * current_price
-            pos['size'] *= 0.7
-            logger.info(f"🟡 PARTIAL TP {symbol} | 30% closed at {pnl_pct:.1%}")
+            pos['size'] *= (1 - float(os.getenv("PARTIAL_TP_SIZE", "0.30")))
+            logger.info(f"🟡 PARTIAL TP {symbol}")
         
-        # === بستن کامل ===
         close_reason = None
         if current_price >= pos['take_profit']:
             close_reason = "TAKE_PROFIT"
@@ -697,7 +777,7 @@ class AdvancedTradingEngine:
         self.save()
         
         emoji = "🟢" if pnl > 0 else "🔴"
-        logger.info(f"{emoji} CLOSED {symbol} | PnL: ${pnl:+.2f} ({pnl_pct:+.2f}%) | Reason: {reason} | Balance: ${self.balance:,.2f}")
+        logger.info(f"{emoji} CLOSED {symbol} | PnL: ${pnl:+.2f} ({pnl_pct:+.2f}%) | Reason: {reason}")
         
         return trade
     
@@ -766,14 +846,18 @@ cache = SmartCache()
 
 # ================================ توابع کمکی ================================
 async def fetch_ohlcv_safe(symbol, timeframe, limit=200):
-    """دریافت امن داده‌های OHLCV"""
     cache_key = f"ohlcv_{symbol}_{timeframe}_{limit}"
     cached = cache.get(cache_key, 15)
     if cached:
         return cached
     
+    if not exchange_mgr.is_connected():
+        logger.warning(f"صرافی متصل نیست برای دریافت {symbol}")
+        return None
+    
     for attempt in range(3):
         try:
+            exchange = exchange_mgr.get_exchange()
             data = exchange.fetch_ohlcv(symbol, timeframe, limit=limit)
             if data and len(data) > 50:
                 df = pd.DataFrame(data, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
@@ -786,7 +870,6 @@ async def fetch_ohlcv_safe(symbol, timeframe, limit=200):
     return None
 
 async def get_mtf_analysis(symbol):
-    """تحلیل مولتی تایم‌فریم"""
     mtf = {}
     for tf_name, tf_value in config.TIMEFRAMES.items():
         df = await fetch_ohlcv_safe(symbol, tf_value)
@@ -795,8 +878,13 @@ async def get_mtf_analysis(symbol):
     return mtf
 
 async def analyze_symbol_full(symbol):
-    """تحلیل کامل یک نماد"""
     try:
+        if not exchange_mgr.is_connected():
+            await exchange_mgr.reconnect()
+            if not exchange_mgr.is_connected():
+                return None
+        
+        exchange = exchange_mgr.get_exchange()
         ticker = exchange.fetch_ticker(symbol)
         df_1h = await fetch_ohlcv_safe(symbol, '1h', 200)
         
@@ -810,7 +898,6 @@ async def analyze_symbol_full(symbol):
             indicators, mtf_data, ticker['last'], ticker['quoteVolume']
         )
         
-        # سطوح کلیدی
         levels = {
             'support': [indicators.get(f'PIVOT_S{i}', 0) for i in range(1, 4)],
             'resistance': [indicators.get(f'PIVOT_R{i}', 0) for i in range(1, 4)],
@@ -841,11 +928,9 @@ async def analyze_symbol_full(symbol):
 
 # ================================ فرمت‌دهی پیام‌ها ================================
 def format_signal_message(analysis):
-    """فرمت‌بندی پیام سیگنال کامل"""
     sym = analysis['symbol'].replace('/USDT', '')
     ind = analysis['indicators']
     
-    # تعیین قدرت سیگنال
     confidence_bar = "█" * int(analysis['confidence'] / 10) + "░" * (10 - int(analysis['confidence'] / 10))
     
     msg = f"""
@@ -868,21 +953,18 @@ def format_signal_message(analysis):
 • ADX: {ind['ADX']:.1f} ({'روند قوی' if ind['ADX'] > 25 else 'روند ضعیف'})
 • بولینگر: {'پایین باند 📍' if ind['BB_PCT'] < 0.2 else 'بالای باند 📍' if ind['BB_PCT'] > 0.8 else 'میانه'}
 • حجم: {'بالا 🔥' if ind['VOLUME_RATIO'] > 1.5 else 'نرمال'} ({ind['VOLUME_RATIO']:.1f}x)
-• RSI واگرایی: {analysis['indicators'].get('DIVERGENCE', 'NONE')}
+• واگرایی: {ind.get('DIVERGENCE', 'NONE')}
 
 🔑 *سطوح کلیدی:*
 • حمایت اصلی: ${analysis['levels']['support'][0]:.4f}
 • مقاومت اصلی: ${analysis['levels']['resistance'][0]:.4f}
 • BB Lower: ${analysis['levels']['bb_lower']:.4f}
 • BB Upper: ${analysis['levels']['bb_upper']:.4f}
-• Fib 0.382: ${analysis['levels']['fib_382']:.4f}
-• Fib 0.618: ${analysis['levels']['fib_618']:.4f}
 
 ⚠️ *پیشنهاد معاملاتی:*
 • حد ضرر: ${analysis['price'] - ind['ATR'] * 2:.4f}
 • حد سود ۱: ${analysis['price'] + ind['ATR'] * 3:.4f}
 • حد سود ۲: ${analysis['price'] + ind['ATR'] * 5:.4f}
-• نسبت ریسک/ریوارد: 1:{config.RR_RATIO_MIN}
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ⏰ {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
@@ -892,7 +974,6 @@ def format_signal_message(analysis):
     return msg
 
 def format_educational_content():
-    """تولید محتوای تحلیلی حجیم"""
     topics = [
         "تحلیل عمیق ساختار بازار و فازهای مختلف",
         "روانشناسی معامله‌گری و مدیریت احساسات",
@@ -951,9 +1032,8 @@ def format_educational_content():
 """
     return content
 
-# ================================ منوهای ۵۰+ دکمه ================================
+# ================================ منوها ================================
 def get_main_menu():
-    """منوی اصلی با ۲۰ دکمه"""
     keyboard = [
         [InlineKeyboardButton("📊 قیمت‌های لحظه‌ای", callback_data="prices_all"),
          InlineKeyboardButton("🎯 سیگنال فوری BTC", callback_data="signal_btc")],
@@ -975,11 +1055,11 @@ def get_main_menu():
          InlineKeyboardButton("📈 نمودار زنده", callback_data="live_chart")],
         [InlineKeyboardButton("🔄 بروزرسانی", callback_data="refresh"),
          InlineKeyboardButton("❓ راهنما", callback_data="help")],
+        [InlineKeyboardButton("⏸️ توقف اضطراری", callback_data="emergency_stop")]
     ]
     return InlineKeyboardMarkup(keyboard)
 
 def get_technical_menu():
-    """منوی تحلیل تکنیکال"""
     keyboard = [
         [InlineKeyboardButton("BTC/USDT", callback_data="tech_BTC/USDT"),
          InlineKeyboardButton("ETH/USDT", callback_data="tech_ETH/USDT")],
@@ -997,7 +1077,6 @@ def get_technical_menu():
     return InlineKeyboardMarkup(keyboard)
 
 def get_mtf_menu():
-    """منوی مولتی تایم‌فریم"""
     symbols_short = ["BTC", "ETH", "SOL", "BNB", "XRP", "ADA", "DOGE", "AVAX"]
     keyboard = []
     row = []
@@ -1012,7 +1091,6 @@ def get_mtf_menu():
     return InlineKeyboardMarkup(keyboard)
 
 def get_auto_trade_menu():
-    """منوی معاملات خودکار"""
     keyboard = [
         [InlineKeyboardButton(f"🤖 دمو: {'✅' if config.AUTO_TRADE else '❌'}", callback_data="toggle_demo")],
         [InlineKeyboardButton(f"💹 واقعی: {'✅' if config.REAL_TRADE else '❌'}", callback_data="toggle_real")],
@@ -1024,7 +1102,6 @@ def get_auto_trade_menu():
     return InlineKeyboardMarkup(keyboard)
 
 def get_settings_menu():
-    """منوی تنظیمات"""
     keyboard = [
         [InlineKeyboardButton("🔑 وضعیت API", callback_data="api_status")],
         [InlineKeyboardButton("📢 تنظیمات کانال", callback_data="channel_settings")],
@@ -1040,9 +1117,8 @@ def get_settings_menu():
 
 # ================================ هندلرهای تلگرام ================================
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """شروع ربات"""
     user_id = update.effective_user.id
-    if config.ADMIN_IDS and user_id not in config.ADMIN_IDS and user_id != OWNER_ID:
+    if config.ADMIN_IDS and user_id not in config.ADMIN_IDS and user_id != config.OWNER_ID:
         await update.message.reply_text("⛔ دسترسی غیرمجاز!")
         return
     
@@ -1082,12 +1158,16 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(text, parse_mode="Markdown", reply_markup=get_main_menu())
 
 async def prices_all_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """نمایش قیمت تمام ارزها"""
     query = update.callback_query
     await query.answer()
     
     status = await query.edit_message_text("🔄 دریافت قیمت‌ها...")
     
+    if not exchange_mgr.is_connected():
+        await query.edit_message_text("❌ صرافی متصل نیست!", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔄 تلاش مجدد", callback_data="prices_all"), InlineKeyboardButton("🔙 بازگشت", callback_data="back")]]))
+        return
+    
+    exchange = exchange_mgr.get_exchange()
     text = "💰 *قیمت‌های لحظه‌ای* 💰\n\n"
     
     for symbol in config.SYMBOLS[:20]:
@@ -1102,13 +1182,11 @@ async def prices_all_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
     text += f"\n⏰ {datetime.now().strftime('%H:%M:%S')}"
     
     keyboard = [[InlineKeyboardButton("🔄 بروزرسانی", callback_data="prices_all"),
-                 InlineKeyboardButton("📋 ۳۰ ارز", callback_data="prices_all_30"),
                  InlineKeyboardButton("🔙 بازگشت", callback_data="back")]]
     
     await query.edit_message_text(text, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(keyboard))
 
 async def market_scan_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """اسکن کامل بازار"""
     query = update.callback_query
     await query.answer()
     
@@ -1120,7 +1198,6 @@ async def market_scan_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
         if analysis:
             results.append(analysis)
     
-    # مرتب‌سازی بر اساس قدرت سیگنال
     results.sort(key=lambda x: abs(x['score']), reverse=True)
     
     text = "🔍 *نتایج اسکن بازار* 🔍\n\n"
@@ -1128,16 +1205,14 @@ async def market_scan_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
     for i, r in enumerate(results[:15], 1):
         emoji = "🟢" if "خرید" in r['signal'] else "🔴" if "فروش" in r['signal'] else "⚪"
         text += f"{i}. {emoji} *{r['symbol'].replace('/USDT', '')}*: "
-        text += f"${r['price']:,.4f} | {r['signal'][:20]} | اطمینان: {r['confidence']:.0f}%\n"
+        text += f"${r['price']:,.4f} | {r['signal'][:20]} | {r['confidence']:.0f}%\n"
     
     keyboard = [[InlineKeyboardButton("🔄 اسکن مجدد", callback_data="market_scan"),
-                 InlineKeyboardButton("⭐ بهترین‌ها", callback_data="best_opportunities"),
                  InlineKeyboardButton("🔙 بازگشت", callback_data="back")]]
     
     await query.edit_message_text(text, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(keyboard))
 
 async def signal_handler(update: Update, context: ContextTypes.DEFAULT_TYPE, symbol="BTC/USDT"):
-    """نمایش سیگنال کامل"""
     query = update.callback_query
     await query.answer()
     
@@ -1158,7 +1233,6 @@ async def signal_handler(update: Update, context: ContextTypes.DEFAULT_TYPE, sym
     await query.edit_message_text(msg, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(keyboard))
 
 async def portfolio_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """نمایش پورتفوی"""
     query = update.callback_query
     await query.answer()
     
@@ -1178,10 +1252,14 @@ async def portfolio_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         text += "\n*پوزیشن‌های فعال:*\n"
         for sym, pos in engine.positions.items():
             try:
-                ticker = exchange.fetch_ticker(sym)
-                current = ticker['last']
-                pnl_pct = (current - pos['entry']) / pos['entry'] * 100
-                text += f"• {sym.replace('/USDT', '')}: ورود {pos['entry']:,.4f} | فعلی {current:,.4f} | {pnl_pct:+.2f}%\n"
+                if exchange_mgr.is_connected():
+                    exchange = exchange_mgr.get_exchange()
+                    ticker = exchange.fetch_ticker(sym)
+                    current = ticker['last']
+                    pnl_pct = (current - pos['entry']) / pos['entry'] * 100
+                    text += f"• {sym.replace('/USDT', '')}: ورود {pos['entry']:,.4f} | فعلی {current:,.4f} | {pnl_pct:+.2f}%\n"
+                else:
+                    text += f"• {sym.replace('/USDT', '')}: ورود {pos['entry']:,.4f}\n"
             except:
                 text += f"• {sym.replace('/USDT', '')}: ورود {pos['entry']:,.4f}\n"
     
@@ -1193,7 +1271,6 @@ async def portfolio_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 • سود متوسط: ${stats['avg_win']:+,.2f}
 • ضرر متوسط: ${stats['avg_loss']:+,.2f}
 • فاکتور سود: {stats['profit_factor']:.2f}
-• ضررهای متوالی: {stats['consecutive_losses']}
 """
     
     keyboard = [[InlineKeyboardButton("🔄 بروزرسانی", callback_data="portfolio"),
@@ -1203,7 +1280,6 @@ async def portfolio_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.edit_message_text(text, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(keyboard))
 
 async def performance_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """نمایش عملکرد"""
     query = update.callback_query
     await query.answer()
     
@@ -1214,14 +1290,12 @@ async def performance_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
     stats = engine.get_stats()
     history = engine.history
     
-    # محاسبه شارپ ریشیو
     if len(history) > 1:
         returns = [t['pnl_pct'] for t in history]
         sharpe = (np.mean(returns) / np.std(returns)) * np.sqrt(252) if np.std(returns) > 0 else 0
     else:
         sharpe = 0
     
-    # بهترین و بدترین
     best = max(history, key=lambda x: x['pnl'])
     worst = min(history, key=lambda x: x['pnl'])
     
@@ -1244,7 +1318,6 @@ async def performance_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
 • فاکتور سود: {stats['profit_factor']:.2f}
 • میانگین سود: ${stats['avg_win']:+,.2f}
 • میانگین ضرر: ${stats['avg_loss']:+,.2f}
-• ضررهای متوالی: {stats['consecutive_losses']}
 """
     
     keyboard = [[InlineKeyboardButton("🔄 بروزرسانی", callback_data="performance"),
@@ -1253,41 +1326,12 @@ async def performance_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
     
     await query.edit_message_text(text, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(keyboard))
 
-async def technical_analysis_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """منوی تحلیل تکنیکال"""
-    query = update.callback_query
-    await query.answer()
-    await query.edit_message_text("📈 *تحلیل تکنیکال*\nارز را انتخاب کنید:", parse_mode="Markdown", reply_markup=get_technical_menu())
-
-async def technical_symbol_handler(update: Update, context: ContextTypes.DEFAULT_TYPE, symbol):
-    """تحلیل تکنیکال یک نماد"""
-    query = update.callback_query
-    await query.answer()
-    
-    status = await query.edit_message_text(f"🔄 تحلیل تکنیکال {symbol.replace('/USDT', '')}...")
-    
-    analysis = await analyze_symbol_full(symbol)
-    
-    if not analysis:
-        await query.edit_message_text("❌ خطا در تحلیل", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="menu_technical")]]))
-        return
-    
-    msg = format_signal_message(analysis)
-    
-    keyboard = [[InlineKeyboardButton("🔄 بروزرسانی", callback_data=f"tech_{symbol}"),
-                 InlineKeyboardButton("📋 لیست", callback_data="menu_technical"),
-                 InlineKeyboardButton("🔙 بازگشت", callback_data="back")]]
-    
-    await query.edit_message_text(msg, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(keyboard))
-
 async def auto_trade_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """منوی معاملات خودکار"""
     query = update.callback_query
     await query.answer()
     await query.edit_message_text("🤖 *معاملات خودکار*\nتنظیمات را انتخاب کنید:", parse_mode="Markdown", reply_markup=get_auto_trade_menu())
 
 async def toggle_demo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """تغییر وضعیت معاملات دمو"""
     global config
     query = update.callback_query
     await query.answer()
@@ -1295,10 +1339,9 @@ async def toggle_demo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
     await auto_trade_menu_handler(update, context)
 
 async def toggle_real_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """تغییر وضعیت معاملات واقعی"""
     global config
     query = update.callback_query
-    if not exchange:
+    if not exchange_mgr.is_connected():
         await query.answer("❌ صرافی متصل نیست!", show_alert=True)
         return
     await query.answer()
@@ -1306,35 +1349,29 @@ async def toggle_real_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
     await auto_trade_menu_handler(update, context)
 
 async def settings_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """منوی تنظیمات"""
     query = update.callback_query
     await query.answer()
     await query.edit_message_text("⚙️ *تنظیمات ربات*\nبخش مورد نظر را انتخاب کنید:", parse_mode="Markdown", reply_markup=get_settings_menu())
 
 async def help_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """راهنما"""
     query = update.callback_query
     await query.answer()
     text = """
 ❓ *راهنمای ربات*
 
 📊 *تحلیل و سیگنال:*
-• /prices - قیمت‌ها
-• /signal - سیگنال BTC
-• /scan - اسکن بازار
-• /tech - تحلیل تکنیکال
-• /mtf - مولتی تایم‌فریم
+• قیمت‌ها، سیگنال، اسکن بازار
+• تحلیل تکنیکال، مولتی تایم‌فریم
 
 💰 *معاملات:*
-• /portfolio - پورتفوی
-• /performance - عملکرد
-• /positions - پوزیشن‌های باز
-• /history - تاریخچه
+• پورتفوی، عملکرد
+• پوزیشن‌های باز، تاریخچه
 
 ⚙️ *تنظیمات:*
-• /settings - تنظیمات
-• /auto - معاملات خودکار
-• /risk - مدیریت ریسک
+• وضعیت API
+• تنظیمات کانال
+• فواصل ارسال
+• پارامترهای تحلیل
 
 ⚠️ *هشدار:*
 این ربات برای تحلیل و سیگنال‌دهی است.
@@ -1343,13 +1380,28 @@ async def help_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.edit_message_text(text, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="back")]]))
 
 async def back_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """بازگشت به منوی اصلی"""
     query = update.callback_query
     await query.answer()
     await query.edit_message_text("🤖 *منوی اصلی*\nلطفاً انتخاب کنید:", parse_mode="Markdown", reply_markup=get_main_menu())
 
+async def emergency_stop_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    
+    for sym in list(engine.positions.keys()):
+        try:
+            if exchange_mgr.is_connected():
+                exchange = exchange_mgr.get_exchange()
+                ticker = exchange.fetch_ticker(sym)
+                engine.close_position(sym, ticker['last'], "EMERGENCY_STOP")
+            else:
+                del engine.positions[sym]
+        except Exception as e:
+            logger.error(f"Emergency stop error for {sym}: {e}")
+    
+    await query.edit_message_text("⏸️ *توقف اضطراری*\n\n✅ همه پوزیشن‌ها بسته شدند.", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="back")]]))
+
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """مدیریت کلیک‌ها"""
     query = update.callback_query
     data = query.data
     
@@ -1363,16 +1415,16 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         elif data == "best_opportunities":
             await market_scan_handler(update, context)
         elif data.startswith("signal_"):
-            symbol = data.replace("signal_", "") + "/USDT"
-            if symbol == "BTC/USDT":
+            symbol = data.replace("signal_", "")
+            if symbol == "btc":
                 await signal_handler(update, context)
             else:
-                await signal_handler(update, context, symbol)
+                await signal_handler(update, context, f"{symbol.upper()}/USDT")
         elif data == "menu_technical":
-            await technical_analysis_handler(update, context)
+            await query.edit_message_text("📈 *تحلیل تکنیکال*\nارز را انتخاب کنید:", parse_mode="Markdown", reply_markup=get_technical_menu())
         elif data.startswith("tech_"):
             symbol = data.replace("tech_", "")
-            await technical_symbol_handler(update, context, symbol)
+            await signal_handler(update, context, symbol)
         elif data == "menu_mtf":
             await query.edit_message_text("⏰ *مولتی تایم‌فریم*\nارز را انتخاب کنید:", parse_mode="Markdown", reply_markup=get_mtf_menu())
         elif data.startswith("mtf_"):
@@ -1404,22 +1456,23 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         elif data == "fear_greed":
             await query.edit_message_text("📉 *شاخص ترس و طمع*\n\nدر حال دریافت داده...\n\nاین بخش در نسخه بعدی تکمیل می‌شود.", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="back")]]))
         elif data == "emergency_stop":
-            # بستن همه پوزیشن‌ها
-            for sym in list(engine.positions.keys()):
-                try:
-                    ticker = exchange.fetch_ticker(sym)
-                    engine.close_position(sym, ticker['last'], "EMERGENCY_STOP")
-                except:
-                    pass
-            await query.edit_message_text("⏸️ *توقف اضطراری*\n\n✅ همه پوزیشن‌ها بسته شدند.", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="back")]]))
+            await emergency_stop_handler(update, context)
         elif data == "clear_cache":
             cache.clear_old(0)
             await query.answer("✅ کش پاکسازی شد", show_alert=True)
         elif data == "api_status":
-            status = "✅ متصل" if exchange else "❌ قطع"
+            status = "✅ متصل" if exchange_mgr.is_connected() else "❌ قطع"
             await query.edit_message_text(f"🔑 *وضعیت API*\n\nCoinEx: {status}\nGroq: {'✅' if config.GROQ_API_KEY else '❌'}", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="settings")]]))
         elif data == "open_positions":
             await portfolio_handler(update, context)
+        elif data == "altcoins":
+            await market_scan_handler(update, context)
+        elif data == "prediction":
+            await signal_handler(update, context)
+        elif data == "whale_track":
+            await query.edit_message_text("🐋 *ردیابی نهنگ‌ها*\n\nاین بخش در نسخه بعدی تکمیل می‌شود.", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="back")]]))
+        elif data == "live_chart":
+            await query.edit_message_text("📈 *نمودار زنده*\n\nاین بخش در نسخه بعدی تکمیل می‌شود.", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="back")]]))
         else:
             await query.answer("در حال توسعه...")
     except Exception as e:
@@ -1430,12 +1483,22 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             pass
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """مدیریت پیام‌های متنی"""
     await update.message.reply_text("لطفاً از منوی ربات استفاده کنید.\n/start", reply_markup=get_main_menu())
 
 async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """مدیریت خطاها"""
     logger.error(f"Error: {context.error}")
+    
+    # مدیریت خطای Conflict
+    if isinstance(context.error, Conflict):
+        logger.critical("❌ Conflict error - یک نمونه دیگر از ربات در حال اجراست!")
+        remove_lock()
+        sys.exit(1)
+    
+    # مدیریت خطای Network
+    if isinstance(context.error, NetworkError):
+        logger.warning("⚠️ خطای شبکه - تلاش مجدد...")
+        await asyncio.sleep(5)
+    
     try:
         if update and update.effective_message:
             await update.effective_message.reply_text("❌ خطایی رخ داد. /start")
@@ -1444,7 +1507,6 @@ async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # ================================ حلقه‌های خودکار ================================
 async def auto_signal_to_channel(app):
-    """ارسال سیگنال هر ۱۰ دقیقه به کانال"""
     await asyncio.sleep(15)
     
     while True:
@@ -1452,6 +1514,12 @@ async def auto_signal_to_channel(app):
             if not config.CHANNEL_ID or config.CHANNEL_ID == "@CryptoPulse606":
                 await asyncio.sleep(60)
                 continue
+            
+            if not exchange_mgr.is_connected():
+                await exchange_mgr.reconnect()
+                if not exchange_mgr.is_connected():
+                    await asyncio.sleep(60)
+                    continue
             
             # تحلیل BTC
             btc_analysis = await analyze_symbol_full("BTC/USDT")
@@ -1471,7 +1539,7 @@ async def auto_signal_to_channel(app):
             
             await asyncio.sleep(120)
             
-            # تحلیل ۳ ارز برتر (اسکن)
+            # تحلیل ۳ ارز برتر
             results = []
             for symbol in config.SYMBOLS[:10]:
                 analysis = await analyze_symbol_full(symbol)
@@ -1493,7 +1561,6 @@ async def auto_signal_to_channel(app):
         await asyncio.sleep(config.SIGNAL_INTERVAL)
 
 async def auto_educational_content(app):
-    """ارسال محتوای آموزشی هر ۱ ساعت"""
     await asyncio.sleep(30)
     
     while True:
@@ -1508,12 +1575,12 @@ async def auto_educational_content(app):
         await asyncio.sleep(config.ANALYSIS_INTERVAL)
 
 async def position_monitor(app):
-    """مانیتورینگ پوزیشن‌های باز"""
     await asyncio.sleep(20)
     
     while True:
         try:
-            if engine.positions:
+            if engine.positions and exchange_mgr.is_connected():
+                exchange = exchange_mgr.get_exchange()
                 for symbol in list(engine.positions.keys()):
                     try:
                         ticker = exchange.fetch_ticker(symbol)
@@ -1522,7 +1589,6 @@ async def position_monitor(app):
                             indicators = UltraTechnicalAnalyzer.calculate_all(df)
                             result = engine.update_position(symbol, ticker['last'], indicators)
                             if result:
-                                # ارسال نوتیفیکیشن بسته شدن
                                 emoji = "🟢" if result['pnl'] > 0 else "🔴"
                                 msg = f"""
 {emoji} *پوزیشن بسته شد*
@@ -1543,8 +1609,25 @@ async def position_monitor(app):
         
         await asyncio.sleep(30)
 
+async def connection_monitor(app):
+    """مانیتورینگ اتصال به صرافی"""
+    await asyncio.sleep(60)
+    
+    while True:
+        try:
+            if not exchange_mgr.is_connected():
+                logger.warning("⚠️ اتصال قطع شد - تلاش برای اتصال مجدد...")
+                await exchange_mgr.reconnect()
+                if exchange_mgr.is_connected():
+                    logger.info("✅ اتصال مجدد با موفقیت برقرار شد")
+                    if config.CHANNEL_ID and config.CHANNEL_ID != "@CryptoPulse606":
+                        await safe_send_message(app.bot, config.CHANNEL_ID, "✅ *اتصال به صرافی برقرار شد*")
+        except Exception as e:
+            logger.error(f"Connection monitor error: {e}")
+        
+        await asyncio.sleep(30)
+
 async def safe_send_message(bot, chat_id, text, parse_mode="Markdown", reply_markup=None, max_retries=3):
-    """ارسال امن پیام"""
     for attempt in range(max_retries):
         try:
             return await bot.send_message(chat_id=chat_id, text=text, parse_mode=parse_mode, reply_markup=reply_markup, disable_web_page_preview=True)
@@ -1552,6 +1635,9 @@ async def safe_send_message(bot, chat_id, text, parse_mode="Markdown", reply_mar
             await asyncio.sleep(e.retry_after)
         except TimedOut:
             await asyncio.sleep(2 ** attempt)
+        except Conflict:
+            logger.critical("❌ Conflict detected in send_message!")
+            raise
         except Exception as e:
             if attempt == max_retries - 1:
                 raise
@@ -1560,10 +1646,24 @@ async def safe_send_message(bot, chat_id, text, parse_mode="Markdown", reply_mar
 
 # ================================ اجرای اصلی ================================
 async def main():
+    # ایجاد فایل قفل
+    if not create_lock():
+        logger.critical("❌ یک نمونه دیگر در حال اجراست. خروج...")
+        sys.exit(1)
+    
+    logger.info(f"🔒 Lock file created. PID: {os.getpid()}")
+    
     if not config.TOKEN:
         logger.error("❌ TELEGRAM_BOT_TOKEN not set!")
+        remove_lock()
         return
     
+    # اتصال به صرافی
+    if config.COINEX_API_KEY and config.COINEX_SECRET_KEY:
+        if not exchange_mgr.is_connected():
+            exchange_mgr.connect()
+    
+    # ساخت اپلیکیشن تلگرام
     app = Application.builder().token(config.TOKEN).build()
     
     # هندلرها
@@ -1576,19 +1676,44 @@ async def main():
     asyncio.create_task(auto_signal_to_channel(app))
     asyncio.create_task(auto_educational_content(app))
     asyncio.create_task(position_monitor(app))
+    asyncio.create_task(connection_monitor(app))
     
     logger.info("🚀 Ultra Trading Bot v3.0 Started!")
+    logger.info(f"📢 Channel: {config.CHANNEL_ID}")
+    logger.info(f"💰 Initial Balance: ${config.INITIAL_BALANCE:,.0f}")
+    logger.info(f"📊 Symbols: {len(config.SYMBOLS)} coins")
+    logger.info(f"⏱️ Signal Interval: {config.SIGNAL_INTERVAL}s")
+    logger.info(f"📚 Analysis Interval: {config.ANALYSIS_INTERVAL}s")
     
-    await app.initialize()
-    await app.start()
-    await app.updater.start_polling(allowed_updates=Update.ALL_TYPES)
-    
-    await asyncio.Event().wait()
+    try:
+        await app.initialize()
+        await app.start()
+        await app.updater.start_polling(allowed_updates=Update.ALL_TYPES, drop_pending_updates=True)
+        
+        # نگه داشتن ربات
+        await asyncio.Event().wait()
+    except Conflict as e:
+        logger.critical(f"❌ Conflict Error: {e}")
+        logger.critical("یک نمونه دیگر از ربات در حال اجراست!")
+    except Exception as e:
+        logger.error(f"❌ Fatal error: {e}")
+    finally:
+        # پاکسازی
+        if hasattr(app, 'updater') and app.updater and app.updater.running:
+            await app.updater.stop()
+        if app.running:
+            await app.stop()
+        await app.shutdown()
+        remove_lock()
+        logger.info("👋 Bot shut down gracefully")
 
 if __name__ == "__main__":
     try:
         asyncio.run(main())
     except KeyboardInterrupt:
-        logger.info("👋 Bot stopped")
+        logger.info("👋 Bot stopped by user")
+        remove_lock()
     except Exception as e:
         logger.error(f"❌ Fatal error: {e}")
+        remove_lock()
+        sys.exit(1)
