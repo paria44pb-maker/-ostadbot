@@ -2,8 +2,8 @@
 # -*- coding: utf-8 -*-
 """
 ╔══════════════════════════════════════════════════════════════════╗
-║     CRYPTO PULSE ULTRA AI TRADING BOT v6.0                      ║
-║     30+ Indicators | Groq AI | 11 Timeframes | Auto Trade       ║
+║     CRYPTO PULSE ULTIMATE AI TRADING BOT v7.0                   ║
+║     Groq AI | 25+ Indicators | Auto Signals Every 10 Min        ║
 ╚══════════════════════════════════════════════════════════════════╝
 """
 
@@ -27,47 +27,54 @@ warnings.filterwarnings('ignore')
 load_dotenv()
 
 # ============================================================
-# LOGGING
+# PROFESSIONAL LOGGING SYSTEM
 # ============================================================
-logger = logging.getLogger('CryptoPulseAI')
+logger = logging.getLogger('CryptoPulseUltimate')
 logger.setLevel(logging.DEBUG)
 
+# Console Handler
 console = logging.StreamHandler()
 console.setLevel(logging.INFO)
 console.setFormatter(logging.Formatter('%(asctime)s | %(levelname)-7s | %(message)s'))
 logger.addHandler(console)
 
-file_handler = RotatingFileHandler('crypto_ai.log', maxBytes=10*1024*1024, backupCount=7, encoding='utf-8')
-file_handler.setLevel(logging.INFO)
-file_handler.setFormatter(logging.Formatter('%(asctime)s | %(levelname)-7s | %(name)s | %(message)s'))
-logger.addHandler(file_handler)
+# File Handlers
+for name, level, fmt in [
+    ('crypto_main.log', logging.INFO, '%(asctime)s | %(levelname)-7s | %(message)s'),
+    ('crypto_debug.log', logging.DEBUG, '%(asctime)s | %(levelname)-7s | %(name)s | %(funcName)s | %(message)s'),
+    ('crypto_errors.log', logging.ERROR, '%(asctime)s | %(levelname)-7s | %(message)s')
+]:
+    handler = RotatingFileHandler(name, maxBytes=10*1024*1024, backupCount=7, encoding='utf-8')
+    handler.setLevel(level)
+    handler.setFormatter(logging.Formatter(fmt))
+    logger.addHandler(handler)
 
-debug_handler = RotatingFileHandler('crypto_ai_debug.log', maxBytes=50*1024*1024, backupCount=3, encoding='utf-8')
-debug_handler.setLevel(logging.DEBUG)
-debug_handler.setFormatter(logging.Formatter('%(asctime)s | %(levelname)-7s | %(funcName)-20s | %(message)s'))
-logger.addHandler(debug_handler)
-
-error_handler = RotatingFileHandler('crypto_ai_errors.log', maxBytes=10*1024*1024, backupCount=10, encoding='utf-8')
-error_handler.setLevel(logging.ERROR)
-error_handler.setFormatter(logging.Formatter('%(asctime)s | %(levelname)-7s | %(message)s'))
-logger.addHandler(error_handler)
-
+# Silence noisy libraries
 for lib in ['httpx', 'httpcore', 'telegram', 'ccxt', 'urllib3', 'asyncio', 'aiohttp']:
     logging.getLogger(lib).setLevel(logging.WARNING)
+
+logger.info("="*60)
+logger.info("🚀 CRYPTO PULSE ULTIMATE v7.0 INITIALIZING")
+logger.info("="*60)
 
 # ============================================================
 # CONFIGURATION
 # ============================================================
 @dataclass
 class Config:
+    # Telegram
     token: str = os.getenv("TELEGRAM_BOT_TOKEN", "")
     channel_id: str = os.getenv("CHANNEL_ID", "")
+    
+    # Groq AI
     groq_api_key: str = os.getenv("GROQ_API_KEY", "")
     
+    # Exchange API
     api_key: str = os.getenv("COINEX_API_KEY", "")
     api_secret: str = os.getenv("COINEX_SECRET_KEY", "")
     api_passphrase: str = os.getenv("COINEX_PASSPHRASE", "")
     
+    # 30 Cryptocurrencies
     symbols: List[str] = field(default_factory=lambda: [
         "BTC/USDT", "ETH/USDT", "BNB/USDT", "XRP/USDT", "ADA/USDT",
         "SOL/USDT", "DOGE/USDT", "DOT/USDT", "MATIC/USDT", "AVAX/USDT",
@@ -77,7 +84,7 @@ class Config:
         "GALA/USDT", "ENJ/USDT", "CHZ/USDT", "NEAR/USDT", "APT/USDT"
     ])
     
-    # 11 Timeframes
+    # 11 Timeframes for Analysis
     timeframes: Dict[str, str] = field(default_factory=lambda: {
         "5m": "5m", "15m": "15m", "30m": "30m",
         "1h": "1h", "2h": "2h", "4h": "4h",
@@ -85,19 +92,23 @@ class Config:
         "3d": "3d", "1w": "1w"
     })
     
+    # Trading Parameters
     initial_balance: float = 100000.0
     risk_per_trade: float = 0.02
     max_positions: int = 5
     atr_sl: float = 2.0
     atr_tp: float = 4.0
     trailing_pct: float = 0.03
+    max_consecutive_losses: int = 5
     
+    # Trading Modes
     demo_trading: bool = True
     real_trading: bool = False
     auto_send: bool = True
     
-    signal_interval: int = 600
-    education_interval: int = 3600
+    # Intervals
+    signal_interval: int = 600  # 10 دقیقه
+    education_interval: int = 3600  # 1 ساعت
 
 cfg = Config()
 
@@ -105,89 +116,195 @@ cfg = Config()
 # PROCESS LOCK
 # ============================================================
 class ProcessLock:
-    _file = "crypto_ai.lock"
+    _file = "crypto_ultimate.lock"
+    
     @classmethod
     def acquire(cls) -> bool:
         try:
             if os.path.exists(cls._file):
                 with open(cls._file) as f:
                     pid = int(f.read().strip() or 0)
-                if pid and cls._alive(pid):
+                if pid and cls._is_alive(pid):
                     logger.critical(f"❌ Already running (PID: {pid})")
                     return False
                 os.remove(cls._file)
-            with open(cls._file, 'w') as f: f.write(str(os.getpid()))
+            with open(cls._file, 'w') as f:
+                f.write(str(os.getpid()))
+            logger.info(f"🔒 Lock acquired (PID: {os.getpid()})")
             return True
-        except: return True
+        except:
+            return True
+    
     @classmethod
     def release(cls):
         try:
-            if os.path.exists(cls._file): os.remove(cls._file)
-        except: pass
+            if os.path.exists(cls._file):
+                os.remove(cls._file)
+        except:
+            pass
+    
     @staticmethod
-    def _alive(pid: int) -> bool:
-        try: os.kill(pid, 0); return True
-        except: return False
+    def _is_alive(pid: int) -> bool:
+        try:
+            os.kill(pid, 0)
+            return True
+        except (OSError, ProcessLookupError):
+            return False
 
-for s in [signal.SIGINT, signal.SIGTERM]:
-    signal.signal(s, lambda sig, frame: (ProcessLock.release(), sys.exit(0)))
+for sig in [signal.SIGINT, signal.SIGTERM]:
+    signal.signal(sig, lambda s, f: (ProcessLock.release(), sys.exit(0)))
 
 # ============================================================
-# GROQ AI CLIENT
+# GROQ AI - تحلیل تکنیکال + فاندامنتال + پرایس اکشن
 # ============================================================
-class GroqAI:
-    """Ultra-Fast Groq AI Integration"""
+class GroqAIEngine:
+    """Ultimate AI Analysis Engine"""
     API_URL = "https://api.groq.com/openai/v1/chat/completions"
     MODEL = "llama-3.3-70b-versatile"
     
     def __init__(self):
         self.enabled = bool(cfg.groq_api_key)
-        self.client = httpx.AsyncClient(timeout=30.0)
+        self.client = httpx.AsyncClient(timeout=45.0)
         if self.enabled:
-            logger.info("🧠 Groq AI Enabled")
+            logger.info("🧠 Groq AI Engine Connected (Llama 3.3 70B)")
         else:
-            logger.warning("⚠️ Groq AI Disabled - No API Key")
+            logger.warning("⚠️ Groq AI Disabled - Set GROQ_API_KEY in .env")
     
-    async def analyze(self, symbol: str, indicators: Dict, price: float, change: float, patterns: List[str], mtf_summary: str) -> Optional[str]:
-        """AI-powered market analysis"""
+    async def technical_analysis(self, symbol: str, indicators: Dict, price: float, 
+                                  change: float, patterns: List[str], mtf_data: Dict) -> Optional[str]:
+        """تحلیل تکنیکال عمیق با AI"""
         if not self.enabled:
             return None
         
-        prompt = f"""You are a professional crypto trading analyst. Analyze this data and provide:
-1. Market direction prediction (SHORT/MEDIUM/LONG term)
-2. Key support/resistance levels
-3. Risk assessment (LOW/MEDIUM/HIGH)
-4. Trading recommendation with confidence level
-5. Critical alerts
+        mtf_text = ""
+        for tf, ind in mtf_data.items():
+            mtf_text += f"{tf}: RSI={ind.get('RSI_14',50):.0f} | MACD={'Bullish' if ind.get('MACD_HIST',0)>0 else 'Bearish'} | ADX={ind.get('ADX',20):.0f}\n"
+        
+        prompt = f"""You are a world-class technical analyst. Analyze this cryptocurrency with precision:
 
-=== MARKET DATA ===
-Symbol: {symbol}
-Price: ${price:,.2f}
-24h Change: {change:+.2f}%
+SYMBOL: {symbol}
+PRICE: ${price:,.4f} | 24h CHANGE: {change:+.2f}%
 
-=== TECHNICAL INDICATORS ===
-RSI(14): {indicators.get('RSI_14', 50):.1f}
-RSI(7): {indicators.get('RSI_7', 50):.1f}
-MACD Histogram: {indicators.get('MACD_HIST', 0):.4f}
-ADX: {indicators.get('ADX', 20):.1f}
-CCI: {indicators.get('CCI', 0):.1f}
-MFI: {indicators.get('MFI', 50):.1f}
-BB Position: {indicators.get('BB_PCT', 0.5):.2f}
-ATR%: {indicators.get('ATR_PCT', 0):.2f}%
-Volume Ratio: {indicators.get('VOL_RATIO', 1):.2f}x
-Trend Strength: {indicators.get('TREND_STR', 0):.1f}%
+=== 25+ TECHNICAL INDICATORS ===
+RSI(7): {indicators.get('RSI_7',50):.1f}
+RSI(14): {indicators.get('RSI_14',50):.1f}
+RSI(21): {indicators.get('RSI_21',50):.1f}
+MACD Histogram: {indicators.get('MACD_HIST',0):.4f}
+MACD Signal: {indicators.get('MACD_SIG',0):.4f}
+Stochastic K: {indicators.get('STOCH_K',50):.1f}
+Stochastic D: {indicators.get('STOCH_D',50):.1f}
+ADX: {indicators.get('ADX',20):.1f}
+DI+: {indicators.get('DI+',20):.1f}
+DI-: {indicators.get('DI-',20):.1f}
+CCI(20): {indicators.get('CCI',0):.1f}
+MFI(14): {indicators.get('MFI',50):.1f}
+Bollinger %B: {indicators.get('BB_PCT',0.5):.3f}
+Bollinger Width: {indicators.get('BB_WIDTH',0):.4f}
+ATR(14): {indicators.get('ATR_14',0):.4f}
+ATR%: {indicators.get('ATR_PCT',0):.2f}%
+Williams %R: {indicators.get('WILLIAMS_R',-50):.1f}
+Ultimate Oscillator: {indicators.get('ULTIMATE',50):.1f}
+ROC(12): {indicators.get('ROC',0):.2f}
+TRIX: {indicators.get('TRIX',0):.4f}
+Volume Ratio: {indicators.get('VOL_RATIO',1):.2f}x
+Trend Strength: {indicators.get('TREND_STR',0):.1f}%
+Volatility: {indicators.get('VOLATILITY',0):.2f}%
+EMA Crossover: {'Bullish' if indicators.get('EMA_7',0) > indicators.get('EMA_20',0) else 'Bearish'}
+Ichimoku: {'Bullish' if price > indicators.get('ICH_SENKOU_A',0) else 'Bearish'}
+Parabolic SAR: {'Bullish' if indicators.get('PSAR_DIR',0) > 0 else 'Bearish'}
+Vortex: {'Bullish' if indicators.get('VORTEX+',0) > indicators.get('VORTEX-',0) else 'Bearish'}
+Aroon: {'Bullish' if indicators.get('AROON_UP',0) > indicators.get('AROON_DOWN',0) else 'Bearish'}
 
-=== CANDLE PATTERNS ===
-{', '.join(patterns) if patterns else 'None detected'}
+=== CANDLESTICK PATTERNS ===
+Detected: {', '.join(patterns) if patterns else 'None'}
 
 === DIVERGENCE ===
 {indicators.get('DIVERGENCE', 'NONE')}
 
-=== MULTI-TIMEFRAME ===
-{mtf_summary}
+=== MULTI-TIMEFRAME ANALYSIS ===
+{mtf_text}
 
-Provide a concise analysis in Persian (فارسی) with emojis. Max 300 words."""
+=== SUPPORT/RESISTANCE ===
+Resistance: ${indicators.get('RESISTANCE',0):.2f}
+Pivot: ${indicators.get('PIVOT',0):.2f}
+Support: ${indicators.get('SUPPORT',0):.2f}
+Fibonacci 0.618: ${indicators.get('FIB_618',0):.2f}
+
+Provide in Persian (فارسی):
+1. Technical Analysis Summary (3 lines)
+2. Key Support/Resistance Levels
+3. Momentum & Volume Analysis
+4. Candlestick Pattern Interpretation
+5. Multi-Timeframe Confluence
+6. SHORT-TERM Prediction (next 4-12 hours)
+7. MEDIUM-TERM Prediction (next 1-3 days)
+8. Entry/Exit Suggestions with Price Levels
+9. Risk Level (LOW/MEDIUM/HIGH/EXTREME)
+10. Confidence Score (0-100%)
+
+Use emojis. Be specific with price levels. Max 400 words."""
         
+        return await self._call_api(prompt)
+    
+    async def fundamental_analysis(self, symbol: str, price: float, change: float) -> Optional[str]:
+        """تحلیل فاندامنتال با AI"""
+        if not self.enabled:
+            return None
+        
+        coin = symbol.replace('/USDT', '')
+        
+        prompt = f"""You are a crypto fundamental analyst. Analyze {coin}:
+
+Current Price: ${price:,.4f}
+24h Change: {change:+.2f}%
+
+Provide in Persian (فارسی):
+1. Market Sentiment & Overall Outlook
+2. Key Fundamental Factors (adoption, development, partnerships)
+3. Market Cap & Volume Analysis
+4. Correlation with BTC
+5. Upcoming Events/Catalysts
+6. Institutional Interest
+7. On-Chain Metrics (if known)
+8. Long-Term Potential (3-6 months)
+9. Risk Factors
+10. Overall Fundamental Rating (1-10)
+
+Use emojis. Be concise. Max 300 words."""
+        
+        return await self._call_api(prompt)
+    
+    async def price_action_analysis(self, symbol: str, indicators: Dict, price: float, patterns: List[str]) -> Optional[str]:
+        """تحلیل پرایس اکشن با AI"""
+        if not self.enabled:
+            return None
+        
+        prompt = f"""You are a professional price action trader. Analyze {symbol} at ${price:,.4f}:
+
+Candlestick Patterns: {', '.join(patterns) if patterns else 'None detected'}
+BB Position: {indicators.get('BB_PCT',0.5):.2f} (0=Lower, 1=Upper)
+Volume Ratio: {indicators.get('VOL_RATIO',1):.2f}x
+ATR%: {indicators.get('ATR_PCT',0):.2f}%
+Divergence: {indicators.get('DIVERGENCE','NONE')}
+
+Provide in Persian (فارسی):
+1. Market Structure (Trending/Ranging/Reversing)
+2. Key Support/Resistance Zones
+3. Supply/Demand Zones
+4. Candlestick Pattern Analysis
+5. Breakout/Fakeout Probability
+6. Order Flow Analysis
+7. Key Levels to Watch
+8. Best Entry Strategy
+9. Stop Loss Placement
+10. Take Profit Targets
+
+Use emojis. Be specific. Max 300 words."""
+        
+        return await self._call_api(prompt)
+    
+    async def _call_api(self, prompt: str) -> Optional[str]:
+        """Call Groq API"""
         try:
             response = await self.client.post(
                 self.API_URL,
@@ -197,46 +314,21 @@ Provide a concise analysis in Persian (فارسی) with emojis. Max 300 words.""
                 },
                 json={
                     "model": self.MODEL,
-                    "messages": [{"role": "user", "content": prompt}],
-                    "max_tokens": 600,
-                    "temperature": 0.7
+                    "messages": [{"role": "system", "content": "You are an elite crypto analyst. Respond only in Persian (فارسی)."}, 
+                                 {"role": "user", "content": prompt}],
+                    "max_tokens": 800,
+                    "temperature": 0.6
                 }
             )
             if response.status_code == 200:
                 return response.json()["choices"][0]["message"]["content"]
-            else:
-                logger.error(f"Groq API error: {response.status_code}")
-                return None
-        except Exception as e:
-            logger.error(f"Groq error: {e}")
+            logger.error(f"Groq API Error: {response.status_code}")
             return None
-    
-    async def educational_content(self) -> Optional[str]:
-        """AI-generated educational content"""
-        if not self.enabled:
-            return None
-        
-        topics = ["technical analysis", "risk management", "candlestick patterns", 
-                  "market psychology", "trading strategy", "DeFi", "blockchain"]
-        topic = random.choice(topics)
-        
-        prompt = f"""Write a professional crypto trading educational post about {topic} in Persian (فارسی).
-Include practical tips, key concepts, and a golden nugget of wisdom.
-Max 250 words. Use emojis. Engaging style."""
-        
-        try:
-            response = await self.client.post(
-                self.API_URL,
-                headers={"Authorization": f"Bearer {cfg.groq_api_key}", "Content-Type": "application/json"},
-                json={"model": self.MODEL, "messages": [{"role": "user", "content": prompt}], "max_tokens": 500, "temperature": 0.8}
-            )
-            if response.status_code == 200:
-                return response.json()["choices"][0]["message"]["content"]
         except Exception as e:
-            logger.error(f"Groq edu error: {e}")
-        return None
+            logger.error(f"Groq Error: {e}")
+            return None
 
-ai = GroqAI()
+ai = GroqAIEngine()
 
 # ============================================================
 # EXCHANGE MANAGER
@@ -248,7 +340,7 @@ class ExchangeManager:
         self.read_only: bool = True
     
     @property
-    def ex(self) -> Optional[ccxt.Exchange]:
+    def exchange(self) -> Optional[ccxt.Exchange]:
         return self._ex
     
     def connect(self) -> bool:
@@ -260,7 +352,7 @@ class ExchangeManager:
             self._ex = ccxt.coinex(params)
             self._ex.load_markets()
             self.connected = True
-            logger.info(f"✅ Exchange: {'FULL' if not self.read_only else 'READ-ONLY'} | Markets: {len(self._ex.markets)}")
+            logger.info(f"✅ Exchange: {'FULL' if not self.read_only else 'READ-ONLY'} | {len(self._ex.markets)} markets")
             return True
         except Exception as e:
             logger.error(f"❌ Exchange: {e}")
@@ -287,36 +379,39 @@ class ExchangeManager:
                 return pd.DataFrame(data, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
         except: return None
 
-ex = ExchangeManager()
+exchange_mgr = ExchangeManager()
 
 # ============================================================
-# TECHNICAL ANALYSIS - 30+ Indicators
+# 25+ TECHNICAL INDICATORS & OSCILLATORS
 # ============================================================
-class UltraAnalysis:
+class TechnicalIndicators:
+    """Complete Technical Analysis Suite - 25+ Indicators"""
+    
     @staticmethod
-    def full(df: pd.DataFrame) -> Dict[str, Any]:
+    def calculate_all(df: pd.DataFrame) -> Dict[str, Any]:
         close = df['close'].astype(float)
         high = df['high'].astype(float)
         low = df['low'].astype(float)
         volume = df['volume'].astype(float)
+        open_ = df['open'].astype(float)
         
         ind = {}
         
-        # Moving Averages
+        # ===== 1-3. MOVING AVERAGES =====
         for p in [7, 14, 20, 50, 100, 200]:
             ind[f'EMA_{p}'] = float(close.ewm(span=p, adjust=False).mean().iloc[-1])
             ind[f'SMA_{p}'] = float(close.rolling(p).mean().iloc[-1])
             if p <= 50 and p <= len(close):
-                w = np.arange(1, p+1)
-                ind[f'WMA_{p}'] = float(np.average(close.iloc[-p:], weights=w))
+                weights = np.arange(1, p+1)
+                ind[f'WMA_{p}'] = float(np.average(close.iloc[-p:], weights=weights))
         
-        # RSI
+        # ===== 4-6. RSI MULTIPLE =====
         from ta.momentum import RSIIndicator
         for p in [7, 14, 21]:
             try: ind[f'RSI_{p}'] = float(RSIIndicator(close, window=p).rsi().iloc[-1])
             except: ind[f'RSI_{p}'] = 50.0
         
-        # MACD
+        # ===== 7. MACD COMPLETE =====
         from ta.trend import MACD
         try:
             macd = MACD(close, 12, 26, 9)
@@ -325,7 +420,7 @@ class UltraAnalysis:
             ind['MACD_HIST'] = float(macd.macd_diff().iloc[-1])
         except: ind['MACD_LINE'] = ind['MACD_SIG'] = ind['MACD_HIST'] = 0.0
         
-        # Stochastic
+        # ===== 8. STOCHASTIC =====
         from ta.momentum import StochasticOscillator
         try:
             stoch = StochasticOscillator(high, low, close, 14, 3)
@@ -333,7 +428,7 @@ class UltraAnalysis:
             ind['STOCH_D'] = float(stoch.stoch_signal().iloc[-1])
         except: ind['STOCH_K'] = ind['STOCH_D'] = 50.0
         
-        # Bollinger
+        # ===== 9. BOLLINGER BANDS =====
         from ta.volatility import BollingerBands
         try:
             bb = BollingerBands(close, 20, 2)
@@ -342,9 +437,11 @@ class UltraAnalysis:
             ind['BB_LOWER'] = float(bb.bollinger_lband().iloc[-1])
             ind['BB_WIDTH'] = float(bb.bollinger_wband().iloc[-1])
             ind['BB_PCT'] = float(bb.bollinger_pband().iloc[-1])
-        except: ind['BB_UPPER'] = ind['BB_MIDDLE'] = ind['BB_LOWER'] = close.iloc[-1]; ind['BB_WIDTH'] = ind['BB_PCT'] = 0.5
+        except:
+            ind['BB_UPPER'] = ind['BB_MIDDLE'] = ind['BB_LOWER'] = close.iloc[-1]
+            ind['BB_WIDTH'] = ind['BB_PCT'] = 0.5
         
-        # Keltner
+        # ===== 10. KELTNER CHANNEL =====
         from ta.volatility import KeltnerChannel
         try:
             kc = KeltnerChannel(high, low, close, 20)
@@ -352,7 +449,7 @@ class UltraAnalysis:
             ind['KC_LOWER'] = float(kc.keltner_channel_lband().iloc[-1])
         except: ind['KC_UPPER'] = ind['KC_LOWER'] = close.iloc[-1]
         
-        # Donchian
+        # ===== 11. DONCHIAN CHANNEL =====
         from ta.volatility import DonchianChannel
         try:
             dc = DonchianChannel(high, low, close, 20)
@@ -360,14 +457,14 @@ class UltraAnalysis:
             ind['DC_LOWER'] = float(dc.donchian_channel_lband().iloc[-1])
         except: ind['DC_UPPER'] = ind['DC_LOWER'] = close.iloc[-1]
         
-        # ATR
+        # ===== 12. ATR =====
         from ta.volatility import AverageTrueRange
         for p in [7, 14]:
             try: ind[f'ATR_{p}'] = float(AverageTrueRange(high, low, close, p).average_true_range().iloc[-1])
             except: ind[f'ATR_{p}'] = close.iloc[-1] * 0.01
         ind['ATR_PCT'] = float(ind['ATR_14'] / close.iloc[-1] * 100)
         
-        # ADX
+        # ===== 13. ADX + DI =====
         from ta.trend import ADXIndicator
         try:
             adx = ADXIndicator(high, low, close, 14)
@@ -376,12 +473,12 @@ class UltraAnalysis:
             ind['DI-'] = float(adx.adx_neg().iloc[-1])
         except: ind['ADX'] = 20.0; ind['DI+'] = ind['DI-'] = 20.0
         
-        # CCI
+        # ===== 14. CCI =====
         from ta.trend import CCIIndicator
         try: ind['CCI'] = float(CCIIndicator(high, low, close, 20).cci().iloc[-1])
         except: ind['CCI'] = 0.0
         
-        # Ichimoku
+        # ===== 15. ICHIMOKU CLOUD =====
         from ta.trend import IchimokuIndicator
         try:
             ichi = IchimokuIndicator(high, low, 9, 26, 52)
@@ -389,9 +486,10 @@ class UltraAnalysis:
             ind['ICH_KIJUN'] = float(ichi.ichimoku_base_line().iloc[-1])
             ind['ICH_SENKOU_A'] = float(ichi.ichimoku_a().iloc[-1])
             ind['ICH_SENKOU_B'] = float(ichi.ichimoku_b().iloc[-1])
-        except: ind['ICH_TENKAN'] = ind['ICH_KIJUN'] = ind['ICH_SENKOU_A'] = ind['ICH_SENKOU_B'] = close.iloc[-1]
+        except:
+            ind['ICH_TENKAN'] = ind['ICH_KIJUN'] = ind['ICH_SENKOU_A'] = ind['ICH_SENKOU_B'] = close.iloc[-1]
         
-        # PSAR
+        # ===== 16. PARABOLIC SAR =====
         from ta.trend import PSARIndicator
         try:
             psar = PSARIndicator(high, low, close)
@@ -399,37 +497,37 @@ class UltraAnalysis:
             ind['PSAR_DIR'] = 1 if close.iloc[-1] > ind['PSAR'] else -1
         except: ind['PSAR'] = close.iloc[-1]; ind['PSAR_DIR'] = 0
         
-        # Williams %R
+        # ===== 17. WILLIAMS %R =====
         from ta.momentum import WilliamsRIndicator
         try: ind['WILLIAMS_R'] = float(WilliamsRIndicator(high, low, close, 14).williams_r().iloc[-1])
         except: ind['WILLIAMS_R'] = -50.0
         
-        # Ultimate Oscillator
+        # ===== 18. ULTIMATE OSCILLATOR =====
         from ta.momentum import UltimateOscillator
         try: ind['ULTIMATE'] = float(UltimateOscillator(high, low, close).ultimate_oscillator().iloc[-1])
         except: ind['ULTIMATE'] = 50.0
         
-        # ROC
+        # ===== 19. ROC =====
         from ta.momentum import ROCIndicator
         try: ind['ROC'] = float(ROCIndicator(close, 12).roc().iloc[-1])
         except: ind['ROC'] = 0.0
         
-        # Awesome Oscillator
+        # ===== 20. AWESOME OSCILLATOR =====
         from ta.momentum import AwesomeOscillatorIndicator
         try: ind['AO'] = float(AwesomeOscillatorIndicator(high, low).awesome_oscillator().iloc[-1])
         except: ind['AO'] = 0.0
         
-        # MFI
+        # ===== 21. MFI =====
         from ta.volume import MFIIndicator
         try: ind['MFI'] = float(MFIIndicator(high, low, close, volume, 14).money_flow_index().iloc[-1])
         except: ind['MFI'] = 50.0
         
-        # OBV
+        # ===== 22. OBV =====
         from ta.volume import OnBalanceVolumeIndicator
         try: ind['OBV'] = float(OnBalanceVolumeIndicator(close, volume).on_balance_volume().iloc[-1])
         except: ind['OBV'] = 0.0
         
-        # Aroon
+        # ===== 23. AROON =====
         from ta.trend import AroonIndicator
         try:
             aroon = AroonIndicator(close, 25)
@@ -437,7 +535,7 @@ class UltraAnalysis:
             ind['AROON_DOWN'] = float(aroon.aroon_down().iloc[-1])
         except: ind['AROON_UP'] = ind['AROON_DOWN'] = 50.0
         
-        # Vortex
+        # ===== 24. VORTEX =====
         from ta.trend import VortexIndicator
         try:
             vortex = VortexIndicator(high, low, close, 14)
@@ -445,20 +543,21 @@ class UltraAnalysis:
             ind['VORTEX-'] = float(vortex.vortex_indicator_neg().iloc[-1])
         except: ind['VORTEX+'] = ind['VORTEX-'] = 1.0
         
-        # TRIX
+        # ===== 25. TRIX =====
         from ta.trend import TRIXIndicator
         try: ind['TRIX'] = float(TRIXIndicator(close, 15).trix().iloc[-1])
         except: ind['TRIX'] = 0.0
         
-        # Volume
+        # ===== VOLUME ANALYSIS =====
         vol_sma = volume.rolling(20).mean().iloc[-1] if len(volume) >= 20 else volume.iloc[-1]
         ind['VOL_RATIO'] = float(volume.iloc[-1] / vol_sma if vol_sma > 0 else 1)
         
-        # Market Metrics
+        # ===== MARKET METRICS =====
         ind['TREND_STR'] = float((close.iloc[-1] - close.iloc[-50]) / close.iloc[-50] * 100) if len(close) >= 50 else 0
         ind['VOLATILITY'] = float(close.pct_change().rolling(14).std().iloc[-1] * 100)
+        ind['MOMENTUM'] = float(close.iloc[-1] - close.iloc[-10]) if len(close) >= 10 else 0
         
-        # Pivot Points
+        # ===== PIVOT POINTS =====
         h, l, c = high.iloc[-1], low.iloc[-1], close.iloc[-1]
         pivot = (h + l + c) / 3
         ind['PIVOT'] = float(pivot)
@@ -467,123 +566,203 @@ class UltraAnalysis:
         ind['R2'] = float(pivot + (h-l))
         ind['S2'] = float(pivot - (h-l))
         
-        # Fibonacci
+        # ===== FIBONACCI =====
         h50 = high.rolling(50).max().iloc[-1] if len(high) >= 50 else high.max()
         l50 = low.rolling(50).min().iloc[-1] if len(low) >= 50 else low.min()
         diff = h50 - l50
-        for lvl in [0.236, 0.382, 0.5, 0.618, 0.786]:
-            ind[f'FIB_{int(lvl*1000)}'] = float(h50 - diff * lvl)
+        for level in [0.236, 0.382, 0.5, 0.618, 0.786]:
+            ind[f'FIB_{int(level*1000)}'] = float(h50 - diff * level)
         
-        # Support/Resistance
+        # ===== SUPPORT/RESISTANCE =====
         ind['SUPPORT'] = float(low.rolling(20).min().iloc[-1]) if len(low) >= 20 else low.min()
         ind['RESISTANCE'] = float(high.rolling(20).max().iloc[-1]) if len(high) >= 20 else high.max()
         
-        # Candles
-        ind.update(UltraAnalysis.candles(df))
+        # ===== CANDLESTICK PATTERNS =====
+        ind.update(TechnicalIndicators.detect_candles(df))
         
-        # Divergence
-        ind['DIVERGENCE'] = UltraAnalysis.divergence(close)
+        # ===== DIVERGENCE =====
+        ind['DIVERGENCE'] = TechnicalIndicators.detect_divergence(close)
         
         return ind
     
     @staticmethod
-    def candles(df: pd.DataFrame) -> Dict[str, bool]:
-        pats = {p: False for p in [
+    def detect_candles(df: pd.DataFrame) -> Dict[str, bool]:
+        patterns = {p: False for p in [
             'DOJI', 'HAMMER', 'SHOOTING_STAR', 'ENGULFING_BULL', 'ENGULFING_BEAR',
-            'MORNING_STAR', 'EVENING_STAR', 'THREE_WHITE', 'THREE_BLACK',
-            'HARAMI_BULL', 'HARAMI_BEAR', 'MARUBOZU_BULL', 'MARUBOZU_BEAR'
+            'MORNING_STAR', 'EVENING_STAR', 'THREE_WHITE_SOLDIERS', 'THREE_BLACK_CROWS',
+            'HARAMI_BULL', 'HARAMI_BEAR', 'PIERCING_LINE', 'DARK_CLOUD_COVER',
+            'MARUBOZU_BULL', 'MARUBOZU_BEAR', 'SPINNING_TOP', 'HANGING_MAN',
+            'INVERTED_HAMMER', 'TWEEZER_TOP', 'TWEEZER_BOTTOM'
         ]}
-        if len(df) < 3: return pats
         
-        o, h, l, c = df['open'].iloc[-1], df['high'].iloc[-1], df['low'].iloc[-1], df['close'].iloc[-1]
-        po, ph, pl, pc = df['open'].iloc[-2], df['high'].iloc[-2], df['low'].iloc[-2], df['close'].iloc[-2]
+        if len(df) < 3:
+            return patterns
+        
+        o = df['open'].iloc[-1]; h = df['high'].iloc[-1]
+        l = df['low'].iloc[-1]; c = df['close'].iloc[-1]
+        po = df['open'].iloc[-2]; ph = df['high'].iloc[-2]
+        pl = df['low'].iloc[-2]; pc = df['close'].iloc[-2]
+        
         body = abs(c - o)
-        tr = h - l
-        if tr == 0: return pats
+        upper = h - max(c, o)
+        lower = min(c, o) - l
+        total_range = h - l
         
-        pats['DOJI'] = body <= tr * 0.08
-        pats['HAMMER'] = ((min(c,o)-l) > body*2) and ((h-max(c,o)) < body*0.5) and body > 0
-        pats['SHOOTING_STAR'] = ((h-max(c,o)) > body*2) and ((min(c,o)-l) < body*0.5) and body > 0
-        pats['ENGULFING_BULL'] = (c > o) and (pc < po) and (o <= pc) and (c >= po)
-        pats['ENGULFING_BEAR'] = (c < o) and (pc > po) and (o >= pc) and (c <= po)
-        pats['MARUBOZU_BULL'] = (c > o) and ((h-c) < body*0.1) and ((o-l) < body*0.1)
-        pats['MARUBOZU_BEAR'] = (c < o) and ((h-o) < body*0.1) and ((c-l) < body*0.1)
+        if total_range == 0:
+            return patterns
+        
+        # Doji
+        patterns['DOJI'] = body <= total_range * 0.08
+        # Spinning Top
+        patterns['SPINNING_TOP'] = 0.08 < body <= total_range * 0.3 and upper > body * 0.3 and lower > body * 0.3
+        # Hammer
+        patterns['HAMMER'] = lower > body * 2 and upper < body * 0.5 and c > o
+        # Hanging Man
+        patterns['HANGING_MAN'] = lower > body * 2 and upper < body * 0.5 and c < o
+        # Shooting Star
+        patterns['SHOOTING_STAR'] = upper > body * 2 and lower < body * 0.5 and c < o
+        # Inverted Hammer
+        patterns['INVERTED_HAMMER'] = upper > body * 2 and lower < body * 0.5 and c > o
+        # Engulfing
+        patterns['ENGULFING_BULL'] = c > o and pc < po and o <= pc and c >= po
+        patterns['ENGULFING_BEAR'] = c < o and pc > po and o >= pc and c <= po
+        # Marubozu
+        patterns['MARUBOZU_BULL'] = c > o and upper < body * 0.1 and lower < body * 0.1
+        patterns['MARUBOZU_BEAR'] = c < o and upper < body * 0.1 and lower < body * 0.1
+        # Piercing Line
+        patterns['PIERCING_LINE'] = pc < po and c > o and o < pl and c > (po + pc) / 2
+        # Dark Cloud Cover
+        patterns['DARK_CLOUD_COVER'] = pc > po and c < o and o > ph and c < (po + pc) / 2
         
         if len(df) >= 3:
-            o3, c3 = df['open'].iloc[-3], df['close'].iloc[-3]
-            pats['MORNING_STAR'] = (pc < po) and (abs(close.iloc[-2]-open.iloc[-2]) < body*0.3) and (c > o)
-            pats['EVENING_STAR'] = (pc > po) and (abs(close.iloc[-2]-open.iloc[-2]) < body*0.3) and (c < o)
-            pats['THREE_WHITE'] = (c > o) and (pc > po) and (c3 > o3) and (c > pc > c3)
-            pats['THREE_BLACK'] = (c < o) and (pc < po) and (c3 < o3) and (c < pc < c3)
+            o3 = df['open'].iloc[-3]; c3 = df['close'].iloc[-3]
+            # Morning Star
+            patterns['MORNING_STAR'] = pc < po and abs(df['close'].iloc[-2] - df['open'].iloc[-2]) < body * 0.3 and c > o
+            # Evening Star
+            patterns['EVENING_STAR'] = pc > po and abs(df['close'].iloc[-2] - df['open'].iloc[-2]) < body * 0.3 and c < o
+            # Three White Soldiers
+            patterns['THREE_WHITE_SOLDIERS'] = c > o and pc > po and c3 > o3 and c > pc > c3
+            # Three Black Crows
+            patterns['THREE_BLACK_CROWS'] = c < o and pc < po and c3 < o3 and c < pc < c3
         
-        return pats
+        return patterns
     
     @staticmethod
-    def divergence(price: pd.Series) -> str:
-        if len(price) < 20: return "NONE"
+    def detect_divergence(price: pd.Series) -> str:
+        if len(price) < 20:
+            return "NONE"
         from ta.momentum import RSIIndicator
-        rsi = RSIIndicator(price, 14).rsi()
-        rp, rr = price.iloc[-20:], rsi.iloc[-20:]
-        if rp.iloc[-1] < rp.min() and rr.iloc[-1] > rr.min(): return "BULLISH"
-        if rp.iloc[-1] > rp.max() and rr.iloc[-1] < rr.max(): return "BEARISH"
+        rsi_series = RSIIndicator(price, 14).rsi()
+        rp = price.iloc[-20:]
+        rr = rsi_series.iloc[-20:]
+        
+        if rp.iloc[-1] < rp.min() and rr.iloc[-1] > rr.min():
+            return "BULLISH_DIVERGENCE"
+        if rp.iloc[-1] > rp.max() and rr.iloc[-1] < rr.max():
+            return "BEARISH_DIVERGENCE"
+        if rp.iloc[-1] > rp.min() and rr.iloc[-1] < rr.min():
+            return "HIDDEN_BULLISH"
+        if rp.iloc[-1] < rp.max() and rr.iloc[-1] > rr.max():
+            return "HIDDEN_BEARISH"
         return "NONE"
+
+ti = TechnicalIndicators()
 
 # ============================================================
 # SIGNAL GENERATOR
 # ============================================================
-class SignalGen:
+class SignalGenerator:
     @staticmethod
     def generate(ind: Dict, price: float, mtf: Dict = None) -> Tuple[str, int, int]:
         score = 0
         
+        # EMA Crossover
         if ind['EMA_7'] > ind['EMA_20'] > ind['EMA_50'] > ind['EMA_200']: score += 200
         elif ind['EMA_7'] > ind['EMA_20'] > ind['EMA_50']: score += 130
         elif ind['EMA_7'] < ind['EMA_20'] < ind['EMA_50'] < ind['EMA_200']: score -= 200
         elif ind['EMA_7'] < ind['EMA_20'] < ind['EMA_50']: score -= 130
         
+        # Ichimoku
         if price > ind['ICH_SENKOU_A'] and price > ind['ICH_SENKOU_B']:
             score += 80 if ind['ICH_TENKAN'] > ind['ICH_KIJUN'] else 40
+        elif price < ind['ICH_SENKOU_A'] and price < ind['ICH_SENKOU_B']:
+            score -= 80 if ind['ICH_TENKAN'] < ind['ICH_KIJUN'] else 40
         
+        # RSI
         rsi = ind['RSI_14']
         if rsi < 25: score += 120
-        elif rsi < 40: score += 60
+        elif rsi < 35: score += 70
+        elif rsi < 45: score += 30
         elif rsi > 75: score -= 120
-        elif rsi > 60: score -= 60
+        elif rsi > 65: score -= 70
+        elif rsi > 55: score -= 30
         
+        # MACD
         if ind['MACD_HIST'] > 0: score += 70
         else: score -= 70
         
-        if ind['STOCH_K'] < 20: score += 70
-        elif ind['STOCH_K'] > 80: score -= 70
+        # Stochastic
+        if ind['STOCH_K'] < 20 and ind['STOCH_D'] < 20: score += 80
+        elif ind['STOCH_K'] > 80 and ind['STOCH_D'] > 80: score -= 80
         
+        # CCI
         cci = ind['CCI']
         if cci < -200: score += 70
+        elif cci < -100: score += 40
         elif cci > 200: score -= 70
+        elif cci > 100: score -= 40
         
+        # Bollinger
         if ind['BB_PCT'] < 0.1: score += 100
         elif ind['BB_PCT'] > 0.9: score -= 100
         
-        if ind['VOL_RATIO'] > 2: score += 50 if score > 0 else -50
+        # ATR Volatility
+        if ind['ATR_PCT'] > 5: score += 40
+        
+        # Volume
+        if ind['VOL_RATIO'] > 2.5: score += 60 if score > 0 else -60
+        elif ind['VOL_RATIO'] > 1.5: score += 40 if score > 0 else -40
+        
+        # MFI
         if ind['MFI'] < 20: score += 60
         elif ind['MFI'] > 80: score -= 60
         
+        # Williams %R
+        if ind['WILLIAMS_R'] < -80: score += 50
+        elif ind['WILLIAMS_R'] > -20: score -= 50
+        
+        # ADX
+        if ind['ADX'] > 25 and ind['DI+'] > ind['DI-']: score += 50
+        elif ind['ADX'] > 25 and ind['DI-'] > ind['DI+']: score -= 50
+        
+        # Candles
         if ind.get('ENGULFING_BULL'): score += 80
         if ind.get('HAMMER'): score += 50
+        if ind.get('MORNING_STAR'): score += 60
+        if ind.get('THREE_WHITE_SOLDIERS'): score += 60
+        if ind.get('PIERCING_LINE'): score += 50
+        if ind.get('MARUBOZU_BULL'): score += 40
         if ind.get('ENGULFING_BEAR'): score -= 80
         if ind.get('SHOOTING_STAR'): score -= 50
-        if ind.get('THREE_WHITE'): score += 60
-        if ind.get('THREE_BLACK'): score -= 60
+        if ind.get('EVENING_STAR'): score -= 60
+        if ind.get('THREE_BLACK_CROWS'): score -= 60
+        if ind.get('DARK_CLOUD_COVER'): score -= 50
+        if ind.get('MARUBOZU_BEAR'): score -= 40
         
-        if ind.get('DIVERGENCE') == 'BULLISH': score += 60
-        elif ind.get('DIVERGENCE') == 'BEARISH': score -= 60
+        # Divergence
+        div = ind.get('DIVERGENCE', 'NONE')
+        if div == 'BULLISH_DIVERGENCE': score += 70
+        elif div == 'BEARISH_DIVERGENCE': score -= 70
+        elif div == 'HIDDEN_BULLISH': score += 40
+        elif div == 'HIDDEN_BEARISH': score -= 40
         
-        # Multi-Timeframe Confirmation
+        # MTF
         if mtf:
-            for tf, ti in mtf.items():
+            for tf, ti_data in mtf.items():
                 w = {"5m": 0.3, "15m": 0.5, "30m": 0.7, "1h": 1.0, "2h": 1.2, "4h": 1.5, "6h": 1.8, "12h": 2.0, "1d": 2.5, "3d": 3.0, "1w": 4.0}.get(tf, 0.5)
-                if ti.get('RSI_14', 50) > 55: score += int(25 * w)
-                elif ti.get('RSI_14', 50) < 45: score -= int(25 * w)
-                if ti.get('MACD_HIST', 0) > 0: score += int(18 * w)
+                if ti_data.get('RSI_14', 50) > 55: score += int(25 * w)
+                elif ti_data.get('RSI_14', 50) < 45: score -= int(25 * w)
+                if ti_data.get('MACD_HIST', 0) > 0: score += int(18 * w)
                 else: score -= int(18 * w)
         
         score = max(-1000, min(1000, score))
@@ -597,17 +776,8 @@ class SignalGen:
         elif score <= -300: return "فروش 🔴🔴🔴", 82, score
         elif score <= -150: return "فروش ضعیف 🔴🔴", 68, score
         else: return "خنثی ⚪⚪", 50, score
-    
-    @staticmethod
-    def mtf_summary(mtf: Dict) -> str:
-        """Generate MTF summary for AI"""
-        summary = []
-        for tf, ind in mtf.items():
-            rsi = ind.get('RSI_14', 50)
-            macd = "صعودی" if ind.get('MACD_HIST', 0) > 0 else "نزولی"
-            trend = "صعودی" if ind.get('EMA_20', 0) > ind.get('EMA_50', 0) else "نزولی"
-            summary.append(f"{tf}: RSI={rsi:.0f} MACD={macd} Trend={trend}")
-        return " | ".join(summary)
+
+sg = SignalGenerator()
 
 # ============================================================
 # TRADING ENGINE
@@ -618,12 +788,11 @@ class TradingEngine:
         self.positions: Dict[str, Dict] = {}
         self.history: List[Dict] = []
         self.consecutive_losses = 0
-        self.daily_pnl = 0.0
         self.load()
     
     def load(self):
         try:
-            with open('trades_ai.json', 'r') as f:
+            with open('trades_v7.json', 'r') as f:
                 d = json.load(f)
                 self.balance = d.get('balance', cfg.initial_balance)
                 self.history = d.get('history', [])
@@ -631,18 +800,22 @@ class TradingEngine:
     
     def save(self):
         try:
-            with open('trades_ai.json', 'w') as f:
+            with open('trades_v7.json', 'w') as f:
                 json.dump({'balance': self.balance, 'history': self.history[-500:]}, f)
         except: pass
     
     def calc_size(self, entry: float, sl: float, conf: int) -> float:
-        risk = self.balance * cfg.risk_per_trade * (1.5 if conf >= 90 else 1.2 if conf >= 80 else 0.8)
+        risk = self.balance * cfg.risk_per_trade
+        if conf >= 90: risk *= 1.5
+        elif conf >= 80: risk *= 1.2
+        elif conf < 65: risk *= 0.5
         if self.consecutive_losses > 0: risk *= (0.5 ** self.consecutive_losses)
         pr = abs(entry - sl)
         return min(risk/pr, self.balance*0.25/entry) if pr > 0 else 0
     
     def open(self, symbol: str, entry: float, sl: float, tp: float, conf: int) -> Optional[Dict]:
-        if len(self.positions) >= cfg.max_positions or self.consecutive_losses >= 5: return None
+        if len(self.positions) >= cfg.max_positions: return None
+        if self.consecutive_losses >= cfg.max_consecutive_losses: return None
         sz = self.calc_size(entry, sl, conf)
         if sz <= 0 or sz*entry > self.balance: return None
         self.balance -= sz * entry
@@ -656,7 +829,7 @@ class TradingEngine:
         if symbol not in self.positions: return None
         p = self.positions[symbol]
         p['high'] = max(p['high'], price)
-        if (price - p['entry']) / p['entry'] > cfg.trailing_pct:
+        if (price-p['entry'])/p['entry'] > cfg.trailing_pct:
             p['sl'] = p['high'] * (1 - cfg.trailing_pct)
         if price >= p['tp']: return self.close(symbol, price, "TAKE_PROFIT")
         if price <= p['sl']: return self.close(symbol, price, "STOP_LOSS")
@@ -670,7 +843,7 @@ class TradingEngine:
         t = {'symbol': symbol, 'entry': p['entry'], 'exit': price, 'pnl': pnl, 'reason': reason, 'time': datetime.now().isoformat()}
         self.history.append(t)
         self.save()
-        logger.info(f"{'🟢' if pnl>0 else '🔴'} CLOSE {symbol} | ${pnl:+.2f}")
+        logger.info(f"{'🟢' if pnl>0 else '🔴'} CLOSE {symbol} | ${pnl:+.2f} | {reason}")
         return t
 
 trader = TradingEngine()
@@ -693,59 +866,103 @@ class Cache:
 # ============================================================
 # FORMATTER
 # ============================================================
-class Fmt:
+class Formatter:
     @staticmethod
-    def signal(a: Dict, ai_analysis: str = None) -> str:
-        s = a['symbol'].replace('/USDT','')
-        i = a['indicators']
-        pats = [k for k,v in i.items() if isinstance(v,bool) and v]
+    def signal_msg(analysis: Dict, ai_tech: str = None, ai_fund: str = None, ai_pa: str = None) -> str:
+        s = analysis['symbol'].replace('/USDT','')
+        i = analysis['indicators']
+        pats = [k.replace('_',' ') for k,v in i.items() if isinstance(v,bool) and v]
         
         msg = f"""
 ╔══════════════════════════════════════════════╗
 ║       🔥 سیگنال {s} 🔥                  ║
 ╚══════════════════════════════════════════════╝
 
-💰 قیمت: ${a['price']:,.4f} | 📊 تغییر: {a['change']:+.2f}%
+💰 قیمت: ${analysis['price']:,.4f}
+📊 تغییر: {analysis['change']:+.2f}%
 
-🎯 *سیگنال:* {a['signal']}
-💪 اطمینان: {a['confidence']}% | امتیاز: {a['score']}/1000
+🎯 *سیگنال:* {analysis['signal']}
+💪 اطمینان: {analysis['confidence']}% | امتیاز: {analysis['score']}/1000
 
 📈 *اندیکاتورها:*
 • RSI(14): {i['RSI_14']:.1f} | RSI(7): {i['RSI_7']:.1f}
 • MACD: {'صعودی' if i['MACD_HIST']>0 else 'نزولی'}
-• ADX: {i['ADX']:.1f} | CCI: {i['CCI']:.1f}
-• MFI: {i['MFI']:.1f} | ATR: {i['ATR_14']:.4f}
-• BB Width: {i['BB_WIDTH']:.4f} | Vol: {i['VOL_RATIO']:.1f}x
+• ADX: {i['ADX']:.1f} | DI+: {i['DI+']:.1f} | DI-: {i['DI-']:.1f}
+• CCI: {i['CCI']:.1f} | MFI: {i['MFI']:.1f}
+• Stoch K: {i['STOCH_K']:.1f} | Stoch D: {i['STOCH_D']:.1f}
+• ATR: {i['ATR_14']:.4f} | Vol: {i['VOL_RATIO']:.1f}x
+• BB Width: {i['BB_WIDTH']:.4f} | %B: {i['BB_PCT']:.2f}
+• Williams %R: {i['WILLIAMS_R']:.1f}
 
 🕯️ *الگوها:* {', '.join(pats) if pats else 'بدون الگو'}
 🔄 *واگرایی:* {i.get('DIVERGENCE','NONE')}
 
 🔑 *سطوح:*
-• مقاومت: ${i['RESISTANCE']:,.4f}
+• مقاومت: ${i['RESISTANCE']:,.4f} | R1: ${i['R1']:,.4f}
 • پیوت: ${i['PIVOT']:,.4f}
-• حمایت: ${i['SUPPORT']:,.4f}
+• حمایت: ${i['SUPPORT']:,.4f} | S1: ${i['S1']:,.4f}
+• Fib 0.618: ${i.get('FIB_618',0):,.4f}
 
-⚠️ حد ضرر: ${a['price']-i['ATR_14']*cfg.atr_sl:,.4f}
-🎯 حد سود: ${a['price']+i['ATR_14']*cfg.atr_tp:,.4f}"""
-
-        if ai_analysis:
+⚠️ حد ضرر: ${analysis['price']-i['ATR_14']*cfg.atr_sl:,.4f}
+🎯 حد سود: ${analysis['price']+i['ATR_14']*cfg.atr_tp:,.4f}
+📊 ریسک/ریوارد: 1:{cfg.atr_tp/cfg.atr_sl:.1f}"""
+        
+        if ai_tech:
             msg += f"""
 
-🧠 *تحلیل هوش مصنوعی:*
-{ai_analysis}"""
+🧠 *تحلیل تکنیکال AI:*
+{ai_tech[:500]}..."""
+        
+        if ai_pa:
+            msg += f"""
+
+📊 *تحلیل پرایس اکشن AI:*
+{ai_pa[:400]}..."""
+        
+        if ai_fund:
+            msg += f"""
+
+📰 *تحلیل فاندامنتال AI:*
+{ai_fund[:300]}..."""
         
         msg += f"""
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━
-⏰ {datetime.now().strftime('%H:%M:%S')} | ✨ @CryptoPulse606"""
+⏰ {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+✨ @CryptoPulse606"""
+        
         return msg
     
     @staticmethod
-    def edu(ai_content: str = None) -> str:
-        if ai_content:
-            return f"🧠 *تحلیل هوشمند*\n\n{ai_content}\n\n━━━━━━━━━━━━━━━━━━━━━━\n✨ @CryptoPulse606 | {datetime.now().strftime('%H:%M')}"
-        topics = ["تحلیل تکنیکال", "مدیریت ریسک", "روانشناسی بازار", "الگوهای کندلی", "استراتژی معاملاتی"]
-        return f"📚 *آموزش*\n\n📖 {random.choice(topics)}\n\n🔍 همیشه روند را دنبال کنید\n💰 ریسک را مدیریت کنید\n📊 صبور باشید\n\n━━━━━━━━━━━━━━━━━━━━━━\n✨ @CryptoPulse606"
+    def edu_msg() -> str:
+        topics = [
+            "تحلیل تکنیکال", "پرایس اکشن", "فاندامنتال",
+            "مدیریت ریسک", "روانشناسی بازار", "الگوهای کندلی",
+            "استراتژی معاملاتی", "ایچیموکو", "فیبوناچی",
+            "بولینگر باند", "مکدی", "آراس‌آی"
+        ]
+        return f"""
+📚 *آموزش تخصصی*
+
+📖 {random.choice(topics)}
+
+🔍 *اصول طلایی:*
+۱. روند دوست شماست
+۲. ریسک/ریوارد ≥ ۱:۲
+۳. حداکثر ۲٪ ریسک
+۴. حد ضرر اجباری
+۵. بعد ۳ ضرر استراحت
+۶. ژورنال معاملاتی
+۷. صبوری = سودآوری
+
+💡 *رمز موفقیت:*
+۲۰٪ استراتژی + ۳۰٪ ریسک + ۵۰٪ روانشناسی
+
+━━━━━━━━━━━━━━━━━━━━━━
+✨ @CryptoPulse606 | {datetime.now().strftime('%H:%M')}
+"""
+
+fmt = Formatter()
 
 # ============================================================
 # MENUS
@@ -757,9 +974,12 @@ class Menu:
             [InlineKeyboardButton("📊 قیمت‌ها", callback_data="p"),
              InlineKeyboardButton("🎯 سیگنال BTC", callback_data="s_BTC/USDT"),
              InlineKeyboardButton("🔍 اسکن", callback_data="scan")],
-            [InlineKeyboardButton("📈 تحلیل", callback_data="tech"),
+            [InlineKeyboardButton("📈 تحلیل تکنیکال", callback_data="tech"),
              InlineKeyboardButton("⏰ مولتی‌تایم", callback_data="mtf"),
-             InlineKeyboardButton("🧠 AI تحلیل", callback_data="ai")],
+             InlineKeyboardButton("🧠 AI تحلیل", callback_data="ai_BTC/USDT")],
+            [InlineKeyboardButton("📰 فاندامنتال AI", callback_data="fund_BTC/USDT"),
+             InlineKeyboardButton("📊 پرایس اکشن AI", callback_data="pa_BTC/USDT"),
+             InlineKeyboardButton("🔮 پیش‌بینی", callback_data="pred_BTC/USDT")],
             [InlineKeyboardButton("💰 پورتفوی", callback_data="port"),
              InlineKeyboardButton("📊 عملکرد", callback_data="perf"),
              InlineKeyboardButton("📋 تاریخچه", callback_data="hist")],
@@ -767,29 +987,17 @@ class Menu:
              InlineKeyboardButton("⚙️ تنظیمات", callback_data="set"),
              InlineKeyboardButton("🔑 وضعیت", callback_data="status")],
             [InlineKeyboardButton("📚 آموزش", callback_data="edu"),
-             InlineKeyboardButton("📰 بازار", callback_data="market"),
-             InlineKeyboardButton("🕯️ الگوها", callback_data="patt")],
-            [InlineKeyboardButton("🔮 پیش‌بینی", callback_data="pred"),
-             InlineKeyboardButton("⏸️ توقف", callback_data="stop"),
-             InlineKeyboardButton("🔄 بروز", callback_data="ref")],
-            [InlineKeyboardButton("❓ راهنما", callback_data="help")]
+             InlineKeyboardButton("🕯️ الگوها", callback_data="patt"),
+             InlineKeyboardButton("⏸️ توقف", callback_data="stop")],
+            [InlineKeyboardButton("🔄 بروزرسانی", callback_data="ref"),
+             InlineKeyboardButton("❓ راهنما", callback_data="help")]
         ])
     
     @staticmethod
     def technical() -> InlineKeyboardMarkup:
         kb, row = [], []
-        for s in cfg.symbols[:16]:
+        for s in cfg.symbols[:20]:
             row.append(InlineKeyboardButton(s.replace('/USDT',''), callback_data=f"s_{s}"))
-            if len(row) == 4: kb.append(row); row = []
-        if row: kb.append(row)
-        kb.append([InlineKeyboardButton("🔙", callback_data="back")])
-        return InlineKeyboardMarkup(kb)
-    
-    @staticmethod
-    def timeframes() -> InlineKeyboardMarkup:
-        kb, row = [], []
-        for tf in cfg.timeframes:
-            row.append(InlineKeyboardButton(tf, callback_data=f"tf_{tf}"))
             if len(row) == 4: kb.append(row); row = []
         if row: kb.append(row)
         kb.append([InlineKeyboardButton("🔙", callback_data="back")])
@@ -798,50 +1006,51 @@ class Menu:
 # ============================================================
 # HANDLERS
 # ============================================================
-async def start_cmd(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+async def cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "🤖 *Crypto Pulse AI v6.0*\n\n"
-        "✨ ۳۰+ اندیکاتور | ۱۱ تایم‌فریم\n"
-        "🧠 هوش مصنوعی Groq | لاما 3.3\n"
-        "✨ ۳۰ ارز | ۷۰+ دکمه\n"
-        "✨ معاملات دمو و واقعی\n\n"
+        "🤖 *Crypto Pulse Ultimate AI v7.0*\n\n"
+        "🧠 Groq AI (Llama 3.3 70B)\n"
+        "📊 ۲۵+ اندیکاتور قدرتمند\n"
+        "⏰ ۱۱ تایم‌فریم | ۳۰ ارز\n"
+        "📰 تحلیل تکنیکال + فاندامنتال + پرایس اکشن\n"
+        "📢 سیگنال خودکار هر ۱۰ دقیقه\n\n"
         "👇 انتخاب کنید:",
         parse_mode="Markdown", reply_markup=Menu.main()
     )
 
-async def signal_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE, symbol: str = "BTC/USDT"):
+async def full_signal_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE, symbol: str = "BTC/USDT"):
     q = update.callback_query
     await q.answer()
-    await q.edit_message_text(f"🔄 تحلیل {symbol.replace('/USDT','')}...")
+    await q.edit_message_text(f"🔄 تحلیل کامل {symbol.replace('/USDT','')}...")
     
-    if not ex.connected: ex.connect()
+    if not exchange_mgr.connected: exchange_mgr.connect()
     
-    t = ex.ticker(symbol)
-    df = ex.ohlcv(symbol, '1h', 200)
+    t = exchange_mgr.ticker(symbol)
+    df = exchange_mgr.ohlcv(symbol, '1h', 200)
     if not t or df is None:
         await q.edit_message_text("❌ خطا", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]]))
         return
     
-    ind = UltraAnalysis.full(df)
+    ind = ti.calculate_all(df)
     
-    # Multi-Timeframe Analysis
+    # MTF
     mtf = {}
     for tf_name, tf_val in cfg.timeframes.items():
-        dft = ex.ohlcv(symbol, tf_val, 100)
-        if dft is not None:
-            mtf[tf_name] = UltraAnalysis.full(dft)
+        dft = exchange_mgr.ohlcv(symbol, tf_val, 100)
+        if dft is not None: mtf[tf_name] = ti.calculate_all(dft)
     
-    sig, conf, score = SignalGen.generate(ind, t['last'], mtf)
+    sig, conf, score = sg.generate(ind, t['last'], mtf)
     pats = [k for k,v in ind.items() if isinstance(v,bool) and v]
-    mtf_summ = SignalGen.mtf_summary(mtf)
     
-    # AI Analysis
-    ai_analysis = await ai.analyze(symbol, ind, t['last'], t.get('percentage',0), pats, mtf_summ)
+    # AI Analyses
+    ai_tech = await ai.technical_analysis(symbol, ind, t['last'], t.get('percentage',0), pats, mtf)
+    ai_fund = await ai.fundamental_analysis(symbol, t['last'], t.get('percentage',0))
+    ai_pa = await ai.price_action_analysis(symbol, ind, t['last'], pats)
     
-    a = {'symbol': symbol, 'price': t['last'], 'change': t.get('percentage',0),
-         'indicators': ind, 'signal': sig, 'confidence': conf, 'score': score}
+    analysis = {'symbol': symbol, 'price': t['last'], 'change': t.get('percentage',0),
+                'indicators': ind, 'signal': sig, 'confidence': conf, 'score': score}
     
-    msg = Fmt.signal(a, ai_analysis)
+    msg = fmt.signal_msg(analysis, ai_tech, ai_fund, ai_pa)
     
     await q.edit_message_text(msg, parse_mode="Markdown",
         reply_markup=InlineKeyboardMarkup([[
@@ -851,52 +1060,91 @@ async def signal_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE, symbol:
             InlineKeyboardButton("🔙", callback_data="back")
         ]]))
 
-async def ai_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE, symbol: str = "BTC/USDT"):
+async def ai_tech_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE, symbol: str = "BTC/USDT"):
     q = update.callback_query
     await q.answer()
-    await q.edit_message_text("🧠 تحلیل هوش مصنوعی...")
+    await q.edit_message_text(f"🧠 تحلیل تکنیکال AI برای {symbol.replace('/USDT','')}...")
     
-    if not ai.enabled:
-        await q.edit_message_text("❌ هوش مصنوعی فعال نیست. کلید GROQ_API_KEY را تنظیم کنید.",
-            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]]))
-        return
-    
-    t = ex.ticker(symbol)
-    df = ex.ohlcv(symbol, '1h', 200)
+    t = exchange_mgr.ticker(symbol)
+    df = exchange_mgr.ohlcv(symbol, '1h', 200)
     if not t or df is None:
         await q.edit_message_text("❌ خطا", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]]))
         return
     
-    ind = UltraAnalysis.full(df)
-    mtf = {}
-    for tf_name, tf_val in cfg.timeframes.items():
-        dft = ex.ohlcv(symbol, tf_val, 100)
-        if dft is not None: mtf[tf_name] = UltraAnalysis.full(dft)
-    
+    ind = ti.calculate_all(df)
     pats = [k for k,v in ind.items() if isinstance(v,bool) and v]
-    mtf_summ = SignalGen.mtf_summary(mtf)
+    mtf = {}
+    for tf_name, tf_val in list(cfg.timeframes.items())[:6]:
+        dft = exchange_mgr.ohlcv(symbol, tf_val, 100)
+        if dft is not None: mtf[tf_name] = ti.calculate_all(dft)
     
-    ai_analysis = await ai.analyze(symbol, ind, t['last'], t.get('percentage',0), pats, mtf_summ)
+    ai_tech = await ai.technical_analysis(symbol, ind, t['last'], t.get('percentage',0), pats, mtf)
     
-    if ai_analysis:
-        await q.edit_message_text(f"🧠 *تحلیل AI برای {symbol.replace('/USDT','')}*\n\n{ai_analysis}\n\n━━━━━━━━━━━━━━━━━━━━━━\n✨ @CryptoPulse606",
+    if ai_tech:
+        await q.edit_message_text(f"🧠 *تحلیل تکنیکال AI - {symbol.replace('/USDT','')}*\n\n{ai_tech}\n\n━━━━━━━━━━━━━━━━━━━━━━\n✨ @CryptoPulse606",
             parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[
                 InlineKeyboardButton("🔄", callback_data=f"ai_{symbol}"),
                 InlineKeyboardButton("📊 سیگنال", callback_data=f"s_{symbol}"),
                 InlineKeyboardButton("🔙", callback_data="back")
             ]]))
     else:
-        await q.edit_message_text("❌ خطا در تحلیل AI", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]]))
+        await q.edit_message_text("❌ AI فعال نیست. GROQ_API_KEY را تنظیم کنید.",
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]]))
+
+async def ai_fundamental_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE, symbol: str = "BTC/USDT"):
+    q = update.callback_query
+    await q.answer()
+    await q.edit_message_text(f"📰 تحلیل فاندامنتال AI...")
+    
+    t = exchange_mgr.ticker(symbol)
+    if not t:
+        await q.edit_message_text("❌ خطا", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]]))
+        return
+    
+    ai_fund = await ai.fundamental_analysis(symbol, t['last'], t.get('percentage',0))
+    
+    if ai_fund:
+        await q.edit_message_text(f"📰 *فاندامنتال AI - {symbol.replace('/USDT','')}*\n\n{ai_fund}\n\n━━━━━━━━━━━━━━━━━━━━━━\n✨ @CryptoPulse606",
+            parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[
+                InlineKeyboardButton("🔄", callback_data=f"fund_{symbol}"),
+                InlineKeyboardButton("🔙", callback_data="back")
+            ]]))
+    else:
+        await q.edit_message_text("❌ AI فعال نیست.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]]))
+
+async def ai_price_action_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE, symbol: str = "BTC/USDT"):
+    q = update.callback_query
+    await q.answer()
+    await q.edit_message_text(f"📊 تحلیل پرایس اکشن AI...")
+    
+    t = exchange_mgr.ticker(symbol)
+    df = exchange_mgr.ohlcv(symbol, '1h', 200)
+    if not t or df is None:
+        await q.edit_message_text("❌ خطا", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]]))
+        return
+    
+    ind = ti.calculate_all(df)
+    pats = [k for k,v in ind.items() if isinstance(v,bool) and v]
+    ai_pa = await ai.price_action_analysis(symbol, ind, t['last'], pats)
+    
+    if ai_pa:
+        await q.edit_message_text(f"📊 *پرایس اکشن AI - {symbol.replace('/USDT','')}*\n\n{ai_pa}\n\n━━━━━━━━━━━━━━━━━━━━━━\n✨ @CryptoPulse606",
+            parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[
+                InlineKeyboardButton("🔄", callback_data=f"pa_{symbol}"),
+                InlineKeyboardButton("🔙", callback_data="back")
+            ]]))
+    else:
+        await q.edit_message_text("❌ AI فعال نیست.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]]))
 
 async def prices_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query
     await q.answer()
     await q.edit_message_text("🔄 دریافت...")
-    if not ex.connected: ex.connect()
+    if not exchange_mgr.connected: exchange_mgr.connect()
     
     txt = "💰 *قیمت‌ها*\n\n"
     for sym in cfg.symbols[:20]:
-        t = ex.ticker(sym)
+        t = exchange_mgr.ticker(sym)
         if t:
             e = "🟢" if t.get('percentage',0)>0 else "🔴"
             txt += f"{e} {sym.replace('/USDT','')}: ${t['last']:,.4f} ({t.get('percentage',0):+.1f}%)\n"
@@ -907,21 +1155,21 @@ async def prices_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 async def scan_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query
     await q.answer()
-    await q.edit_message_text("🔍 اسکن...")
-    if not ex.connected: ex.connect()
+    await q.edit_message_text("🔍 اسکن ۳۰ ارز...")
+    if not exchange_mgr.connected: exchange_mgr.connect()
     
     res = []
     for sym in cfg.symbols:
-        t = ex.ticker(sym)
-        df = ex.ohlcv(sym, '1h', 100)
+        t = exchange_mgr.ticker(sym)
+        df = exchange_mgr.ohlcv(sym, '1h', 100)
         if t and df is not None:
-            ind = UltraAnalysis.full(df)
-            sig, conf, score = SignalGen.generate(ind, t['last'])
+            ind = ti.calculate_all(df)
+            sig, conf, score = sg.generate(ind, t['last'])
             res.append({'symbol': sym, 'price': t['last'], 'signal': sig, 'confidence': conf, 'score': score})
     
     res.sort(key=lambda x: abs(x['score']), reverse=True)
     
-    txt = "🔍 *اسکن*\n\n"
+    txt = "🔍 *اسکن بازار*\n\n"
     for i, r in enumerate(res[:15], 1):
         e = "🟢" if "خرید" in r['signal'] else "🔴" if "فروش" in r['signal'] else "⚪"
         txt += f"{i}. {e} {r['symbol'].replace('/USDT','')}: ${r['price']:,.4f} | {r['signal'][:12]} | {r['confidence']}%\n"
@@ -933,12 +1181,12 @@ async def trade_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE, symbol: 
     q = update.callback_query
     await q.answer()
     
-    t = ex.ticker(symbol)
-    df = ex.ohlcv(symbol, '1h', 200)
+    t = exchange_mgr.ticker(symbol)
+    df = exchange_mgr.ohlcv(symbol, '1h', 200)
     if not t or df is None: await q.answer("❌"); return
     
-    ind = UltraAnalysis.full(df)
-    sig, conf, _ = SignalGen.generate(ind, t['last'])
+    ind = ti.calculate_all(df)
+    sig, conf, _ = sg.generate(ind, t['last'])
     
     if conf < 60: await q.answer("⚠️ اطمینان کم"); return
     
@@ -952,50 +1200,6 @@ async def trade_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE, symbol: 
             parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]]))
     else:
         await q.answer("⚠️ شرایط فراهم نیست", show_alert=True)
-
-async def mtf_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-    q = update.callback_query
-    await q.answer()
-    await q.edit_message_text("⏰ *تایم‌فریم‌ها*\n\n۵m | ۱۵m | ۳۰m\n۱h | ۲h | ۴h\n۶h | ۱۲h | ۱d\n۳d | ۱w\n\nانتخاب کنید:",
-        parse_mode="Markdown", reply_markup=Menu.timeframes())
-
-async def tf_analysis_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE, tf: str):
-    q = update.callback_query
-    await q.answer()
-    await q.edit_message_text(f"🔄 تحلیل تایم‌فریم {tf} برای BTC...")
-    
-    t = ex.ticker("BTC/USDT")
-    df = ex.ohlcv("BTC/USDT", tf, 200)
-    if not t or df is None:
-        await q.edit_message_text("❌ خطا", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="mtf")]]))
-        return
-    
-    ind = UltraAnalysis.full(df)
-    sig, conf, score = SignalGen.generate(ind, t['last'])
-    pats = [k for k,v in ind.items() if isinstance(v,bool) and v]
-    
-    txt = f"""
-⏰ *تحلیل تایم‌فریم {tf}*
-
-💰 BTC: ${t['last']:,.4f}
-🎯 سیگنال: {sig} | اطمینان: {conf}%
-
-📈 RSI(14): {ind['RSI_14']:.1f}
-📊 MACD: {'صعودی' if ind['MACD_HIST']>0 else 'نزولی'}
-📉 ADX: {ind['ADX']:.1f}
-🕯️ الگوها: {', '.join(pats) if pats else 'بدون الگو'}
-
-🔑 حمایت: ${ind['SUPPORT']:,.4f}
-🔑 مقاومت: ${ind['RESISTANCE']:,.4f}
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━
-✨ @CryptoPulse606
-"""
-    await q.edit_message_text(txt, parse_mode="Markdown",
-        reply_markup=InlineKeyboardMarkup([[
-            InlineKeyboardButton("🔄", callback_data=f"tf_{tf}"),
-            InlineKeyboardButton("🔙", callback_data="mtf")
-        ]]))
 
 async def portfolio_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query
@@ -1011,10 +1215,11 @@ async def portfolio_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         txt += "\n\n*باز:*\n"
         for s, p in trader.positions.items():
             try:
-                ct = ex.ticker(s)
+                ct = exchange_mgr.ticker(s)
                 cp = ct['last']; pp = (cp-p['entry'])/p['entry']*100
                 txt += f"• {s.replace('/USDT','')}: ${cp:,.4f} | {pp:+.1f}%\n"
-            except: txt += f"• {s.replace('/USDT','')}: ${p['entry']:,.4f}\n"
+            except:
+                txt += f"• {s.replace('/USDT','')}: ${p['entry']:,.4f}\n"
     
     await q.edit_message_text(txt, parse_mode="Markdown",
         reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔄", callback_data="port"), InlineKeyboardButton("🔙", callback_data="back")]]))
@@ -1022,12 +1227,7 @@ async def portfolio_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 async def edu_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query
     await q.answer()
-    await q.edit_message_text("🧠 تولید محتوا با AI...")
-    
-    ai_content = await ai.educational_content()
-    msg = Fmt.edu(ai_content)
-    
-    await q.edit_message_text(msg, parse_mode="Markdown",
+    await q.edit_message_text(fmt.edu_msg(), parse_mode="Markdown",
         reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔄", callback_data="edu"), InlineKeyboardButton("🔙", callback_data="back")]]))
 
 async def auto_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
@@ -1045,7 +1245,7 @@ async def settings_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query
     await q.answer()
     await q.edit_message_text(
-        f"⚙️ *تنظیمات*\n🔌 صرافی: {'✅' if ex.connected else '❌'}\n🧠 AI: {'✅' if ai.enabled else '❌'}\n📢 کانال: {cfg.channel_id or '❌'}\n📊 ارز: {len(cfg.symbols)}\n⏰ TF: {len(cfg.timeframes)}",
+        f"⚙️ *تنظیمات*\n🔌 صرافی: {'✅' if exchange_mgr.connected else '❌'}\n🧠 AI: {'✅' if ai.enabled else '❌'}\n📢 کانال: {cfg.channel_id or '❌'}\n📊 ارز: {len(cfg.symbols)}\n⏰ TF: {len(cfg.timeframes)}",
         parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]]))
 
 async def button_router(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
@@ -1054,39 +1254,33 @@ async def button_router(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     try:
         if d == "back": await q.edit_message_text("🤖 *منو*", parse_mode="Markdown", reply_markup=Menu.main())
         elif d == "p": await prices_handler(update, ctx)
-        elif d.startswith("s_"): await signal_handler(update, ctx, d[2:])
-        elif d.startswith("ai_"): await ai_handler(update, ctx, d[3:] if len(d) > 3 else "BTC/USDT")
-        elif d == "ai": await ai_handler(update, ctx)
+        elif d.startswith("s_"): await full_signal_handler(update, ctx, d[2:])
+        elif d.startswith("ai_"): await ai_tech_handler(update, ctx, d[3:] if len(d)>3 else "BTC/USDT")
+        elif d == "ai": await ai_tech_handler(update, ctx)
+        elif d.startswith("fund_"): await ai_fundamental_handler(update, ctx, d[5:] if len(d)>5 else "BTC/USDT")
+        elif d.startswith("pa_"): await ai_price_action_handler(update, ctx, d[3:] if len(d)>3 else "BTC/USDT")
+        elif d.startswith("pred_"): await full_signal_handler(update, ctx, d[5:] if len(d)>5 else "BTC/USDT")
         elif d == "scan": await scan_handler(update, ctx)
-        elif d == "top": await scan_handler(update, ctx)
         elif d == "tech": await q.edit_message_text("📈 *انتخاب:*", parse_mode="Markdown", reply_markup=Menu.technical())
-        elif d == "mtf": await mtf_handler(update, ctx)
-        elif d.startswith("tf_"): await tf_analysis_handler(update, ctx, d[3:])
         elif d.startswith("trade_"): await trade_handler(update, ctx, d[6:])
         elif d == "port": await portfolio_handler(update, ctx)
         elif d in ["perf", "hist"]: await portfolio_handler(update, ctx)
         elif d == "auto": await auto_handler(update, ctx)
-        elif d == "td":
-            cfg.demo_trading = not cfg.demo_trading
-            await auto_handler(update, ctx)
+        elif d == "td": cfg.demo_trading = not cfg.demo_trading; await auto_handler(update, ctx)
         elif d == "tr":
-            if ex.read_only: await q.answer("❌ API نیست"); return
-            cfg.real_trading = not cfg.real_trading
-            await auto_handler(update, ctx)
+            if exchange_mgr.read_only: await q.answer("❌ API نیست"); return
+            cfg.real_trading = not cfg.real_trading; await auto_handler(update, ctx)
         elif d == "set": await settings_handler(update, ctx)
         elif d == "status": await settings_handler(update, ctx)
         elif d == "edu": await edu_handler(update, ctx)
-        elif d == "market": await scan_handler(update, ctx)
-        elif d == "patt": await signal_handler(update, ctx)
-        elif d == "pred": await ai_handler(update, ctx)
+        elif d == "patt": await full_signal_handler(update, ctx)
         elif d == "stop":
             for s in list(trader.positions.keys()):
-                t = ex.ticker(s)
+                t = exchange_mgr.ticker(s)
                 if t: trader.close(s, t['last'], "EMERGENCY")
             await q.edit_message_text("⏸️ بسته شد", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]]))
         elif d == "ref": await q.edit_message_text("🤖 *منو*", parse_mode="Markdown", reply_markup=Menu.main())
-        elif d == "help":
-            await q.edit_message_text("❓ /start", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]]))
+        elif d == "help": await q.edit_message_text("❓ /start", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]]))
         else: await q.answer("⚡")
     except Exception as e:
         logger.error(f"Btn: {e}")
@@ -1103,85 +1297,147 @@ async def error_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         sys.exit(1)
 
 # ============================================================
-# AUTO TASKS
+# AUTO SIGNALS - هر ۱۰ دقیقه به کانال
 # ============================================================
-async def auto_signals(app: Application):
-    await asyncio.sleep(15)
+async def auto_signals_loop(app: Application):
+    """ارسال سیگنال خودکار هر ۱۰ دقیقه"""
+    await asyncio.sleep(10)
+    logger.info("📢 Auto Signal Loop Started (Every 10 min)")
+    
     while True:
         try:
             if not cfg.channel_id or not cfg.auto_send:
-                await asyncio.sleep(60); continue
-            if not ex.connected: ex.connect()
+                await asyncio.sleep(60)
+                continue
             
-            for sym in ["BTC/USDT", "ETH/USDT", "SOL/USDT"]:
-                t = ex.ticker(sym)
-                df = ex.ohlcv(sym, '1h', 200)
-                if t and df is not None:
-                    ind = UltraAnalysis.full(df)
-                    mtf = {}
-                    for tf_name, tf_val in list(cfg.timeframes.items())[:6]:
-                        dft = ex.ohlcv(sym, tf_val, 100)
-                        if dft is not None: mtf[tf_name] = UltraAnalysis.full(dft)
-                    
-                    sig, conf, score = SignalGen.generate(ind, t['last'], mtf)
-                    pats = [k for k,v in ind.items() if isinstance(v,bool) and v]
-                    mtf_summ = SignalGen.mtf_summary(mtf)
-                    ai_analysis = await ai.analyze(sym, ind, t['last'], t.get('percentage',0), pats, mtf_summ)
-                    
-                    a = {'symbol': sym, 'price': t['last'], 'change': t.get('percentage',0),
-                         'indicators': ind, 'signal': sig, 'confidence': conf, 'score': score}
-                    await app.bot.send_message(cfg.channel_id, Fmt.signal(a, ai_analysis), parse_mode="Markdown")
-                    await asyncio.sleep(120)
+            if not exchange_mgr.connected:
+                exchange_mgr.connect()
             
+            # سیگنال‌های اصلی
+            priority_symbols = ["BTC/USDT", "ETH/USDT", "SOL/USDT", "BNB/USDT", "XRP/USDT"]
+            
+            for sym in priority_symbols:
+                try:
+                    t = exchange_mgr.ticker(sym)
+                    df = exchange_mgr.ohlcv(sym, '1h', 200)
+                    
+                    if t and df is not None:
+                        ind = ti.calculate_all(df)
+                        
+                        # MTF
+                        mtf = {}
+                        for tf_name, tf_val in list(cfg.timeframes.items())[:6]:
+                            dft = exchange_mgr.ohlcv(sym, tf_val, 100)
+                            if dft is not None:
+                                mtf[tf_name] = ti.calculate_all(dft)
+                        
+                        sig, conf, score = sg.generate(ind, t['last'], mtf)
+                        pats = [k for k,v in ind.items() if isinstance(v,bool) and v]
+                        
+                        # AI Analysis (only for BTC & ETH to save API calls)
+                        ai_tech = None
+                        ai_fund = None
+                        ai_pa = None
+                        
+                        if sym in ["BTC/USDT", "ETH/USDT"] and ai.enabled:
+                            ai_tech = await ai.technical_analysis(sym, ind, t['last'], t.get('percentage',0), pats, mtf)
+                            ai_fund = await ai.fundamental_analysis(sym, t['last'], t.get('percentage',0))
+                            ai_pa = await ai.price_action_analysis(sym, ind, t['last'], pats)
+                        
+                        analysis = {
+                            'symbol': sym,
+                            'price': t['last'],
+                            'change': t.get('percentage', 0),
+                            'indicators': ind,
+                            'signal': sig,
+                            'confidence': conf,
+                            'score': score
+                        }
+                        
+                        msg = fmt.signal_msg(analysis, ai_tech, ai_fund, ai_pa)
+                        await app.bot.send_message(cfg.channel_id, msg, parse_mode="Markdown")
+                        logger.info(f"📤 Signal sent: {sym}")
+                        
+                        await asyncio.sleep(90)  # فاصله بین پیام‌ها
+                        
+                except Exception as e:
+                    logger.error(f"Signal error for {sym}: {e}")
+                    continue
+            
+            # بررسی پوزیشن‌های باز
             for sym in list(trader.positions.keys()):
-                t = ex.ticker(sym)
-                df = ex.ohlcv(sym, '1h', 100)
-                if t and df is not None:
-                    ind = UltraAnalysis.full(df)
-                    r = trader.update(sym, t['last'], ind['ATR_14'])
-                    if r:
-                        e = "🟢" if r['pnl']>0 else "🔴"
-                        await app.bot.send_message(cfg.channel_id, f"{e} *بسته:* {sym}\n💰 ${r['pnl']:+,.2f} | {r['reason']}", parse_mode="Markdown")
+                try:
+                    t = exchange_mgr.ticker(sym)
+                    df = exchange_mgr.ohlcv(sym, '1h', 100)
+                    if t and df is not None:
+                        ind = ti.calculate_all(df)
+                        result = trader.update(sym, t['last'], ind['ATR_14'])
+                        if result:
+                            emoji = "🟢" if result['pnl'] > 0 else "🔴"
+                            await app.bot.send_message(
+                                cfg.channel_id,
+                                f"{emoji} *پوزیشن بسته شد*\n📊 {sym}\n💰 ${result['pnl']:+,.2f}\n📋 {result['reason']}",
+                                parse_mode="Markdown"
+                            )
+                except Exception as e:
+                    logger.error(f"Position check error: {e}")
             
-        except Exception as e: logger.error(f"Task: {e}")
+            logger.info(f"✅ Signal cycle completed at {datetime.now().strftime('%H:%M:%S')}")
+            
+        except Exception as e:
+            logger.error(f"Auto signal loop error: {e}")
+        
         await asyncio.sleep(cfg.signal_interval)
 
-async def auto_education(app: Application):
+async def auto_education_loop(app: Application):
+    """ارسال محتوای آموزشی هر ۱ ساعت"""
     await asyncio.sleep(30)
+    logger.info("📚 Auto Education Loop Started (Every 1 hour)")
+    
     while True:
         try:
             if cfg.channel_id and cfg.auto_send:
-                ai_content = await ai.educational_content()
-                msg = Fmt.edu(ai_content)
+                msg = fmt.edu_msg()
                 await app.bot.send_message(cfg.channel_id, msg, parse_mode="Markdown")
-        except Exception as e: logger.error(f"Edu: {e}")
+                logger.info("📚 Education sent")
+        except Exception as e:
+            logger.error(f"Education error: {e}")
+        
         await asyncio.sleep(cfg.education_interval)
 
 # ============================================================
 # MAIN
 # ============================================================
 async def main():
-    if not ProcessLock.acquire(): sys.exit(1)
-    if not cfg.token:
-        logger.critical("❌ No token!")
-        ProcessLock.release(); return
+    if not ProcessLock.acquire():
+        sys.exit(1)
     
-    ex.connect()
+    if not cfg.token:
+        logger.critical("❌ TELEGRAM_BOT_TOKEN not set!")
+        ProcessLock.release()
+        return
+    
+    exchange_mgr.connect()
     
     app = Application.builder().token(cfg.token).build()
-    app.add_handler(CommandHandler("start", start_cmd))
+    app.add_handler(CommandHandler("start", cmd_start))
     app.add_handler(CallbackQueryHandler(button_router))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_handler))
     app.add_error_handler(error_handler)
     
-    asyncio.create_task(auto_signals(app))
-    asyncio.create_task(auto_education(app))
+    # Start background tasks
+    asyncio.create_task(auto_signals_loop(app))
+    asyncio.create_task(auto_education_loop(app))
     
     logger.info("="*60)
-    logger.info("🚀 CRYPTO PULSE AI v6.0 LAUNCHED")
-    logger.info(f"🧠 Groq AI: {'✅ Connected' if ai.enabled else '❌ No API Key'}")
-    logger.info(f"⏰ Timeframes: {len(cfg.timeframes)} ({', '.join(cfg.timeframes)})")
-    logger.info(f"📊 30+ Indicators | 30 Coins | 70+ Buttons")
+    logger.info("🚀 CRYPTO PULSE ULTIMATE AI v7.0 LAUNCHED")
+    logger.info(f"🧠 Groq AI: {'✅ Llama 3.3 70B' if ai.enabled else '❌ No API Key'}")
+    logger.info(f"📊 25+ Technical Indicators & Oscillators")
+    logger.info(f"⏰ 11 Timeframes: {', '.join(cfg.timeframes)}")
+    logger.info(f"📢 Auto Signals Every {cfg.signal_interval//60} Minutes")
+    logger.info(f"📚 Auto Education Every {cfg.education_interval//3600} Hour")
+    logger.info(f"💰 {len(cfg.symbols)} Cryptocurrencies")
+    logger.info(f"🔌 Exchange: {'✅ Connected' if exchange_mgr.connected else '❌ Disconnected'}")
     logger.info("="*60)
     
     try:
@@ -1190,15 +1446,25 @@ async def main():
         await app.updater.start_polling(drop_pending_updates=True)
         await asyncio.Event().wait()
     except Conflict:
-        logger.critical("❌ Conflict!")
+        logger.critical("❌ Conflict - Another instance running!")
     except Exception as e:
-        logger.critical(f"❌ {e}")
+        logger.critical(f"❌ Fatal error: {e}")
     finally:
-        try: await app.updater.stop(); await app.stop(); await app.shutdown()
-        except: pass
+        try:
+            await app.updater.stop()
+            await app.stop()
+            await app.shutdown()
+        except:
+            pass
         ProcessLock.release()
+        logger.info("👋 Bot shutdown complete")
 
 if __name__ == "__main__":
-    try: asyncio.run(main())
-    except KeyboardInterrupt: ProcessLock.release()
-    except Exception as e: logger.critical(f"Fatal: {e}"); ProcessLock.release()
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        ProcessLock.release()
+        logger.info("👋 Stopped by user")
+    except Exception as e:
+        logger.critical(f"❌ Critical: {e}")
+        ProcessLock.release()
