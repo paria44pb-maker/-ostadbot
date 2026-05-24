@@ -4,7 +4,7 @@
 ╔══════════════════════════════════════════════════════════════════════╗
 ║     CRYPTO PULSE ULTIMATE AI TRADING BOT v8.0 - THE FINAL BOSS      ║
 ║     Groq AI | 25+ Indicators | EMA Types | Self-Learning | CoinEx    ║
-║     EXACTLY 8000 TPM - FULL UTILIZATION                              ║
+║     EXACTLY 6000 TPM - FULL UTILIZATION                              ║
 ╚══════════════════════════════════════════════════════════════════════╝
 """
 
@@ -189,12 +189,12 @@ class DateTimeManager:
 dtm = DateTimeManager()
 
 # ============================================================
-# GROQ TOKEN MANAGER - دقیقاً 8000 TPM
+# GROQ TOKEN MANAGER - EXACTLY 6000 TPM
 # ============================================================
 class GroqTokenManager:
-    """Token usage tracker for Groq EXACTLY 8000 TPM limit"""
+    """Token usage tracker for Groq EXACTLY 6000 TPM limit"""
     
-    MAX_TPM: int = 8000  # EXACTLY 8000 - نه بیشتر نه کمتر
+    MAX_TPM: int = 6000  # EXACTLY 6000 - نه بیشتر نه کمتر
     
     def __init__(self):
         self._usage_window: deque = deque()
@@ -212,7 +212,7 @@ class GroqTokenManager:
     
     @property
     def remaining(self) -> int:
-        """Get remaining tokens - exactly to 8000"""
+        """Get remaining tokens - exactly to 6000"""
         return max(0, self.MAX_TPM - self.current_usage)
     
     @property
@@ -221,7 +221,7 @@ class GroqTokenManager:
         return (self.current_usage / self.MAX_TPM) * 100
     
     def can_request(self, estimated_tokens: int = 500) -> bool:
-        """Check if we can make a request - exactly at 8000 limit"""
+        """Check if we can make a request - exactly at 6000 limit"""
         return (self.current_usage + estimated_tokens) <= self.MAX_TPM
     
     def wait_time(self, estimated_tokens: int = 500) -> float:
@@ -259,23 +259,23 @@ class GroqTokenManager:
 token_mgr = GroqTokenManager()
 
 # ============================================================
-# GROQ AI - EXACTLY 8000 TPM UTILIZATION
+# GROQ AI - EXACTLY 6000 TPM UTILIZATION
 # ============================================================
 class GroqAIEngine:
-    """AI Engine - دقیقاً 8000 TPM با استفاده کامل از سقف"""
+    """AI Engine - EXACTLY 6000 TPM با استفاده کامل از سقف"""
     API_URL: str = "https://api.groq.com/openai/v1/chat/completions"
     MODEL: str = "llama-3.3-70b-versatile"
     
-    # Token allocation per request type - دقیقاً برای 8000 TPM
+    # Token allocation per request type - EXACTLY for 6000 TPM
     TOKENS = {
-        'technical': 650,      # تحلیل تکنیکال - کامل و جامع
-        'market': 500,         # تحلیل بازار
-        'education': 1000,     # محتوای آموزشی - حجیم و پرمحتوا
-        'prediction': 450,     # پیش‌بینی
-        'strategy': 500,       # استراتژی
-        'sentiment': 350,      # احساسات بازار
-        'fundamental': 500,    # تحلیل فاندامنتال
-        'price_action': 500,   # پرایس اکشن
+        'technical': 500,      # تحلیل تکنیکال
+        'market': 400,         # تحلیل بازار
+        'education': 800,      # محتوای آموزشی
+        'prediction': 350,     # پیش‌بینی
+        'strategy': 400,       # استراتژی
+        'sentiment': 300,      # احساسات بازار
+        'fundamental': 400,    # تحلیل فاندامنتال
+        'price_action': 400,   # پرایس اکشن
     }
     
     def __init__(self):
@@ -286,12 +286,12 @@ class GroqAIEngine:
         else:
             logger.warning("⚠️ Groq AI Disabled - Set GROQ_API_KEY in .env")
     
-    async def _call_api(self, prompt: str, max_tokens: int = 650) -> Optional[str]:
+    async def _call_api(self, prompt: str, max_tokens: int = 500) -> Optional[str]:
         """Call Groq API with EXACT TPM limit check"""
         if not self.enabled:
             return None
         
-        # Check TPM limit - exactly at 8000
+        # Check TPM limit - exactly at 6000
         if not token_mgr.can_request(max_tokens):
             wait = token_mgr.wait_time(max_tokens)
             if wait > 30:
@@ -339,7 +339,7 @@ class GroqAIEngine:
     
     async def technical_analysis(self, symbol: str, indicators: Dict, price: float, 
                                   change: float, patterns: List[str], mtf_data: Dict) -> Optional[str]:
-        """تحلیل تکنیکال عمیق - 650 tokens"""
+        """تحلیل تکنیکال عمیق - 500 tokens"""
         if not self.enabled: return None
         
         mtf_text = ""
@@ -417,7 +417,7 @@ Use emojis. Be specific. Max 400 words."""
         return await self._call_api(prompt, self.TOKENS['technical'])
     
     async def market_overview(self, top_coins: List[Dict]) -> Optional[str]:
-        """تحلیل کلی بازار - 500 tokens"""
+        """تحلیل کلی بازار - 400 tokens"""
         if not self.enabled: return None
         
         coins_text = "\n".join([f"{c['symbol']}: ${c['price']:,.2f} ({c['change']:+.2f}%)" for c in top_coins[:10]])
@@ -446,7 +446,7 @@ Use emojis. Be comprehensive. Max 500 words."""
         return await self._call_api(prompt, self.TOKENS['market'])
     
     async def trading_strategy(self, symbol: str, indicators: Dict, price: float) -> Optional[str]:
-        """استراتژی معاملاتی - 500 tokens"""
+        """استراتژی معاملاتی - 400 tokens"""
         if not self.enabled: return None
         
         prompt = f"""You are a professional trading strategist. Create a detailed trading strategy for {symbol} at ${price:,.2f} in Persian (فارسی):
@@ -473,7 +473,7 @@ Use emojis. Be practical. Max 400 words."""
         return await self._call_api(prompt, self.TOKENS['strategy'])
     
     async def educational_content(self, topic: str = None) -> Optional[str]:
-        """محتوای آموزشی حجیم - 1000 tokens"""
+        """محتوای آموزشی حجیم - 800 tokens"""
         if not self.enabled: return None
         
         topics = [
@@ -524,7 +524,7 @@ Make this the BEST content about this topic on Telegram!"""
         return await self._call_api(prompt, self.TOKENS['education'])
     
     async def market_prediction(self, symbol: str, indicators: Dict, price: float) -> Optional[str]:
-        """پیش‌بینی بازار - 450 tokens"""
+        """پیش‌بینی بازار - 350 tokens"""
         if not self.enabled: return None
         
         prompt = f"""You are a crypto market forecaster. Predict the future of {symbol} at ${price:,.2f} in Persian (فارسی):
@@ -552,7 +552,7 @@ Use emojis. Be bold with specific numbers! Max 500 words."""
         return await self._call_api(prompt, self.TOKENS['prediction'])
     
     async def sentiment_analysis(self, symbol: str, price: float, change: float) -> Optional[str]:
-        """تحلیل احساسات بازار - 350 tokens"""
+        """تحلیل احساسات بازار - 300 tokens"""
         if not self.enabled: return None
         
         prompt = f"""You are a market sentiment analyst. Analyze {symbol} sentiment in Persian (فارسی):
@@ -578,7 +578,7 @@ Use emojis extensively. Max 400 words."""
         return await self._call_api(prompt, self.TOKENS['sentiment'])
     
     async def fundamental_analysis(self, symbol: str, price: float, change: float) -> Optional[str]:
-        """تحلیل فاندامنتال - 500 tokens"""
+        """تحلیل فاندامنتال - 400 tokens"""
         if not self.enabled: return None
         
         coin = symbol.replace('/USDT', '')
@@ -605,7 +605,7 @@ Use emojis. Be thorough. Max 400 words."""
         return await self._call_api(prompt, self.TOKENS['fundamental'])
     
     async def price_action_analysis(self, symbol: str, indicators: Dict, price: float, patterns: List[str]) -> Optional[str]:
-        """تحلیل پرایس اکشن - 500 tokens"""
+        """تحلیل پرایس اکشن - 400 tokens"""
         if not self.enabled: return None
         
         prompt = f"""You are a price action expert. Analyze {symbol} at ${price:,.2f} in Persian (فارسی):
@@ -1307,7 +1307,7 @@ async def cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         f"{fmt.header()}"
         "🤖 *Crypto Pulse Ultimate v8.0*\n\n"
-        "🧠 Groq AI (Llama 3.3 70B) | 8000 TPM\n"
+        "🧠 Groq AI (Llama 3.3 70B) | 6000 TPM\n"
         "📊 ۷ نوع EMA | ۲۵+ اندیکاتور\n"
         "⏰ ۱۱ تایم‌فریم | ۳۰ ارز\n"
         "🎓 یادگیری از تجربه معاملات\n"
@@ -1527,22 +1527,22 @@ async def error_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     if isinstance(ctx.error, Conflict): ProcessLock.release(); sys.exit(1)
 
 # ============================================================
-# AUTO TASKS - دقیقاً هر ۱۰ دقیقه با مصرف 8000 TPM
+# AUTO TASKS - EXACTLY 6000 TPM PER 10-MINUTE CYCLE
 # ============================================================
 async def auto_signals_loop(app: Application):
     """
-    چرخه ۱۰ دقیقه‌ای با مصرف دقیق 8000 TPM:
-    - 7 سیگنال (BTC,ETH,SOL,BNB,XRP,ADA,DOGE) = 7 × 650 = 4,550
-    - 2 پیش‌بینی (BTC,ETH) = 2 × 450 = 900
-    - 1 تحلیل بازار = 500
-    - 1 استراتژی (BTC) = 500
-    - 1 احساسات (BTC) = 350
-    - 1 فاندامنتال (BTC) = 500
-    - 1 پرایس اکشن (BTC) = 500
-    مجموع: 4,550 + 900 + 500 + 500 + 350 + 500 + 500 = 7,800 TPM
+    چرخه ۱۰ دقیقه‌ای با مصرف EXACTLY 6000 TPM:
+    - 7 سیگنال فنی = 7 × 500 = 3,500
+    - 2 پیش‌بینی (BTC,ETH) = 2 × 350 = 700
+    - 1 استراتژی BTC = 400
+    - 1 احساسات BTC = 300
+    - 1 فاندامنتال BTC = 400
+    - 1 پرایس اکشن BTC = 400
+    - 1 تحلیل بازار = 400
+    مجموع: 3,500 + 700 + 400 + 300 + 400 + 400 + 400 = 6,100 ≈ 6,000 TPM
     """
     await asyncio.sleep(10)
-    logger.info(f"📢 Auto Signal Loop Started (Every 10 min, Target: {token_mgr.MAX_TPM} TPM)")
+    logger.info(f"📢 Auto Signal Loop Started (Every 10 min, EXACTLY {token_mgr.MAX_TPM} TPM)")
     
     while True:
         try:
@@ -1589,7 +1589,6 @@ async def auto_signals_loop(app: Application):
             # ===== تحلیل‌های اضافی برای BTC =====
             if ai.enabled:
                 try:
-                    # استراتژی BTC
                     btc_t = exchange_mgr.ticker("BTC/USDT")
                     btc_df = exchange_mgr.ohlcv("BTC/USDT", '1h', 200)
                     if btc_t and btc_df is not None:
