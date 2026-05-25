@@ -4,7 +4,7 @@
 ╔══════════════════════════════════════════════════════════════════════╗
 ║   CRYPTO PULSE ULTIMATE DUAL AI TRADING BOT v9.0                    ║
 ║   Groq AI + Gemini AI | Charts | 25+ Indicators | 7 EMA             ║
-║   EXACTLY 8000 TPM - DUAL AI COORDINATION                           ║
+║   SIGNAL EVERY 4 HOURS | GEMINI FORCE ENABLED                       ║
 ╚══════════════════════════════════════════════════════════════════════╝
 """
 
@@ -59,7 +59,7 @@ for lib in ['httpx', 'httpcore', 'telegram', 'ccxt', 'urllib3', 'asyncio', 'aioh
     logging.getLogger(lib).setLevel(logging.WARNING)
 
 # ============================================================
-# CONFIGURATION
+# CONFIGURATION - هر ۴ ساعت = 14400 ثانیه
 # ============================================================
 @dataclass
 class Config:
@@ -101,8 +101,10 @@ class Config:
     demo_trading: bool = True
     real_trading: bool = False
     auto_send: bool = True
-    signal_interval: int = 600
-    education_interval: int = 600
+    
+    # 🔥 هر ۴ ساعت = 14400 ثانیه
+    signal_interval: int = 14400
+    education_interval: int = 14400
 
 cfg = Config()
 
@@ -161,7 +163,7 @@ dtm = DTM()
 # DUAL AI TOKEN MANAGER - 8000 TPM
 # ============================================================
 class DualAITokenManager:
-    """Token manager for dual AI - EXACTLY 8000 TPM"""
+    """Token manager for dual AI"""
     MAX_TPM: int = 8000
     
     def __init__(self):
@@ -169,7 +171,6 @@ class DualAITokenManager:
         self._total_tokens: int = 0
         self._total_requests: int = 0
         self._rate_limits: int = 0
-        # Token allocation between Groq and Gemini
         self.groq_tokens: int = 0
         self.gemini_tokens: int = 0
     
@@ -214,17 +215,21 @@ class DualAITokenManager:
 token_mgr = DualAITokenManager()
 
 # ============================================================
-# GEMINI AI CLIENT
+# GEMINI AI CLIENT - FORCE ENABLED
 # ============================================================
 class GeminiAIClient:
-    """Google Gemini AI Client"""
+    """Google Gemini AI Client - FORCE ENABLED"""
     API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent"
     
     def __init__(self):
-        self.enabled = bool(cfg.gemini_api_key)
+        # 🔥 اگر کلید تنظیم شده، فعال کن - حتی اگه خطا میده دوباره تلاش کن
+        self.api_key = cfg.gemini_api_key
+        self.enabled = bool(self.api_key and len(self.api_key) > 10)
         self.client = httpx.AsyncClient(timeout=60.0)
         if self.enabled:
             logger.info("🌟 Gemini AI Connected (Gemini 2.0 Flash)")
+        else:
+            logger.warning("⚠️ Gemini API Key not set or invalid - Set GEMINI_API_KEY in .env")
     
     async def generate(self, prompt: str, max_tokens: int = 500) -> Optional[str]:
         if not self.enabled: return None
@@ -236,7 +241,7 @@ class GeminiAIClient:
         
         try:
             response = await self.client.post(
-                f"{self.API_URL}?key={cfg.gemini_api_key}",
+                f"{self.API_URL}?key={self.api_key}",
                 json={
                     "contents": [{"parts": [{"text": prompt}]}],
                     "generationConfig": {"maxOutputTokens": max_tokens, "temperature": 0.7}
@@ -245,9 +250,10 @@ class GeminiAIClient:
             if response.status_code == 200:
                 data = response.json()
                 text = data.get("candidates", [{}])[0].get("content", {}).get("parts", [{}])[0].get("text", "")
-                token_mgr.record(max_tokens, "gemini")
-                return text
-            logger.error(f"Gemini Error: {response.status_code}")
+                if text:
+                    token_mgr.record(max_tokens, "gemini")
+                    return text
+            logger.error(f"Gemini Error: {response.status_code} - {response.text[:200]}")
             return None
         except Exception as e:
             logger.error(f"Gemini Exception: {e}")
@@ -266,7 +272,7 @@ Provide in Persian (فارسی) with emojis. Max 300 words."""
         
         try:
             response = await self.client.post(
-                f"{self.API_URL}?key={cfg.gemini_api_key}",
+                f"{self.API_URL}?key={self.api_key}",
                 json={
                     "contents": [{
                         "parts": [
@@ -280,8 +286,9 @@ Provide in Persian (فارسی) with emojis. Max 300 words."""
             if response.status_code == 200:
                 data = response.json()
                 text = data.get("candidates", [{}])[0].get("content", {}).get("parts", [{}])[0].get("text", "")
-                token_mgr.record(600, "gemini")
-                return text
+                if text:
+                    token_mgr.record(600, "gemini")
+                    return text
             return None
         except Exception as e:
             logger.error(f"Gemini Chart Error: {e}")
@@ -395,8 +402,8 @@ class ChartGenerator:
     """Generate and send chart images"""
     
     @staticmethod
-    def create_chart(df: pd.DataFrame, symbol: str, indicators: Dict) -> Optional[str]:
-        """Create chart and return base64 encoded image"""
+    def create_chart(df: pd.DataFrame, symbol: str, indicators: Dict) -> Optional[Dict]:
+        """Create chart and return base64 + bytes"""
         if not CHART_AVAILABLE:
             return None
         
@@ -409,18 +416,15 @@ class ChartGenerator:
             fig, (ax1, ax2, ax3) = plt.subplots(3, 1, figsize=(12, 10), 
                 gridspec_kw={'height_ratios': [3, 1, 1]})
             
-            # Candlestick chart
             dates = mdates.date2num([datetime.fromtimestamp(t/1000) for t in df['timestamp'].values[-50:]])
             ohlc = np.column_stack([dates[-50:], open_.values[-50:], high.values[-50:], 
                                      low.values[-50:], close.values[-50:]])
             candlestick_ohlc(ax1, ohlc, width=0.6, colorup='#26a69a', colordown='#ef5350')
             
-            # EMAs
             for p, color, alpha in [(7, '#FFD700', 0.8), (20, '#2196F3', 0.8), (50, '#FF5722', 0.6)]:
                 ema = close.ewm(span=p, adjust=False).mean().values[-50:]
                 ax1.plot(dates[-50:], ema, color=color, alpha=alpha, linewidth=1.5, label=f'EMA {p}')
             
-            # Bollinger Bands
             bb_upper = [indicators.get('BB_UPPER', close.iloc[-1])] * 50
             bb_lower = [indicators.get('BB_LOWER', close.iloc[-1])] * 50
             ax1.fill_between(dates[-50:], bb_lower, bb_upper, alpha=0.1, color='#9C27B0')
@@ -431,7 +435,6 @@ class ChartGenerator:
             ax1.grid(True, alpha=0.3)
             ax1.xaxis.set_major_formatter(mdates.DateFormatter('%m/%d %H:%M'))
             
-            # RSI
             from ta.momentum import RSIIndicator
             rsi = RSIIndicator(close, 14).rsi().values[-50:]
             ax2.plot(dates[-50:], rsi, color='#7B1FA2', linewidth=1.5)
@@ -443,7 +446,6 @@ class ChartGenerator:
             ax2.set_ylim(0, 100)
             ax2.grid(True, alpha=0.3)
             
-            # Volume
             volume = df['volume'].astype(float).values[-50:]
             colors = ['#26a69a' if close.values[-50:][i] >= open_.values[-50:][i] else '#ef5350' for i in range(50)]
             ax3.bar(dates[-50:], volume, color=colors, alpha=0.7, width=0.6)
@@ -453,17 +455,14 @@ class ChartGenerator:
             
             plt.tight_layout()
             
-            # Save to bytes
             buf = io.BytesIO()
             plt.savefig(buf, format='png', dpi=100, bbox_inches='tight')
             buf.seek(0)
             img_base64 = base64.b64encode(buf.read()).decode('utf-8')
             buf.seek(0)
-            buf_img = buf
             plt.close(fig)
             
-            # Save base64 for Gemini analysis, return BytesIO for Telegram
-            return {'base64': img_base64, 'bytes': buf_img}
+            return {'base64': img_base64, 'bytes': buf}
             
         except Exception as e:
             logger.error(f"Chart error: {e}")
@@ -522,7 +521,6 @@ class UltimateIndicators:
         
         ind = {}
         
-        # 7 EMA Types
         for p in [7, 14, 20, 50, 100, 200]:
             ind[f'EMA_{p}'] = float(close.ewm(span=p, adjust=False).mean().iloc[-1])
             ind[f'SMA_{p}'] = float(close.rolling(p).mean().iloc[-1])
@@ -551,13 +549,13 @@ class UltimateIndicators:
             try: ind[f'RSI_{p}'] = float(RSIIndicator(close, window=p).rsi().iloc[-1])
             except: ind[f'RSI_{p}'] = 50.0
         
-        from ta.trend import MACD, ADXIndicator, CCIIndicator, IchimokuIndicator
+        from ta.trend import MACD, ADXIndicator, CCIIndicator
         try:
             macd = MACD(close, 12, 26, 9)
             ind['MACD_HIST'] = float(macd.macd_diff().iloc[-1])
         except: ind['MACD_HIST'] = 0.0
         
-        from ta.momentum import StochasticOscillator, WilliamsRIndicator
+        from ta.momentum import StochasticOscillator
         try:
             stoch = StochasticOscillator(high, low, close, 14, 3)
             ind['STOCH_K'] = float(stoch.stoch().iloc[-1])
@@ -592,7 +590,6 @@ class UltimateIndicators:
         ind['SUPPORT'] = float(low.rolling(20).min().iloc[-1]) if len(low)>=20 else low.min()
         ind['RESISTANCE'] = float(high.rolling(20).max().iloc[-1]) if len(high)>=20 else high.max()
         
-        # Candles
         ind.update(UltimateIndicators._candles(df))
         ind['DIVERGENCE'] = UltimateIndicators._divergence(close)
         
@@ -835,7 +832,7 @@ async def cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         "🌟 Gemini AI (2.0 Flash)\n"
         "📊 نمودار + تحلیل تصویری\n"
         "📈 ۷ EMA | ۲۵+ اندیکاتور\n"
-        "📢 سیگنال + آموزش هر ۱۰ دقیقه\n\n"
+        "⏰ سیگنال هر ۴ ساعت\n\n"
         "👇 انتخاب کنید:",
         parse_mode="Markdown", reply_markup=Menu.main()
     )
@@ -901,7 +898,6 @@ async def chart_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE, symbol: 
     chart_data = chart_gen.create_chart(df, symbol, ind)
     
     if chart_data:
-        # Send chart image
         await ctx.bot.send_photo(
             chat_id=q.message.chat_id,
             photo=chart_data['bytes'],
@@ -909,7 +905,6 @@ async def chart_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE, symbol: 
             parse_mode="Markdown"
         )
         
-        # Gemini chart analysis
         if gemini_ai.enabled and chart_data.get('base64'):
             chart_analysis = await gemini_ai.analyze_chart(chart_data['base64'], symbol, t['last'])
             if chart_analysis:
@@ -966,7 +961,7 @@ Provide: Technical, Fundamental, Price Action analysis in Persian. Max 400 words
                 InlineKeyboardButton("🔙", callback_data="back")
             ]]))
     else:
-        await q.edit_message_text("❌ خطا", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]]))
+        await q.edit_message_text("❌ خطا در Gemini", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]]))
 
 async def button_router(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query
@@ -1021,7 +1016,7 @@ async def button_router(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         elif d == "td": cfg.demo_trading = not cfg.demo_trading
         elif d == "set":
             ts = token_mgr.get_stats()
-            await q.edit_message_text(f"{dtm.header()}⚙️ *تنظیمات*\n🔌 صرافی: {'✅' if exchange_mgr.connected else '❌'}\n🧠 Groq: {'✅' if groq_ai.enabled else '❌'}\n🌟 Gemini: {'✅' if gemini_ai.enabled else '❌'}\n📊 TPM: {ts['current']}/{ts['max']}", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]]))
+            await q.edit_message_text(f"{dtm.header()}⚙️ *تنظیمات*\n🔌 صرافی: {'✅' if exchange_mgr.connected else '❌'}\n🧠 Groq: {'✅' if groq_ai.enabled else '❌'}\n🌟 Gemini: {'✅' if gemini_ai.enabled else '❌'}\n📊 TPM: {ts['current']}/{ts['max']}\n⏰ سیگنال: هر ۴ ساعت", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]]))
         elif d == "edu":
             content = await groq_ai.education()
             await q.edit_message_text(fmt.edu(content), parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔄", callback_data="edu"), InlineKeyboardButton("🔙", callback_data="back")]]))
@@ -1041,25 +1036,26 @@ async def text_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("/start", reply_markup=Menu.main())
 
 # ============================================================
-# AUTO LOOPS - EXACTLY 8000 TPM
+# AUTO LOOPS - هر ۴ ساعت = 14400 ثانیه
 # ============================================================
 async def auto_signals(app: Application):
-    """
-    8000 TPM Allocation:
-    Groq: 7 signals×500 + 2 predictions×350 + strategy×400 + sentiment×300 + fundamental×400 + price_action×400 + market×400 = 5,950
-    Gemini: 2 analyses×400 + chart analysis×600 = 1,400
-    Education: Groq×700 = 700
-    Total: 5,950 + 1,400 = 7,350 (with education: 8,050 ≈ 8,000)
-    """
+    """ارسال سیگنال هر ۴ ساعت"""
     await asyncio.sleep(10)
-    logger.info(f"📢 Dual AI Loop Started ({token_mgr.MAX_TPM} TPM)")
+    logger.info(f"📢 Auto Signal Loop Started (Every 4 Hours = {cfg.signal_interval}s)")
     
     while True:
         try:
             if not cfg.channel_id: await asyncio.sleep(60); continue
             if not exchange_mgr.connected: exchange_mgr.connect()
             
-            # 7 signals with Groq
+            logger.info(f"🔄 Starting 4-hour signal cycle at {dtm.now()}")
+            
+            # ارسال پیام شروع
+            await app.bot.send_message(cfg.channel_id, 
+                f"{dtm.header()}🔄 *شروع تحلیل دوره‌ای ۴ ساعته*\n\n📊 در حال تحلیل ۷ ارز برتر با Groq + Gemini...",
+                parse_mode="Markdown")
+            
+            # 7 signals
             for sym in ["BTC/USDT", "ETH/USDT", "SOL/USDT", "BNB/USDT", "XRP/USDT", "ADA/USDT", "DOGE/USDT"]:
                 try:
                     t = exchange_mgr.ticker(sym)
@@ -1076,14 +1072,12 @@ async def auto_signals(app: Application):
                         
                         groq_text = await groq_ai.technical(sym, ind, t['last'], t.get('percentage',0), pats, mtf)
                         
-                        # Gemini for BTC and ETH only
                         gemini_text = None
-                        if gemini_ai.enabled and sym in ["BTC/USDT", "ETH/USDT"]:
+                        if gemini_ai.enabled:
                             gemini_text = await gemini_ai.generate(
                                 f"Analyze {sym} at ${t['last']:,.2f}. RSI={ind['RSI_14']:.0f}. Direction, targets, risk in Persian. Max 200 words.", 400
                             )
                         
-                        # Chart for BTC
                         chart_analysis = None
                         if sym == "BTC/USDT" and CHART_AVAILABLE and gemini_ai.enabled:
                             chart_data = chart_gen.create_chart(df, sym, ind)
@@ -1098,7 +1092,8 @@ async def auto_signals(app: Application):
                         
                         msg = fmt.signal(analysis, groq_text, gemini_text, chart_analysis)
                         await app.bot.send_message(cfg.channel_id, msg, parse_mode="Markdown")
-                        await asyncio.sleep(60)
+                        logger.info(f"📤 Signal sent: {sym}")
+                        await asyncio.sleep(90)
                 except Exception as e:
                     logger.error(f"Signal error {sym}: {e}")
             
@@ -1109,16 +1104,31 @@ async def auto_signals(app: Application):
                     btc_df = exchange_mgr.ohlcv("BTC/USDT", '1h', 200)
                     if btc_t and btc_df is not None:
                         btc_ind = ui.calculate_all(btc_df)
+                        btc_pats = [k for k,v in btc_ind.items() if isinstance(v,bool) and v]
                         
-                        for analysis_func, title in [
-                            (groq_ai.strategy, "📊 *استراتژی BTC*"),
-                            (groq_ai.sentiment, "💭 *احساسات BTC*"),
-                            (groq_ai.fundamental, "📰 *فاندامنتال BTC*"),
-                        ]:
-                            result = await analysis_func("BTC/USDT", btc_ind if analysis_func != groq_ai.sentiment else None, btc_t['last'], btc_t.get('percentage',0) if analysis_func == groq_ai.sentiment else None)
-                            if result:
-                                await app.bot.send_message(cfg.channel_id, f"{dtm.header()}{title}\n\n{result}\n\n━━━━━━━━━━━━━━━━━━━━\n✨ @CryptoPulse606", parse_mode="Markdown")
-                                await asyncio.sleep(30)
+                        # Strategy
+                        strat = await groq_ai.strategy("BTC/USDT", btc_ind, btc_t['last'])
+                        if strat:
+                            await app.bot.send_message(cfg.channel_id, f"{dtm.header()}📊 *استراتژی BTC*\n\n{strat}\n\n━━━━━━━━━━━━━━━━━━━━\n✨ @CryptoPulse606", parse_mode="Markdown")
+                            await asyncio.sleep(30)
+                        
+                        # Sentiment
+                        sentiment = await groq_ai.sentiment("BTC/USDT", btc_t['last'], btc_t.get('percentage',0))
+                        if sentiment:
+                            await app.bot.send_message(cfg.channel_id, f"{dtm.header()}💭 *احساسات BTC*\n\n{sentiment}\n\n━━━━━━━━━━━━━━━━━━━━\n✨ @CryptoPulse606", parse_mode="Markdown")
+                            await asyncio.sleep(30)
+                        
+                        # Fundamental
+                        fundamental = await groq_ai.fundamental("BTC/USDT", btc_t['last'], btc_t.get('percentage',0))
+                        if fundamental:
+                            await app.bot.send_message(cfg.channel_id, f"{dtm.header()}📰 *فاندامنتال BTC*\n\n{fundamental}\n\n━━━━━━━━━━━━━━━━━━━━\n✨ @CryptoPulse606", parse_mode="Markdown")
+                            await asyncio.sleep(30)
+                        
+                        # Price Action
+                        pa = await groq_ai.price_action("BTC/USDT", btc_ind, btc_t['last'], btc_pats)
+                        if pa:
+                            await app.bot.send_message(cfg.channel_id, f"{dtm.header()}📊 *پرایس اکشن BTC*\n\n{pa}\n\n━━━━━━━━━━━━━━━━━━━━\n✨ @CryptoPulse606", parse_mode="Markdown")
+                            await asyncio.sleep(30)
                 except Exception as e:
                     logger.error(f"BTC extra: {e}")
             
@@ -1142,14 +1152,20 @@ async def auto_signals(app: Application):
                             await app.bot.send_message(cfg.channel_id, f"{dtm.header()}{emoji} *بسته شد*\n📊 {sym}\n💰 ${result['pnl']:+,.2f}", parse_mode="Markdown")
                 except: pass
             
+            # ارسال پیام پایان
+            await app.bot.send_message(cfg.channel_id, 
+                f"{dtm.header()}✅ *پایان تحلیل دوره‌ای*\n\n📊 سیگنال بعدی: ۴ ساعت دیگر\n⏰ {DTM.persian()}",
+                parse_mode="Markdown")
+            
             stats = token_mgr.get_stats()
-            logger.info(f"✅ Cycle | TPM:{stats['current']}/{stats['max']} | Groq:{stats['groq']} | Gemini:{stats['gemini']}")
+            logger.info(f"✅ 4-Hour Cycle Done | TPM:{stats['current']}/{stats['max']} | Next: 4 hours")
             
         except Exception as e:
             logger.error(f"Loop: {e}")
         await asyncio.sleep(cfg.signal_interval)
 
 async def auto_education(app: Application):
+    """ارسال آموزش هر ۴ ساعت"""
     await asyncio.sleep(30)
     while True:
         try:
@@ -1157,6 +1173,7 @@ async def auto_education(app: Application):
                 content = await groq_ai.education()
                 if content:
                     await app.bot.send_message(cfg.channel_id, fmt.edu(content), parse_mode="Markdown")
+                    logger.info("📚 Education sent")
         except Exception as e:
             logger.error(f"Edu: {e}")
         await asyncio.sleep(cfg.education_interval)
@@ -1179,10 +1196,11 @@ async def main():
     asyncio.create_task(auto_education(app))
     
     logger.info("="*60)
-    logger.info("🚀 CRYPTO PULSE v9.0 - DUAL AI ENGINE")
+    logger.info("🚀 CRYPTO PULSE v9.0 - DUAL AI | 4-HOUR CYCLE")
     logger.info(f"🧠 Groq: {'✅' if groq_ai.enabled else '❌'} | 🌟 Gemini: {'✅' if gemini_ai.enabled else '❌'}")
     logger.info(f"📊 Charts: {'✅' if CHART_AVAILABLE else '❌ (pip install matplotlib mplfinance)'}")
-    logger.info(f"📢 EXACTLY {token_mgr.MAX_TPM} TPM")
+    logger.info(f"⏰ Signal Every 4 Hours ({cfg.signal_interval}s)")
+    logger.info(f"📢 TPM Limit: {token_mgr.MAX_TPM}")
     logger.info("="*60)
     
     try:
