@@ -3,7 +3,7 @@
 """
 ╔══════════════════════════════════════════════════════════════════════════╗
 ║   🚀 CRYPTO PULSE v17.1 — STABLE PERSIAN EDITION 🤖                      ║
-║   ✅ Fixed HTTPX  ✅ Admin 13600620  ✅ 40+ Keys  ✅ Dual AI               ║
+║   ✅ Fixed HTTP    ✅ 40+ Keys  ✅ Dual AI               ║
 ║   ✅ Railway Ready  ✅ Persian Date  ✅ Auto Trade  ✅ Golden Signals       ║
 ╚══════════════════════════════════════════════════════════════════════════╝
 """
