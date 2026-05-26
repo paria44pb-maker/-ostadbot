@@ -4,7 +4,8 @@
 💰 ربات قیمت زنده دلار و طلا - به تومان
 📡 منابع: tgju.org | call1.ir
 📅 تاریخ شمسی | ⏰ ساعت تهران
-🔑 توکن مستقیماً در کد قرار داده شده
+🔑 توکن مستقیماً در کد
+✅ پاسخ به هر پیام (نه فقط /start)
 """
 
 import os, sys, subprocess, asyncio, logging, time
@@ -21,7 +22,7 @@ TELEGRAM_BOT_TOKEN = "7225279768:AAHwZEmSxRxx5ZGCyx88BMP2DSEoarcZSxw"
 # ============================================================
 def install(pkg, import_name=None):
     if import_name is None:
-        import_name = pkg
+        import_name = pkg.replace('-', '_')
     try:
         __import__(import_name)
     except ImportError:
@@ -37,7 +38,7 @@ import httpx
 import jdatetime
 import pytz
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
+from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, filters, ContextTypes
 
 # ============================================================
 # LOGGING ساده
@@ -167,10 +168,17 @@ def main_menu():
 # ============================================================
 # هندلرها
 # ============================================================
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def send_prices(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """ارسال قیمت‌ها به کاربر"""
     rates = await get_all_prices()
     msg = format_prices(rates)
-    await update.message.reply_text(msg, parse_mode="Markdown", reply_markup=main_menu())
+    if update.message:
+        await update.message.reply_text(msg, parse_mode="Markdown", reply_markup=main_menu())
+    elif update.callback_query:
+        await update.callback_query.edit_message_text(msg, parse_mode="Markdown", reply_markup=main_menu())
+
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await send_prices(update, context)
 
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -215,6 +223,10 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 """
         await query.edit_message_text(msg, parse_mode="Markdown", reply_markup=main_menu())
 
+async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """هر پیام متنی که کاربر بفرسته، قیمت‌ها رو برمی‌گردونه"""
+    await send_prices(update, context)
+
 # ============================================================
 # اجرا
 # ============================================================
@@ -222,9 +234,10 @@ async def main():
     app = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CallbackQueryHandler(button_handler))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
     logger.info("🚀 ربات قیمت دلار و طلا راه‌اندازی شد!")
-    print("🚀 ربات آماده است! /start را در تلگرام بزنید.")
+    print("🚀 ربات آماده است! هر پیامی بفرستی قیمت‌ها رو می‌بینی.")
 
     await app.initialize()
     await app.start()
