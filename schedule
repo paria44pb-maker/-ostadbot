@@ -1,0 +1,15 @@
+import time
+import schedule
+
+def update_bot_info():
+    times = get_all_times()
+    # در اینجا کدی که اطلاعات ربات را آپدیت می‌کند بنویسید
+    # مثلا: bot.set_my_name(f"Bot | {times['time']}")
+    print(f"اطلاعات ربات آپدیت شد: {times['time']}")
+
+# هر ۱ دقیقه یکبار بروزرسانی شود
+schedule.every(1).minutes.do(update_bot_info)
+
+while True:
+    schedule.run_pending()
+    time.sleep(1)
