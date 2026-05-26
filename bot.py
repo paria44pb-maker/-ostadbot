@@ -4,35 +4,23 @@
 💰 ربات قیمت زنده دلار و طلا - به تومان
 📡 منابع: tgju.org | call1.ir
 📅 تاریخ شمسی | ⏰ ساعت تهران
-🔑 توکن مستقیماً در کد
-✅ پاسخ به هر پیام (نه فقط /start)
 """
 
-import os, sys, subprocess, asyncio, logging, time
-from datetime import datetime, timedelta
+import asyncio
+import logging
+import sys
+import subprocess
+from datetime import datetime
 from typing import Dict
 
-# ============================================================
-# توکن تلگرام - مستقیماً اینجا
-# ============================================================
-TELEGRAM_BOT_TOKEN = "7225279768:AAHwZEmSxRxx5ZGCyx88BMP2DSEoarcZSxw"
-
-# ============================================================
 # نصب خودکار کتابخانه‌ها
-# ============================================================
-def install(pkg, import_name=None):
-    if import_name is None:
-        import_name = pkg.replace('-', '_')
+for pkg, imp in [("httpx", "httpx"), ("jdatetime", "jdatetime"), 
+                  ("pytz", "pytz"), ("python-telegram-bot", "telegram")]:
     try:
-        __import__(import_name)
+        __import__(imp)
     except ImportError:
         subprocess.check_call([sys.executable, "-m", "pip", "install", pkg, "--quiet"],
-                              stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-
-install("httpx")
-install("jdatetime")
-install("pytz")
-install("python-telegram-bot", "telegram")
+                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
 import httpx
 import jdatetime
@@ -40,205 +28,108 @@ import pytz
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, filters, ContextTypes
 
-# ============================================================
-# LOGGING ساده
-# ============================================================
-logging.basicConfig(level=logging.INFO, format='%(asctime)s | %(levelname)-7s | %(message)s')
-logger = logging.getLogger('ForexBot')
+# توکن تلگرام
+TOKEN = "7225279768:AAHwZEmSxRxx5ZGCyx88BMP2DSEoarcZSxw"
 
-# ============================================================
-# تاریخ و ساعت شمسی
-# ============================================================
-TEHRAN_TZ = pytz.timezone('Asia/Tehran')
-MONTHS_FA = ['فروردین', 'اردیبهشت', 'خرداد', 'تیر', 'مرداد', 'شهریور',
-             'مهر', 'آبان', 'آذر', 'دی', 'بهمن', 'اسفند']
-DAYS_FA = ['دوشنبه', 'سه‌شنبه', 'چهارشنبه', 'پنج‌شنبه', 'جمعه', 'شنبه', 'یکشنبه']
+# لاگ
+logging.basicConfig(level=logging.INFO, format='%(asctime)s | %(message)s')
+logger = logging.getLogger('Bot')
 
-def persian_now():
-    now = datetime.now(TEHRAN_TZ)
-    j = jdatetime.datetime.fromgregorian(datetime=now)
-    return f"{DAYS_FA[now.weekday()]} {j.day} {MONTHS_FA[j.month-1]} {j.year} | {now.strftime('%H:%M:%S')}"
+# زمان تهران
+TEHRAN = pytz.timezone('Asia/Tehran')
+MONTHS = ['فروردین','اردیبهشت','خرداد','تیر','مرداد','شهریور','مهر','آبان','آذر','دی','بهمن','اسفند']
+DAYS = ['دوشنبه','سه‌شنبه','چهارشنبه','پنج‌شنبه','جمعه','شنبه','یکشنبه']
 
-# ============================================================
-# دریافت قیمت زنده دلار و طلا
-# ============================================================
-async def get_all_prices() -> Dict:
-    rates = {
-        'usd': 0,      # دلار (تومان)
-        'eur': 0,      # یورو (تومان)
-        'try': 0,      # لیر (تومان)
-        'gold_24': 0,  # طلای ۲۴ عیار (تومان)
-        'gold_18': 0,  # طلای ۱۸ عیار (تومان)
-        'coin': 0,     # سکه امامی (تومان)
-    }
+def now_str():
+    n = datetime.now(TEHRAN)
+    j = jdatetime.datetime.fromgregorian(datetime=n)
+    return f"{DAYS[n.weekday()]} {j.day} {MONTHS[j.month-1]} {j.year} | {n.strftime('%H:%M:%S')}"
 
-    client = httpx.AsyncClient(timeout=15.0, headers={"User-Agent": "Mozilla/5.0"})
-
+async def fetch_prices() -> Dict:
+    rates = {'usd': 70000, 'eur': 76000, 'try': 2200, 'gold24': 48000000, 'gold18': 36000000, 'coin': 55000000}
+    
     try:
-        # منبع اصلی: tgju.org
-        symbols = {
-            'usd': 'price_dollar_rl',
-            'eur': 'price_eur',
-            'try': 'price_try',
-            'gold_24': 'price_gold_24',
-            'gold_18': 'price_gold_18',
-            'coin': 'price_coin_imami',
-        }
-        for key, sym in symbols.items():
-            try:
-                resp = await client.get(f"https://api.tgju.org/v1/market/indicator/summary/{sym}")
-                if resp.status_code == 200:
-                    data = resp.json()
-                    p = data.get('response', {}).get('indicators', {}).get(sym, {}).get('p', 0)
-                    if p > 0:
-                        if key in ['usd', 'eur', 'try']:
-                            rates[key] = int(p / 10)  # ریال به تومان
-                        else:
-                            rates[key] = int(p / 10)
-            except:
-                pass
-
-        # منبع پشتیبان: call1.ir
-        if rates['usd'] == 0:
-            try:
-                resp = await client.get("https://call1.ir/api/currency.php")
-                if resp.status_code == 200:
-                    data = resp.json()
-                    for item in (data if isinstance(data, list) else []):
-                        name = str(item.get('name', ''))
-                        price = int(item.get('price', 0))
-                        if price > 0:
-                            if 'دلار' in name: rates['usd'] = max(rates['usd'], price)
-                            elif 'یورو' in name: rates['eur'] = max(rates['eur'], price)
-                            elif 'لیر' in name: rates['try'] = max(rates['try'], price)
-                            elif 'طلای ۲۴' in name: rates['gold_24'] = max(rates['gold_24'], price)
-                            elif 'طلای ۱۸' in name: rates['gold_18'] = max(rates['gold_18'], price)
-                            elif 'سکه' in name: rates['coin'] = max(rates['coin'], price)
-            except:
-                pass
-
-    finally:
-        await client.aclose()
-
-    # مقادیر پیش‌فرض (اگر هیچ API جواب نداد)
-    if rates['usd'] == 0: rates['usd'] = 70000
-    if rates['eur'] == 0: rates['eur'] = 76000
-    if rates['try'] == 0: rates['try'] = 2200
-    if rates['gold_24'] == 0: rates['gold_24'] = 48000000
-    if rates['gold_18'] == 0: rates['gold_18'] = 36000000
-    if rates['coin'] == 0: rates['coin'] = 55000000
-
+        async with httpx.AsyncClient(timeout=10) as c:
+            # tgju.org
+            for key, sym in [('usd','price_dollar_rl'),('eur','price_eur'),('try','price_try'),
+                             ('gold24','price_gold_24'),('gold18','price_gold_18'),('coin','price_coin_imami')]:
+                try:
+                    r = await c.get(f"https://api.tgju.org/v1/market/indicator/summary/{sym}")
+                    if r.status_code == 200:
+                        p = r.json().get('response',{}).get('indicators',{}).get(sym,{}).get('p',0)
+                        if p > 0:
+                            rates[key] = int(p/10)
+                except: pass
+            
+            # call1.ir (fallback)
+            if rates['usd'] == 70000:
+                r = await c.get("https://call1.ir/api/currency.php")
+                if r.status_code == 200:
+                    for item in r.json():
+                        n, p = str(item.get('name','')), int(item.get('price',0))
+                        if 'دلار' in n and p>50000: rates['usd'] = p
+                        elif 'یورو' in n: rates['eur'] = p
+                        elif 'لیر' in n: rates['try'] = p
+    except: pass
+    
     return rates
 
-# ============================================================
-# فرمت‌بندی پیام
-# ============================================================
-def format_prices(rates):
+def msg_text(rates):
     return f"""
 🟢══════════════════════🟢
    💰 قیمت‌های زنده بازار
 🟢══════════════════════🟢
 
-📅 {persian_now()}
+📅 {now_str()}
 
-💵 *دلار آمریکا:* {rates['usd']:,} تومان
+💵 *دلار:* {rates['usd']:,} تومان
 🇪🇺 *یورو:* {rates['eur']:,} تومان
-🇹🇷 *لیر ترکیه:* {rates['try']:,} تومان
+🇹🇷 *لیر:* {rates['try']:,} تومان
 
-🥇 *طلای ۲۴ عیار:* {rates['gold_24']:,} تومان
-🥈 *طلای ۱۸ عیار:* {rates['gold_18']:,} تومان
-🪙 *سکه امامی:* {rates['coin']:,} تومان
-
-📡 *منبع:* tgju.org / call1.ir
+🥇 *طلای ۲۴:* {rates['gold24']:,} تومان
+🥈 *طلای ۱۸:* {rates['gold18']:,} تومان
+🪙 *سکه:* {rates['coin']:,} تومان
 
 🟢══════════════════════🟢
 ✨ @Aradarzz_bot
 """
 
-# ============================================================
-# منوی تلگرام
-# ============================================================
-def main_menu():
+def menu():
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton("🔄 بروزرسانی قیمت‌ها", callback_data="refresh")],
-        [InlineKeyboardButton("💵 دلار", callback_data="usd"),
-         InlineKeyboardButton("🥇 طلا", callback_data="gold")],
+        [InlineKeyboardButton("🔄 بروزرسانی", callback_data="r"),
+         InlineKeyboardButton("💵 دلار", callback_data="u"),
+         InlineKeyboardButton("🥇 طلا", callback_data="g")]
     ])
 
-# ============================================================
-# هندلرها
-# ============================================================
-async def send_prices(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """ارسال قیمت‌ها به کاربر"""
-    rates = await get_all_prices()
-    msg = format_prices(rates)
-    if update.message:
-        await update.message.reply_text(msg, parse_mode="Markdown", reply_markup=main_menu())
-    elif update.callback_query:
-        await update.callback_query.edit_message_text(msg, parse_mode="Markdown", reply_markup=main_menu())
+async def start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    r = await fetch_prices()
+    await update.message.reply_text(msg_text(r), parse_mode="Markdown", reply_markup=menu())
 
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await send_prices(update, context)
+async def click(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    q = update.callback_query
+    await q.answer()
+    r = await fetch_prices()
+    
+    if q.data == "r":
+        await q.edit_message_text(msg_text(r), parse_mode="Markdown", reply_markup=menu())
+    elif q.data == "u":
+        m = f"💵 *دلار:* {r['usd']:,} تومان\n🇪🇺 *یورو:* {r['eur']:,} تومان\n🇹🇷 *لیر:* {r['try']:,} تومان\n\n📅 {now_str()}"
+        await q.edit_message_text(m, parse_mode="Markdown", reply_markup=menu())
+    elif q.data == "g":
+        m = f"🥇 *طلای ۲۴:* {r['gold24']:,} تومان\n🥈 *طلای ۱۸:* {r['gold18']:,} تومان\n🪙 *سکه:* {r['coin']:,} تومان\n\n📅 {now_str()}"
+        await q.edit_message_text(m, parse_mode="Markdown", reply_markup=menu())
 
-async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    data = query.data
+async def text(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    r = await fetch_prices()
+    await update.message.reply_text(msg_text(r), parse_mode="Markdown", reply_markup=menu())
 
-    rates = await get_all_prices()
-
-    if data == "refresh":
-        msg = format_prices(rates)
-        await query.edit_message_text(msg, parse_mode="Markdown", reply_markup=main_menu())
-
-    elif data == "usd":
-        msg = f"""
-💵 *قیمت دلار و ارزها*
-
-📅 {persian_now()}
-
-💵 دلار: *{rates['usd']:,}* تومان
-🇪🇺 یورو: *{rates['eur']:,}* تومان
-🇹🇷 لیر: *{rates['try']:,}* تومان
-
-📡 منبع: tgju.org / call1.ir
-
-🟢 @Aradarzz_bot
-"""
-        await query.edit_message_text(msg, parse_mode="Markdown", reply_markup=main_menu())
-
-    elif data == "gold":
-        msg = f"""
-🥇 *قیمت طلا و سکه*
-
-📅 {persian_now()}
-
-🥇 طلای ۲۴ عیار: *{rates['gold_24']:,}* تومان
-🥈 طلای ۱۸ عیار: *{rates['gold_18']:,}* تومان
-🪙 سکه امامی: *{rates['coin']:,}* تومان
-
-📡 منبع: tgju.org / call1.ir
-
-🟢 @Aradarzz_bot
-"""
-        await query.edit_message_text(msg, parse_mode="Markdown", reply_markup=main_menu())
-
-async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """هر پیام متنی که کاربر بفرسته، قیمت‌ها رو برمی‌گردونه"""
-    await send_prices(update, context)
-
-# ============================================================
-# اجرا
-# ============================================================
 async def main():
-    app = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
+    app = Application.builder().token(TOKEN).build()
     app.add_handler(CommandHandler("start", start))
-    app.add_handler(CallbackQueryHandler(button_handler))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-
-    logger.info("🚀 ربات قیمت دلار و طلا راه‌اندازی شد!")
-    print("🚀 ربات آماده است! هر پیامی بفرستی قیمت‌ها رو می‌بینی.")
-
+    app.add_handler(CallbackQueryHandler(click))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text))
+    
+    print("🚀 ربات آماده است! /start را بزنید.")
     await app.initialize()
     await app.start()
     await app.updater.start_polling(drop_pending_updates=True)
