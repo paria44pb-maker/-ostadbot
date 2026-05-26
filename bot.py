@@ -2,13 +2,10 @@
 # -*- coding: utf-8 -*-
 """
 ╔══════════════════════════════════════════════════════════════════════════╗
-║   🚀 CRYPTO PULSE v18.0 — ULTIMATE PERSIAN GOLDEN SIGNAL BOT 🤖         ║
-║   ✅ Dual AI (Groq + Gemini)  ✅ 50+ Glass Keys  ✅ Real Charts           ║
-║   ✅ Live Shamsi Date  ✅ Auto Trading  ✅ News  ✅ Education              ║
-║   ✅ 25+ Indicators  ✅ 7 EMA Types  ✅ Fibonacci  ✅ Price Action         ║
-║   ✅ Whale Tracking  ✅ Market Sentiment  ✅ Portfolio Management          ║
-║   ✅ Channel Management  ✅ Hashtag System  ✅ Persian Green Theme         ║
-║   ✅ Iranian Forex (Toman)  ✅ Self‑Learning  ✅ Railway Ready             ║
+║   🚀 CRYPTO PULSE v18.1 — OPEN ACCESS EDITION 🤖                        ║
+║   ✅ Dual AI  ✅ 50+ Glass Keys  ✅ Real Charts  ✅ Auto Trade             ║
+║   ✅ Live Shamsi Date  ✅ News  ✅ Education  ✅ Iranian Forex             ║
+║   ✅ No Admin Restriction — Everyone Can Use                              ║
 ╚══════════════════════════════════════════════════════════════════════════╝
 """
 
@@ -74,7 +71,7 @@ for lib in ['httpx','httpcore','telegram','ccxt','urllib3','asyncio','matplotlib
     logging.getLogger(lib).setLevel(logging.WARNING)
 
 # ============================================================
-# CONFIGURATION
+# CONFIGURATION (بدون ADMIN_ID)
 # ============================================================
 @dataclass
 class Config:
@@ -85,7 +82,6 @@ class Config:
     api_key: str = os.getenv("COINEX_API_KEY", "")
     api_secret: str = os.getenv("COINEX_SECRET_KEY", "")
     api_passphrase: str = os.getenv("COINEX_PASSPHRASE", "")
-    admin_id: int = int(os.getenv("ADMIN_ID", "13600620"))
     symbols: List[str] = field(default_factory=lambda: [
         "BTC/USDT","ETH/USDT","BNB/USDT","XRP/USDT","ADA/USDT","SOL/USDT","DOGE/USDT",
         "DOT/USDT","MATIC/USDT","AVAX/USDT","LINK/USDT","UNI/USDT","ATOM/USDT","LTC/USDT",
@@ -176,7 +172,7 @@ class TokenManager:
 token_mgr = TokenManager()
 
 # ============================================================
-# DUAL AI (Thread-safe HTTPX clients)
+# DUAL AI
 # ============================================================
 class GeminiAI:
     URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent"
@@ -279,7 +275,7 @@ class ExchangeManager:
 exchange_mgr = ExchangeManager()
 
 # ============================================================
-# IRANIAN FOREX (Live Toman rates)
+# IRANIAN FOREX
 # ============================================================
 class IranForex:
     @staticmethod
@@ -432,7 +428,7 @@ class SignalGen:
 sg = SignalGen()
 
 # ============================================================
-# TRADER (Self-Learning)
+# TRADER
 # ============================================================
 class Trader:
     def __init__(self):
@@ -492,7 +488,7 @@ class Trader:
 trader = Trader()
 
 # ============================================================
-# CHART GENERATOR (Dark Green Theme)
+# CHART GENERATOR
 # ============================================================
 class ChartGenerator:
     @staticmethod
@@ -740,22 +736,15 @@ class BioUpdater:
         threading.Thread(target=lambda: [schedule.run_pending(), time.sleep(1)], daemon=True).start()
 
 # ============================================================
-# HANDLERS (Admin Only)
+# HANDLERS (دسترسی آزاد برای همه)
 # ============================================================
-def is_admin(user_id: int) -> bool:
-    return user_id == cfg.admin_id
-
 async def cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-    if not is_admin(update.effective_user.id):
-        await update.message.reply_text("⛔ دسترسی غیرمجاز!")
-        return
     await update.message.reply_text(
-        f"🟢══════════════════════🟢\n   🤖 #کریپتو_پالس v18.0 🤖\n🟢══════════════════════🟢\n\n{pdt.both()}\n\n🧠🌟 Groq + Gemini AI\n📊 ۲۵+ اندیکاتور\n💹 معاملات خودکار\n📊 نمودار واقعی\n💰 قیمت طلا و ارز زنده\n📢 سیگنال ۴h | 📚 آموزش ۱h\n📰 اخبار ۲h | 🐋 نهنگ‌ها\n\n👇 انتخاب کنید:",
+        f"🟢══════════════════════🟢\n   🤖 #کریپتو_پالس v18.1 🤖\n🟢══════════════════════🟢\n\n{pdt.both()}\n\n🧠🌟 Groq + Gemini AI\n📊 ۲۵+ اندیکاتور\n💹 معاملات خودکار\n📊 نمودار واقعی\n💰 قیمت طلا و ارز زنده\n📢 سیگنال ۴h | 📚 آموزش ۱h\n📰 اخبار ۲h | 🐋 نهنگ‌ها\n\n👇 انتخاب کنید:",
         reply_markup=Menu.main())
 
 async def signal_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE, symbol: str = "BTC/USDT"):
     q = update.callback_query
-    if not is_admin(q.from_user.id): await q.answer("⛔ دسترسی غیرمجاز!"); return
     await q.answer()
     await q.edit_message_text(f"🔄 تحلیل {symbol.replace('/USDT','')}...")
     if not exchange_mgr.connected: exchange_mgr.connect()
@@ -780,7 +769,6 @@ async def signal_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE, symbol:
 
 async def chart_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE, symbol: str = "BTC/USDT"):
     q = update.callback_query
-    if not is_admin(q.from_user.id): await q.answer("⛔"); return
     await q.answer()
     if not CHART_AVAILABLE: await q.edit_message_text("❌ کتابخانه نمودار نصب نیست"); return
     await q.edit_message_text(f"📊 رسم نمودار {symbol.replace('/USDT','')}...")
@@ -794,7 +782,6 @@ async def chart_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE, symbol: 
 
 async def forex_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query
-    if not is_admin(q.from_user.id): await q.answer("⛔"); return
     await q.answer()
     await q.edit_message_text("💰 دریافت قیمت‌های زنده...")
     rates = await forex_ir.get_rates()
@@ -803,7 +790,6 @@ async def forex_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
 async def button_router(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query
-    if not is_admin(q.from_user.id): await q.answer("⛔ دسترسی غیرمجاز!"); return
     d = q.data
     try:
         if d == "back": await q.edit_message_text(f"🟢 *منو*\n\n{pdt.both()}", parse_mode="Markdown", reply_markup=Menu.main())
@@ -852,7 +838,6 @@ async def button_router(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     except Exception as e: logger.error(f"Btn: {e}"); await q.answer("❌")
 
 async def text_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-    if not is_admin(update.effective_user.id): return
     await update.message.reply_text(f"/start\n{pdt.both()}", reply_markup=Menu.main())
 
 # ============================================================
@@ -947,7 +932,7 @@ async def auto_forex(app: Application):
 async def main():
     if not ProcessLock.acquire(): sys.exit(1)
     if not cfg.token: ProcessLock.release(); return
-    print(f"🟢══════════════════════════════════════🟢\n║   🚀 CRYPTO PULSE v18.0 ║\n║   📅 {pdt.shamsi()} ║\n║   ⏰ {pdt.time_str()} ║\n🟢══════════════════════════════════════🟢")
+    print(f"🟢══════════════════════════════════════🟢\n║   🚀 CRYPTO PULSE v18.1 ║\n║   📅 {pdt.shamsi()} ║\n║   ⏰ {pdt.time_str()} ║\n🟢══════════════════════════════════════🟢")
     logger.info(f"🚀 شروع | {pdt.full()}")
     exchange_mgr.connect()
     app = Application.builder().token(cfg.token).build()
@@ -961,8 +946,7 @@ async def main():
     asyncio.create_task(auto_whale(app))
     asyncio.create_task(auto_forex(app))
     logger.info("="*50)
-    logger.info(f"🚀 کریپتو پالس ۱۸ | {pdt.full()}")
-    logger.info(f"👤 Admin: {cfg.admin_id}")
+    logger.info(f"🚀 کریپتو پالس ۱۸.۱ | {pdt.full()}")
     logger.info(f"🧠 Groq: {'✅' if groq_ai.enabled else '❌'} | 🌟 Gemini: {'✅' if gemini_ai.enabled else '❌'}")
     logger.info("="*50)
     try:
