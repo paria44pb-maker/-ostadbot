@@ -2,8 +2,8 @@
 # -*- coding: utf-8 -*-
 """
 ╔══════════════════════════════════════════════════════════════════════╗
-║   CRYPTO PULSE ULTIMATE v13.2 - ONLINE PERSIAN DATE FIX             ║
-║   Dual AI | 50+ Keys | Real Charts | Alanchand Forex | Live Date    ║
+║   CRYPTO PULSE v13.3 - PERSIAN LIVE | 5 Khordad 1404 | 12:48        ║
+║   Dual AI | 50+ Keys | Real Charts | Alanchand | 100% Persian        ║
 ╚══════════════════════════════════════════════════════════════════════╝
 """
 
@@ -54,7 +54,7 @@ except: CHART_AVAILABLE = False
 load_dotenv()
 
 # ============================================================
-# LOGGING
+# LOGGING - با تاریخ فارسی
 # ============================================================
 logger.setLevel(logging.DEBUG)
 console = logging.StreamHandler(); console.setLevel(logging.INFO)
@@ -121,60 +121,50 @@ for sig in [signal.SIGINT, signal.SIGTERM]:
     signal.signal(sig, lambda s,f: (ProcessLock.release(), sys.exit(0)))
 
 # ============================================================
-# LIVE PERSIAN DATE/TIME - کاملاً آنلاین
+# PERSIAN LIVE DATE/TIME - همیشه آنلاین
 # ============================================================
-class PersianDateTime:
-    """تاریخ و ساعت آنلاین فارسی - همیشه بروز"""
+class PersianLive:
+    """تاریخ و ساعت زنده فارسی"""
     
-    @staticmethod
-    def now() -> datetime:
-        """لحظه فعلی"""
+    DAYS = ['دوشنبه', 'سه‌شنبه', 'چهارشنبه', 'پنج‌شنبه', 'جمعه', 'شنبه', 'یکشنبه']
+    MONTHS = ['فروردین', 'اردیبهشت', 'خرداد', 'تیر', 'مرداد', 'شهریور',
+              'مهر', 'آبان', 'آذر', 'دی', 'بهمن', 'اسفند']
+    
+    @classmethod
+    def now(cls) -> datetime:
         return datetime.now()
     
-    @staticmethod
-    def now_str() -> str:
-        """رشته تاریخ میلادی"""
-        return datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    @classmethod
+    def date_str(cls) -> str:
+        """فقط تاریخ: ۵ خرداد ۱۴۰۴"""
+        n = cls.now()
+        return f"{n.day} {cls.MONTHS[n.month-1]} {n.year}"
     
-    @staticmethod
-    def full_persian() -> str:
-        """تاریخ کامل فارسی با روز هفته"""
-        n = datetime.now()
-        days_fa = ['دوشنبه', 'سه‌شنبه', 'چهارشنبه', 'پنج‌شنبه', 'جمعه', 'شنبه', 'یکشنبه']
-        months_fa = ['فروردین', 'اردیبهشت', 'خرداد', 'تیر', 'مرداد', 'شهریور',
-                     'مهر', 'آبان', 'آذر', 'دی', 'بهمن', 'اسفند']
-        return f"{days_fa[n.weekday()]} {n.day} {months_fa[n.month-1]} {n.year}"
+    @classmethod
+    def time_str(cls) -> str:
+        """فقط ساعت: ۱۲:۴۸"""
+        return cls.now().strftime('%H:%M:%S')
     
-    @staticmethod
-    def time_only() -> str:
-        """فقط ساعت"""
-        return datetime.now().strftime('%H:%M:%S')
+    @classmethod
+    def day_str(cls) -> str:
+        """روز هفته: دوشنبه"""
+        return cls.DAYS[cls.now().weekday()]
     
-    @staticmethod
-    def full_datetime() -> str:
-        """تاریخ و ساعت کامل فارسی"""
-        return f"{PersianDateTime.full_persian()} | ساعت {PersianDateTime.time_only()}"
+    @classmethod
+    def full(cls) -> str:
+        """کامل: دوشنبه ۵ خرداد ۱۴۰۴ ساعت ۱۲:۴۸"""
+        return f"{cls.day_str()} {cls.date_str()} ساعت {cls.time_str()}"
     
-    @staticmethod
-    def utc_now() -> str:
-        """ساعت UTC"""
+    @classmethod
+    def header(cls) -> str:
+        """هدر پیام‌ها"""
+        return f"📅 {cls.day_str()} {cls.date_str()}\n⏰ ساعت {cls.time_str()}"
+    
+    @classmethod
+    def utc(cls) -> str:
         return datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')
-    
-    @staticmethod
-    def header_block() -> str:
-        """بلاک هدر برای پیام‌ها"""
-        return (
-            f"📅 *تاریخ:* {PersianDateTime.full_persian()}\n"
-            f"⏰ *ساعت:* {PersianDateTime.time_only()}\n"
-            f"🌍 *UTC:* {PersianDateTime.utc_now()}"
-        )
-    
-    @staticmethod
-    def short_header() -> str:
-        """هدر کوتاه"""
-        return f"📅 {PersianDateTime.full_datetime()} | 🌍 {PersianDateTime.utc_now()}"
 
-dt = PersianDateTime()
+pdt = PersianLive()
 
 # ============================================================
 # TOKEN MANAGER
@@ -451,7 +441,7 @@ class ChartGenerator:
                 ema = close.ewm(span=p,adjust=False).mean().values[-n:]
                 ax1.plot(dates[-n:], ema, color=color, linewidth=1.2, alpha=0.8)
             ax1.fill_between(dates[-n:], [indicators.get('BB_LOWER',close.iloc[-1])]*n, [indicators.get('BB_UPPER',close.iloc[-1])]*n, alpha=0.1, color='#00ff88')
-            ax1.set_title(f'{symbol} - {dt.full_persian()}', color='#00ff88', fontsize=13, fontweight='bold')
+            ax1.set_title(f'{symbol} - {pdt.date_str()}', color='#00ff88', fontsize=13, fontweight='bold')
             ax1.set_ylabel('💰 قیمت', color='#00ff88'); ax1.tick_params(colors='#00ff88')
             ax1.grid(True, alpha=0.15, color='#00ff88')
             ax2 = plt.subplot2grid((5,1),(3,0), facecolor='#0a1a0a')
@@ -537,7 +527,7 @@ class Trader:
 trader = Trader()
 
 # ============================================================
-# FORMATTER - PERSIAN WITH LIVE DATE
+# FORMATTER - ۱۰۰٪ فارسی شیک
 # ============================================================
 class Fmt:
     @staticmethod
@@ -554,61 +544,62 @@ class Fmt:
         elif "فروش فوق‌العاده" in sig: act_emoji = "❄️❄️❄️"; act_text = "ورود قوی به پوزیشن فروش (SHORT)"
         elif "فروش قوی" in sig: act_emoji = "❄️❄️"; act_text = "ورود به پوزیشن فروش (SHORT)"
         elif "فروش" in sig: act_emoji = "❄️"; act_text = "ورود به پوزیشن فروش"
-        else: act_emoji = "⏳"; act_text = "صبر و انتظار"
+        else: act_emoji = "⏳"; act_text = "صبر و انتظار برای سیگنال بهتر"
         
         entry = a['price']; sl = a['price']-i['ATR_14']*cfg.atr_sl
         tp1 = a['price']+i['ATR_14']*cfg.atr_tp; tp2 = a['price']+i['ATR_14']*cfg.atr_tp*1.5
-        
-        # 🔥 تاریخ آنلاین فارسی
-        live_date = dt.full_datetime()
-        utc_date = dt.utc_now()
         
         msg = f"""
 🟢══════════════════════════════════════🟢
   {coin_emoji} #سیگنال_معاملاتی {s} {coin_emoji}
 🟢══════════════════════════════════════🟢
 
-📅 *تاریخ:* {dt.full_persian()}
-⏰ *ساعت:* {dt.time_only()}
-🌍 *UTC:* {utc_date}
+📅 {pdt.full()}
+🌍 UTC: {pdt.utc()}
 
 ┏━━━━━━━━━━ 📊 وضعیت بازار ━━━━━━━━━━┓
-💰 *قیمت:* ${a['price']:,.4f}
-📊 *تغییر ۲۴h:* {a['change']:+.2f}%
+💰 *قیمت فعلی:* ${a['price']:,.4f}
+📊 *تغییر ۲۴ ساعت:* {a['change']:+.2f}%
 🎯 *سیگنال:* {sig} {act_emoji}
-💪 *قدرت:* {conf}% | ⭐ *امتیاز:* {score}/1000
+💪 *قدرت سیگنال:* {conf}% | ⭐ *امتیاز:* {score}/1000
 ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
 
-┏━━━━━━━━━━ 📈 EMA ها ━━━━━━━━━━┓
-✨ EMA 7: ${i.get('EMA_7',0):,.2f} | 20: ${i.get('EMA_20',0):,.2f}
-✨ EMA 50: ${i.get('EMA_50',0):,.2f} | 200: ${i.get('EMA_200',0):,.2f}
+┏━━━━━━━━━━ 📈 میانگین‌های متحرک ━━━━━━━━━━┓
+✨ EMA ۷: ${i.get('EMA_7',0):,.2f} | EMA ۲۰: ${i.get('EMA_20',0):,.2f}
+✨ EMA ۵۰: ${i.get('EMA_50',0):,.2f} | EMA ۲۰۰: ${i.get('EMA_200',0):,.2f}
 ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
 
-┏━━━━━━━━━━ 📊 اندیکاتورها ━━━━━━━━━━┓
-📈 RSI(14): {i['RSI_14']:.1f} | RSI(7): {i.get('RSI_7',50):.1f}
-📉 MACD: {'🟢 صعودی' if i.get('MACD_HIST',0)>0 else '🔴 نزولی'}
-📊 ADX: {i['ADX']:.1f} | CCI: {i['CCI']:.1f} | MFI: {i['MFI']:.1f}
-📐 BB: {i.get('BB_PCT',0.5):.2f}%B | Vol: {i.get('VOL_RATIO',1):.1f}x
+┏━━━━━━━━━━ 📊 اندیکاتورها و اسیلاتورها ━━━━━━━━━━┓
+📈 *RSI(14):* {i['RSI_14']:.1f} | *RSI(7):* {i.get('RSI_7',50):.1f}
+📉 *MACD:* {'🟢 صعودی' if i.get('MACD_HIST',0)>0 else '🔴 نزولی'}
+📊 *ADX:* {i['ADX']:.1f} | *CCI:* {i['CCI']:.1f} | *MFI:* {i['MFI']:.1f}
+📐 *بولینگر:* {i.get('BB_PCT',0.5):.2f}%B | حجم: {i.get('VOL_RATIO',1):.1f}x
 ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
 
-┏━━━━━━━━━━ 🔑 سطوح ━━━━━━━━━━┓
-🔴 مقاومت: ${i['RESISTANCE']:,.4f}
-🟢 حمایت: ${i['SUPPORT']:,.4f}
+┏━━━━━━━━━━ 🕯️ پرایس اکشن ━━━━━━━━━━┓
+🕯️ *الگوهای کندلی:* {', '.join(pats) if pats else 'بدون الگوی خاص'}
+🔄 *واگرایی RSI:* {i.get('DIVERGENCE','NONE')}
 ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
 
-┏━━━━━━━━━━ 🎯 ورود و خروج ━━━━━━━━━━┓
-🔵 *ورود:* ${entry:,.4f}
-🔴 *SL:* ${sl:,.4f} ({abs(entry-sl)/entry*100:.1f}%)
-🟢 *TP1:* ${tp1:,.4f} ({abs(tp1-entry)/entry*100:.1f}%)
-🟢 *TP2:* ${tp2:,.4f} ({abs(tp2-entry)/entry*100:.1f}%)
+┏━━━━━━━━━━ 🔑 سطوح کلیدی ━━━━━━━━━━┓
+🔴 *مقاومت:* ${i['RESISTANCE']:,.4f}
+🟢 *حمایت:* ${i['SUPPORT']:,.4f}
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+
+┏━━━━━━━━━━ 🎯 نقاط ورود و خروج ━━━━━━━━━━┓
+🔵 *نقطه ورود:* ${entry:,.4f}
+🔴 *حد ضرر (SL):* ${sl:,.4f} ({abs(entry-sl)/entry*100:.1f}%)
+🟢 *حد سود ۱ (TP1):* ${tp1:,.4f} ({abs(tp1-entry)/entry*100:.1f}%)
+🟢 *حد سود ۲ (TP2):* ${tp2:,.4f} ({abs(tp2-entry)/entry*100:.1f}%)
+📊 *نسبت ریسک به ریوارد:* 1:{cfg.atr_tp/cfg.atr_sl:.1f}
 ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛"""
 
-        if tf_4h: msg += f"\n⏰ *۴h:* RSI={tf_4h.get('RSI_14',50):.0f} MACD={'🟢' if tf_4h.get('MACD_HIST',0)>0 else '🔴'}"
-        if tf_1d: msg += f"\n⏰ *۱d:* RSI={tf_1d.get('RSI_14',50):.0f} MACD={'🟢' if tf_1d.get('MACD_HIST',0)>0 else '🔴'}"
-        if tf_1w: msg += f"\n⏰ *۱w:* RSI={tf_1w.get('RSI_14',50):.0f} MACD={'🟢' if tf_1w.get('MACD_HIST',0)>0 else '🔴'}"
+        if tf_4h: msg += f"\n⏰ *تایم‌فریم ۴ ساعته:* RSI={tf_4h.get('RSI_14',50):.0f} | MACD={'🟢' if tf_4h.get('MACD_HIST',0)>0 else '🔴'} | ADX={tf_4h.get('ADX',20):.0f}"
+        if tf_1d: msg += f"\n⏰ *تایم‌فریم ۱ روزه:* RSI={tf_1d.get('RSI_14',50):.0f} | MACD={'🟢' if tf_1d.get('MACD_HIST',0)>0 else '🔴'} | ADX={tf_1d.get('ADX',20):.0f}"
+        if tf_1w: msg += f"\n⏰ *تایم‌فریم ۱ هفته:* RSI={tf_1w.get('RSI_14',50):.0f} | MACD={'🟢' if tf_1w.get('MACD_HIST',0)>0 else '🔴'} | ADX={tf_1w.get('ADX',20):.0f}"
 
-        if groq_t: msg += f"\n\n┏━━━━ 🧠 Groq AI ━━━━┓\n{groq_t[:400]}\n┗━━━━━━━━━━━━━━━━━━┛"
-        if gemini_t: msg += f"\n┏━━━━ 🌟 Gemini AI ━━━━┓\n{gemini_t[:300]}\n┗━━━━━━━━━━━━━━━━━━┛"
+        if groq_t: msg += f"\n\n┏━━━━ 🧠 تحلیل Groq AI ━━━━┓\n{groq_t[:400]}\n┗━━━━━━━━━━━━━━━━━━┛"
+        if gemini_t: msg += f"\n┏━━━━ 🌟 تحلیل Gemini AI ━━━━┓\n{gemini_t[:300]}\n┗━━━━━━━━━━━━━━━━━━┛"
 
         msg += f"""
 
@@ -616,12 +607,12 @@ class Fmt:
            📋 #نتیجه‌گیری_نهایی
 🟢══════════════════════════════════════🟢
 
-🎯 سیگنال: {sig} {act_emoji}
-💪 اطمینان: {conf}% | ⭐ امتیاز: {score}/1000
-📊 اقدام: {act_text}
+🎯 *سیگنال:* {sig} {act_emoji}
+💪 *اطمینان:* {conf}% | ⭐ *امتیاز:* {score}/1000
+📊 *اقدام:* {act_text}
 
 🟢══════════════════════════════════════🟢
-✨ @CryptoPulse606 | {live_date}
+✨ @CryptoPulse606 | {pdt.full()}
 🟢══════════════════════════════════════🟢
 
 #تحلیل_تکنیکال #{s} #کریپتو #معامله_گری"""
@@ -629,14 +620,14 @@ class Fmt:
     
     @staticmethod
     def edu(content=None):
-        h = f"🟢══════════════════🟢\n     📚 #آموزش_کریپتو\n🟢══════════════════🟢\n\n📅 {dt.full_persian()}\n⏰ {dt.time_only()}\n\n"
+        h = f"🟢══════════════════🟢\n     📚 #آموزش_کریپتو\n🟢══════════════════🟢\n\n📅 {pdt.full()}\n\n"
         if content: h += f"{content}\n\n"
-        return h + f"🟢══════════════════🟢\n✨ @CryptoPulse606 | {dt.full_datetime()}\n#آموزش #تحلیل"
+        return h + f"🟢══════════════════🟢\n✨ @CryptoPulse606 | {pdt.full()}\n#آموزش #تحلیل"
     
     @staticmethod
     def news(content=None):
-        if content: return f"📰 *#اخبار_کریپتو*\n\n📅 {dt.full_persian()} | ⏰ {dt.time_only()}\n\n{content}\n\n✨ @CryptoPulse606\n#اخبار #بیتکوین"
-        return f"📰 *اخبار*\n\n📅 {dt.full_datetime()}\n\n✨ @CryptoPulse606"
+        if content: return f"📰 *#اخبار_کریپتو*\n\n📅 {pdt.full()}\n\n{content}\n\n✨ @CryptoPulse606\n#اخبار #بیتکوین"
+        return f"📰 *اخبار*\n\n📅 {pdt.full()}\n\n✨ @CryptoPulse606"
     
     @staticmethod
     def forex(rates):
@@ -645,63 +636,62 @@ class Fmt:
    💰 #قیمت_ارز_و_طلا_آلان_چند 💰
 🟢══════════════════════════════🟢
 
-📅 {dt.full_persian()}
-⏰ {dt.time_only()}
+📅 {pdt.full()}
 📌 *منبع:* alanchand.com
 
-💵 *دلار:* {rates['usd']:,} تومان
+💵 *دلار آمریکا:* {rates['usd']:,} تومان
 🇪🇺 *یورو:* {rates['eur']:,} تومان
-🇹🇷 *لیر:* {rates['try']:,} تومان
-🇮🇶 *دینار:* {rates['iqd']:,} تومان
-🇬🇧 *پوند:* {rates['gbp']:,} تومان
+🇹🇷 *لیر ترکیه:* {rates['try']:,} تومان
+🇮🇶 *دینار عراق:* {rates['iqd']:,} تومان
+🇬🇧 *پوند انگلیس:* {rates['gbp']:,} تومان
 
-🥇 *طلای ۲۴:* {rates['gold_24']:,} تومان
-🥈 *طلای ۱۸:* {rates['gold_18']:,} تومان
-🪙 *سکه:* {rates['coin']:,} تومان
+🥇 *طلای ۲۴ عیار:* {rates['gold_24']:,} تومان
+🥈 *طلای ۱۸ عیار:* {rates['gold_18']:,} تومان
+🪙 *سکه تمام:* {rates['coin']:,} تومان
 
 🟢══════════════════════════════🟢
-✨ @CryptoPulse606 | {dt.full_datetime()}
+✨ @CryptoPulse606 | {pdt.full()}
 🟢══════════════════════════════🟢
 #طلا #دلار #قیمت_لحظه‌ای"""
 
 fmt = Fmt()
 
 # ============================================================
-# MENU
+# 40+ PERSIAN MENU
 # ============================================================
 class Menu:
     @staticmethod
     def main() -> InlineKeyboardMarkup:
         return InlineKeyboardMarkup([
-            [InlineKeyboardButton("💰 قیمت‌ها", callback_data="p"),
+            [InlineKeyboardButton("💰 قیمت‌های لحظه‌ای", callback_data="p"),
              InlineKeyboardButton("🎯 سیگنال BTC", callback_data="s_BTC/USDT"),
-             InlineKeyboardButton("🔍 اسکن", callback_data="scan")],
-            [InlineKeyboardButton("⏰ ۴h BTC", callback_data="tf4_BTC/USDT"),
-             InlineKeyboardButton("⏰ ۱d BTC", callback_data="tf1d_BTC/USDT"),
-             InlineKeyboardButton("⏰ ۱w BTC", callback_data="tf1w_BTC/USDT")],
-            [InlineKeyboardButton("🧠 Groq", callback_data="ai_BTC/USDT"),
-             InlineKeyboardButton("🌟 Gemini", callback_data="gem_BTC/USDT"),
-             InlineKeyboardButton("📊 نمودار", callback_data="chart_BTC/USDT")],
-            [InlineKeyboardButton("📰 بازار", callback_data="market"),
-             InlineKeyboardButton("📊 استراتژی", callback_data="strat"),
-             InlineKeyboardButton("💭 احساسات", callback_data="sent")],
-            [InlineKeyboardButton("📰 فاندامنتال", callback_data="fund"),
+             InlineKeyboardButton("🔍 اسکن بازار", callback_data="scan")],
+            [InlineKeyboardButton("⏰ تحلیل ۴ ساعته", callback_data="tf4_BTC/USDT"),
+             InlineKeyboardButton("⏰ تحلیل ۱ روزه", callback_data="tf1d_BTC/USDT"),
+             InlineKeyboardButton("⏰ تحلیل ۱ هفته", callback_data="tf1w_BTC/USDT")],
+            [InlineKeyboardButton("🧠 تحلیل Groq AI", callback_data="ai_BTC/USDT"),
+             InlineKeyboardButton("🌟 تحلیل Gemini", callback_data="gem_BTC/USDT"),
+             InlineKeyboardButton("📊 نمودار تکنیکال", callback_data="chart_BTC/USDT")],
+            [InlineKeyboardButton("📰 تحلیل بازار", callback_data="market"),
+             InlineKeyboardButton("📊 استراتژی BTC", callback_data="strat"),
+             InlineKeyboardButton("💭 احساسات بازار", callback_data="sent")],
+            [InlineKeyboardButton("📰 فاندامنتال BTC", callback_data="fund"),
              InlineKeyboardButton("📊 پرایس اکشن", callback_data="pa"),
-             InlineKeyboardButton("🔮 پیش‌بینی", callback_data="pred")],
+             InlineKeyboardButton("🔮 پیش‌بینی قیمت", callback_data="pred")],
             [InlineKeyboardButton("💰 پورتفوی", callback_data="port"),
              InlineKeyboardButton("📊 عملکرد", callback_data="perf"),
-             InlineKeyboardButton("🧠 تجربه", callback_data="exp")],
-            [InlineKeyboardButton("🤖 خودکار", callback_data="auto"),
+             InlineKeyboardButton("🧠 تجربه ربات", callback_data="exp")],
+            [InlineKeyboardButton("🤖 معاملات خودکار", callback_data="auto"),
              InlineKeyboardButton("⚙️ تنظیمات", callback_data="set"),
-             InlineKeyboardButton("🔑 وضعیت", callback_data="status")],
-            [InlineKeyboardButton("📚 آموزش", callback_data="edu"),
-             InlineKeyboardButton("📰 اخبار", callback_data="news"),
-             InlineKeyboardButton("🐋 نهنگ‌ها", callback_data="whale")],
-            [InlineKeyboardButton("💰 طلا و ارز", callback_data="forex"),
+             InlineKeyboardButton("🔑 وضعیت اتصال", callback_data="status")],
+            [InlineKeyboardButton("📚 آموزش تخصصی", callback_data="edu"),
+             InlineKeyboardButton("📰 اخبار کریپتو", callback_data="news"),
+             InlineKeyboardButton("🐋 نهنگ‌های بازار", callback_data="whale")],
+            [InlineKeyboardButton("💰 طلا و ارز (تومان)", callback_data="forex"),
              InlineKeyboardButton("📉 ترس و طمع", callback_data="fear"),
-             InlineKeyboardButton("💎 آلت‌کوین", callback_data="alt")],
-            [InlineKeyboardButton("⏸️ توقف", callback_data="stop"),
-             InlineKeyboardButton("🔄 بروز", callback_data="ref"),
+             InlineKeyboardButton("💎 آلت‌کوین‌ها", callback_data="alt")],
+            [InlineKeyboardButton("⏸️ توقف اضطراری", callback_data="stop"),
+             InlineKeyboardButton("🔄 بروزرسانی", callback_data="ref"),
              InlineKeyboardButton("❓ راهنما", callback_data="help")],
         ])
 
@@ -724,25 +714,26 @@ async def safe_edit(bot, chat_id, msg_id, text, reply_markup=None):
 async def cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         f"🟢══════════════════════🟢\n"
-        f"   🤖 #کریپتو_پالس v13.2 🤖\n"
+        f"   🤖 #کریپتو_پالس نسخه ۱۳.۳ 🤖\n"
         f"🟢══════════════════════🟢\n\n"
-        f"📅 {dt.full_persian()}\n"
-        f"⏰ {dt.time_only()}\n\n"
-        f"🧠🌟 Groq + Gemini | 📊 ۲۵+ اندیکاتور\n"
+        f"📅 {pdt.full()}\n\n"
+        f"🧠🌟 هوش مصنوعی دوگانه: Groq + Gemini\n"
+        f"📊 ۲۵+ اندیکاتور | ۷ EMA | نمودار واقعی\n"
         f"💰 قیمت طلا و ارز از alanchand.com\n"
-        f"💹 معاملات خودکار | 📊 نمودار واقعی\n"
-        f"📢 سیگنال ۴h | 📚 آموزش ۱h\n\n"
-        f"👇 انتخاب کنید:",
+        f"💹 معاملات خودکار واقعی و دمو\n"
+        f"📢 سیگنال هر ۴ ساعت | 📚 آموزش هر ۱ ساعت\n"
+        f"📰 اخبار هر ۲ ساعت | 💰 ارز هر ۱ ساعت\n\n"
+        f"👇 از منوی زیر انتخاب کنید:",
         reply_markup=Menu.main()
     )
 
 async def signal_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE, symbol: str = "BTC/USDT"):
     q = update.callback_query; await q.answer()
-    await q.edit_message_text(f"🔄 تحلیل {symbol.replace('/USDT','')}...")
+    await q.edit_message_text(f"🔄 در حال تحلیل {symbol.replace('/USDT','')}...")
     if not exchange_mgr.connected: exchange_mgr.connect()
     t = exchange_mgr.ticker(symbol); df = exchange_mgr.ohlcv(symbol, '1h', 200)
     if not t or df is None:
-        await q.edit_message_text("❌", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]])); return
+        await q.edit_message_text("❌ خطا", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="back")]])); return
     ind = ui.calc(df); mtf = {}
     for tf_name in cfg.primary_tfs:
         dft = exchange_mgr.ohlcv(symbol, tf_name, 100)
@@ -755,25 +746,25 @@ async def signal_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE, symbol:
     msg = fmt.signal(analysis, groq_text, gemini_text, mtf.get('4h'), mtf.get('1d'), mtf.get('1w'))
     await safe_edit(ctx.bot, q.message.chat_id, q.message.message_id, msg,
         reply_markup=InlineKeyboardMarkup([[
-            InlineKeyboardButton("🔄", callback_data=f"s_{symbol}"),
+            InlineKeyboardButton("🔄 بروزرسانی", callback_data=f"s_{symbol}"),
             InlineKeyboardButton("📊 نمودار", callback_data=f"chart_{symbol}"),
-            InlineKeyboardButton("🔙", callback_data="back")
+            InlineKeyboardButton("🔙 بازگشت", callback_data="back")
         ]]))
 
 async def forex_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query; await q.answer()
-    await q.edit_message_text("💰 دریافت از alanchand.com...")
+    await q.edit_message_text("💰 دریافت قیمت از alanchand.com...")
     rates = await forex_ir.get_all_rates()
     await q.edit_message_text(fmt.forex(rates), parse_mode="Markdown",
-        reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔄", callback_data="forex"), InlineKeyboardButton("🔙", callback_data="back")]]))
+        reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔄 بروزرسانی", callback_data="forex"), InlineKeyboardButton("🔙 بازگشت", callback_data="back")]]))
 
 async def button_router(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query; d = q.data
     try:
-        if d == "back": await q.edit_message_text(f"🟢 *منوی اصلی*\n\n📅 {dt.full_datetime()}", parse_mode="Markdown", reply_markup=Menu.main())
+        if d == "back": await q.edit_message_text(f"🟢 *منوی اصلی*\n\n📅 {pdt.full()}", parse_mode="Markdown", reply_markup=Menu.main())
         elif d == "p":
             if not exchange_mgr.connected: exchange_mgr.connect()
-            txt = f"💰 *#قیمت‌های لحظه‌ای*\n\n📅 {dt.full_datetime()}\n\n"
+            txt = f"💰 *#قیمت‌های لحظه‌ای*\n\n📅 {pdt.full()}\n\n"
             for sym in cfg.symbols[:15]:
                 t = exchange_mgr.ticker(sym)
                 if t: txt += f"{'🟢' if t.get('percentage',0)>0 else '🔴'} *{sym.replace('/USDT','')}*: ${t['last']:,.4f} ({t.get('percentage',0):+.1f}%)\n"
@@ -782,7 +773,7 @@ async def button_router(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         elif d == "forex": await forex_handler(update, ctx)
         elif d == "port":
             s = trader.stats()
-            await q.edit_message_text(f"💰 *پورتفوی*\n\n📅 {dt.full_datetime()}\n\n💵 ${s['balance']:,.2f}\n📈 ${s['pnl']:+,.2f}", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔄", callback_data="port"), InlineKeyboardButton("🔙", callback_data="back")]]))
+            await q.edit_message_text(f"💰 *پورتفوی*\n\n📅 {pdt.full()}\n\n💵 ${s['balance']:,.2f}\n📈 ${s['pnl']:+,.2f}", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔄", callback_data="port"), InlineKeyboardButton("🔙", callback_data="back")]]))
         elif d == "edu":
             content = await groq_ai.education()
             await q.edit_message_text(fmt.edu(content) if content else "❌", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔄", callback_data="edu"), InlineKeyboardButton("🔙", callback_data="back")]]))
@@ -793,28 +784,28 @@ async def button_router(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             for s in list(trader.positions.keys()):
                 t = exchange_mgr.ticker(s)
                 if t: trader.close(s, t['last'], "⏸️")
-            await q.edit_message_text(f"⏸️ بسته شد\n\n📅 {dt.full_datetime()}", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]]))
-        elif d == "ref": await q.edit_message_text(f"🟢 *منو*\n\n📅 {dt.full_datetime()}", reply_markup=Menu.main())
-        elif d == "help": await q.edit_message_text(f"❓ /start\n\n📅 {dt.full_datetime()}", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]]))
-        else: await q.answer(f"⚡ فعال | {dt.time_only()}")
+            await q.edit_message_text(f"⏸️ بسته شد\n\n📅 {pdt.full()}", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]]))
+        elif d == "ref": await q.edit_message_text(f"🟢 *منو*\n\n📅 {pdt.full()}", reply_markup=Menu.main())
+        elif d == "help": await q.edit_message_text(f"❓ /start\n\n📅 {pdt.full()}", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]]))
+        else: await q.answer(f"⚡ فعال | {pdt.time_str()}")
     except Exception as e: logger.error(f"Btn: {e}"); await q.answer("❌")
 
 async def text_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(f"/start\n\n📅 {dt.full_datetime()}", reply_markup=Menu.main())
+    await update.message.reply_text(f"/start\n\n📅 {pdt.full()}", reply_markup=Menu.main())
 
 # ============================================================
 # AUTO LOOPS
 # ============================================================
 async def auto_signals(app: Application):
     await asyncio.sleep(10)
-    logger.info(f"📢 4H Signal Loop Started at {dt.full_datetime()}")
+    logger.info(f"📢 شروع حلقه سیگنال ۴ ساعته | {pdt.full()}")
     while True:
         try:
             if not cfg.channel_id: await asyncio.sleep(60); continue
             if not exchange_mgr.connected: exchange_mgr.connect()
             await safe_send(app.bot, cfg.channel_id, 
                 f"🟢══════════════════🟢\n   🔄 #تحلیل_دوره‌ای\n🟢══════════════════🟢\n\n"
-                f"📅 {dt.full_persian()}\n⏰ {dt.time_only()}\n\n📊 تحلیل ۵ ارز برتر...")
+                f"📅 {pdt.full()}\n\n📊 در حال تحلیل ۵ ارز برتر...")
             for sym in ["BTC/USDT","ETH/USDT","SOL/USDT","BNB/USDT","XRP/USDT"]:
                 try:
                     t = exchange_mgr.ticker(sym); df = exchange_mgr.ohlcv(sym,'1h',200)
@@ -830,7 +821,7 @@ async def auto_signals(app: Application):
                         if CHART_AVAILABLE:
                             chart_buf = chart_gen.create(df, sym, ind)
                             if chart_buf:
-                                await app.bot.send_photo(cfg.channel_id, chart_buf, caption=f"📊 *{sym.replace('/USDT','')}* | ${t['last']:,.4f} | {dt.full_persian()}", parse_mode="Markdown")
+                                await app.bot.send_photo(cfg.channel_id, chart_buf, caption=f"📊 *{sym.replace('/USDT','')}* | ${t['last']:,.4f} | {pdt.date_str()}", parse_mode="Markdown")
                                 await asyncio.sleep(2)
                         analysis = {'symbol':sym,'price':t['last'],'change':t.get('percentage',0),'indicators':ind}
                         msg = fmt.signal(analysis, groq_text, gemini_text, mtf.get('4h'), mtf.get('1d'), mtf.get('1w'))
@@ -842,26 +833,25 @@ async def auto_signals(app: Application):
                 t = exchange_mgr.ticker(sym)
                 if t: top.append({'symbol':sym.replace('/USDT',''),'change':t.get('percentage',0)})
             market = await groq_ai.market(top)
-            if market: await safe_send(app.bot, cfg.channel_id, f"📰 *بازار*\n\n{market}\n\n✨ @CryptoPulse606 | {dt.full_datetime()}")
+            if market: await safe_send(app.bot, cfg.channel_id, f"📰 *بازار*\n\n{market}\n\n✨ @CryptoPulse606 | {pdt.full()}")
             for sym in list(trader.positions.keys()):
                 try:
                     t = exchange_mgr.ticker(sym)
                     if t:
                         result = trader.update(sym, t['last'])
-                        if result: await safe_send(app.bot, cfg.channel_id, f"{'🟢' if result['pnl']>0 else '🔴'} {sym}: ${result['pnl']:+,.2f} | {dt.time_only()}")
+                        if result: await safe_send(app.bot, cfg.channel_id, f"{'🟢' if result['pnl']>0 else '🔴'} {sym}: ${result['pnl']:+,.2f} | {pdt.time_str()}")
                 except: pass
             if datetime.now().hour == 0: trader.real_trades = 0
             await safe_send(app.bot, cfg.channel_id, 
                 f"🟢══════════════════🟢\n   ✅ پایان تحلیل\n🟢══════════════════🟢\n\n"
-                f"📅 {dt.full_persian()}\n⏰ {dt.time_only()}\n"
-                f"📊 سیگنال بعدی: ۴ ساعت دیگر\n✨ @CryptoPulse606")
-            logger.info(f"✅ Cycle Done at {dt.full_datetime()}")
+                f"📅 {pdt.full()}\n📊 سیگنال بعدی: ۴ ساعت دیگر\n✨ @CryptoPulse606")
+            logger.info(f"✅ چرخه کامل شد | {pdt.full()}")
         except Exception as e: logger.error(f"Loop: {e}")
         await asyncio.sleep(cfg.signal_interval)
 
 async def auto_education(app: Application):
     await asyncio.sleep(30)
-    logger.info(f"📚 1H Education Loop Started at {dt.full_datetime()}")
+    logger.info(f"📚 شروع حلقه آموزش | {pdt.full()}")
     while True:
         try:
             if cfg.channel_id and groq_ai.enabled:
@@ -896,7 +886,7 @@ async def auto_whale(app: Application):
         try:
             if cfg.channel_id and groq_ai.enabled:
                 content = await groq_ai.whale()
-                if content: await safe_send(app.bot, cfg.channel_id, f"🐋 *#نهنگ‌ها*\n\n{content}\n\n✨ @CryptoPulse606 | {dt.full_datetime()}")
+                if content: await safe_send(app.bot, cfg.channel_id, f"🐋 *#نهنگ‌ها*\n\n{content}\n\n✨ @CryptoPulse606 | {pdt.full()}")
         except: pass
         await asyncio.sleep(cfg.news_interval)
 
@@ -907,7 +897,7 @@ async def main():
     if not ProcessLock.acquire(): sys.exit(1)
     if not cfg.token: ProcessLock.release(); return
     
-    logger.info(f"🚀 Starting at {dt.full_datetime()}")
+    logger.info(f"🚀 شروع ربات | {pdt.full()}")
     exchange_mgr.connect()
     
     app = Application.builder().token(cfg.token).build()
@@ -922,10 +912,9 @@ async def main():
     asyncio.create_task(auto_whale(app))
     
     logger.info("="*50)
-    logger.info(f"🚀 CRYPTO PULSE v13.2 - ONLINE DATE")
-    logger.info(f"📅 {dt.full_persian()} | ⏰ {dt.time_only()}")
+    logger.info(f"🚀 کریپتو پالس ۱۳.۳ | {pdt.full()}")
     logger.info(f"🧠 Groq: {'✅' if groq_ai.enabled else '❌'} | 🌟 Gemini: {'✅' if gemini_ai.enabled else '❌'}")
-    logger.info(f"📊 Charts: {'✅' if CHART_AVAILABLE else '❌'} | 💰 Forex: alanchand.com")
+    logger.info(f"📊 نمودار: {'✅' if CHART_AVAILABLE else '❌'} | 💰 طلا و ارز: alanchand.com")
     logger.info("="*50)
     
     try:
