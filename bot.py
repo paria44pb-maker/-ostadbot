@@ -2,10 +2,9 @@
 # -*- coding: utf-8 -*-
 """
 ╔══════════════════════════════════════════════════════════════════════════╗
-║   🚀 CRYPTO PULSE v17.0 — FINAL PERSIAN EDITION 🤖                      ║
-║   ✅ Dual AI  ✅ 40+ Glass Keys  ✅ Real Charts  ✅ Auto Trade             ║
-║   ✅ Persian Date  ✅ 25+ Indicators  ✅ News  ✅ Education                ║
-║   ✅ Admin Only  ✅ Hashtags  ✅ Golden Signals  ✅ Railway Ready          ║
+║   🚀 CRYPTO PULSE v17.1 — STABLE PERSIAN EDITION 🤖                      ║
+║   ✅ Fixed HTTPX  ✅ Admin 13600620  ✅ 40+ Keys  ✅ Dual AI               ║
+║   ✅ Railway Ready  ✅ Persian Date  ✅ Auto Trade  ✅ Golden Signals       ║
 ╚══════════════════════════════════════════════════════════════════════════╝
 """
 
@@ -27,7 +26,7 @@ import warnings
 warnings.filterwarnings('ignore')
 
 # ============================================================
-# AUTO INSTALL ALL DEPENDENCIES (Railway Compatible)
+# AUTO INSTALL (Railway Compatible)
 # ============================================================
 def ensure_libs():
     libs = {
@@ -82,10 +81,7 @@ class Config:
     api_key: str = os.getenv("COINEX_API_KEY", "")
     api_secret: str = os.getenv("COINEX_SECRET_KEY", "")
     api_passphrase: str = os.getenv("COINEX_PASSPHRASE", "")
-    
-    # Admin ID
     admin_id: int = int(os.getenv("ADMIN_ID", "13600620"))
-    
     symbols: List[str] = field(default_factory=lambda: [
         "BTC/USDT","ETH/USDT","BNB/USDT","XRP/USDT","ADA/USDT","SOL/USDT","DOGE/USDT",
         "DOT/USDT","MATIC/USDT","AVAX/USDT","LINK/USDT","UNI/USDT","ATOM/USDT","LTC/USDT",
@@ -96,7 +92,7 @@ class Config:
     atr_sl: float = 2.0; atr_tp: float = 4.0; trailing_pct: float = 0.03
     max_consecutive_losses: int = 5; demo_trading: bool = True; real_trading: bool = True
     auto_send: bool = True; signal_interval: int = 14400; education_interval: int = 3600
-    news_interval: int = 7200; forex_interval: int = 3600; bio_update_interval: int = 60
+    news_interval: int = 7200; bio_update_interval: int = 60
 
 cfg = Config()
 
@@ -176,24 +172,27 @@ class TokenManager:
 token_mgr = TokenManager()
 
 # ============================================================
-# DUAL AI
+# DUAL AI (FIXED HTTPX CLIENTS)
 # ============================================================
 class GeminiAI:
     URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent"
     def __init__(self):
-        self.key = cfg.gemini_api_key; self.enabled = bool(self.key and len(self.key)>10); self._c = None
-    @property
-    def c(self):
-        if self._c is None: self._c = httpx.AsyncClient(timeout=60.0)
-        return self._c
+        self.key = cfg.gemini_api_key; self.enabled = bool(self.key and len(self.key)>10)
+        self._client = None
+        self._lock = threading.Lock()
+    def _get_client(self):
+        with self._lock:
+            if self._client is None:
+                self._client = httpx.AsyncClient(timeout=60.0, limits=httpx.Limits(max_keepalive_connections=5, max_connections=10))
+            return self._client
     async def ask(self, prompt, max_t=500):
         if not self.enabled or not token_mgr.can(max_t): return None
         try:
-            r = await self.c.post(f"{self.URL}?key={self.key}", json={"contents":[{"parts":[{"text":prompt}]}],"generationConfig":{"maxOutputTokens":max_t}})
+            r = await self._get_client().post(f"{self.URL}?key={self.key}", json={"contents":[{"parts":[{"text":prompt}]}],"generationConfig":{"maxOutputTokens":max_t}})
             if r.status_code==200:
                 t = r.json().get("candidates",[{}])[0].get("content",{}).get("parts",[{}])[0].get("text","")
                 if t: token_mgr.record(max_t,"gemini"); return t
-        except: pass
+        except Exception as e: logger.error(f"Gemini: {e}")
         return None
 
 gemini_ai = GeminiAI()
@@ -202,20 +201,23 @@ class GroqAI:
     URL = "https://api.groq.com/openai/v1/chat/completions"; MODEL = "llama-3.3-70b-versatile"
     T = {'tech':500,'market':400,'edu':700,'news':400,'whale':400,'strat':400,'sent':300,'fund':400,'pa':400,'pred':350}
     def __init__(self):
-        self.enabled = bool(cfg.groq_api_key); self._c = None
-    @property
-    def c(self):
-        if self._c is None: self._c = httpx.AsyncClient(timeout=60.0)
-        return self._c
+        self.enabled = bool(cfg.groq_api_key)
+        self._client = None
+        self._lock = threading.Lock()
+    def _get_client(self):
+        with self._lock:
+            if self._client is None:
+                self._client = httpx.AsyncClient(timeout=60.0, limits=httpx.Limits(max_keepalive_connections=5, max_connections=10))
+            return self._client
     async def _call(self, prompt, max_t=500):
         if not self.enabled or not token_mgr.can(max_t): return None
         try:
-            r = await self.c.post(self.URL, headers={"Authorization":f"Bearer {cfg.groq_api_key}","Content-Type":"application/json"},
+            r = await self._get_client().post(self.URL, headers={"Authorization":f"Bearer {cfg.groq_api_key}","Content-Type":"application/json"},
                 json={"model":self.MODEL,"messages":[{"role":"system","content":"You are a professional crypto analyst. Respond ONLY in Persian (فارسی). Use emojis extensively."},{"role":"user","content":prompt}],"max_tokens":max_t})
             if r.status_code==200:
                 d = r.json(); token_mgr.record(d.get('usage',{}).get('total_tokens',max_t),"groq")
                 return d["choices"][0]["message"]["content"]
-        except: pass
+        except Exception as e: logger.error(f"Groq: {e}")
         return None
     async def tech(self, sym, ind, price, change, pats, mtf):
         mtf_t = " | ".join([f"{t}:RSI={i.get('RSI_14',50):.0f}" for t,i in mtf.items()])
@@ -277,7 +279,7 @@ class ExchangeManager:
 exchange_mgr = ExchangeManager()
 
 # ============================================================
-# INDICATORS (High Accuracy Only)
+# INDICATORS (High Accuracy)
 # ============================================================
 class UltraIndicators:
     @staticmethod
@@ -650,7 +652,7 @@ async def cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("⛔ دسترسی غیرمجاز!")
         return
     await update.message.reply_text(
-        f"🟢══════════════════════🟢\n   🤖 #کریپتو_پالس v17 🤖\n🟢══════════════════════🟢\n\n{pdt.both()}\n\n🧠🌟 Groq + Gemini AI\n📊 ۲۵+ اندیکاتور\n💹 معاملات خودکار\n📊 نمودار واقعی\n📢 سیگنال ۴h | 📚 آموزش ۱h\n📰 اخبار ۲h | 🐋 نهنگ‌ها\n\n👇 انتخاب کنید:",
+        f"🟢══════════════════════🟢\n   🤖 #کریپتو_پالس v17.1 🤖\n🟢══════════════════════🟢\n\n{pdt.both()}\n\n🧠🌟 Groq + Gemini AI\n📊 ۲۵+ اندیکاتور\n💹 معاملات خودکار\n📊 نمودار واقعی\n📢 سیگنال ۴h | 📚 آموزش ۱h\n📰 اخبار ۲h | 🐋 نهنگ‌ها\n\n👇 انتخاب کنید:",
         reply_markup=Menu.main())
 
 async def signal_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE, symbol: str = "BTC/USDT"):
@@ -813,7 +815,7 @@ async def main():
     if not ProcessLock.acquire(): sys.exit(1)
     if not cfg.token: ProcessLock.release(); return
     
-    print(f"🟢══════════════════════════════════════🟢\n║   🚀 CRYPTO PULSE v17.0 ║\n║   📅 {pdt.shamsi()} ║\n║   ⏰ {pdt.time_str()} ║\n🟢══════════════════════════════════════🟢")
+    print(f"🟢══════════════════════════════════════🟢\n║   🚀 CRYPTO PULSE v17.1 ║\n║   📅 {pdt.shamsi()} ║\n║   ⏰ {pdt.time_str()} ║\n🟢══════════════════════════════════════🟢")
     
     logger.info(f"🚀 شروع | {pdt.full()}")
     exchange_mgr.connect()
@@ -831,11 +833,9 @@ async def main():
     asyncio.create_task(auto_whale(app))
     
     logger.info("="*50)
-    logger.info(f"🚀 کریپتو پالس ۱۷ | {pdt.full()}")
+    logger.info(f"🚀 کریپتو پالس ۱۷.۱ | {pdt.full()}")
     logger.info(f"👤 Admin: {cfg.admin_id}")
     logger.info(f"🧠 Groq: {'✅' if groq_ai.enabled else '❌'} | 🌟 Gemini: {'✅' if gemini_ai.enabled else '❌'}")
-    logger.info(f"📊 نمودار: {'✅' if CHART_AVAILABLE else '❌'}")
-    logger.info(f"🔘 ۴۰+ کلید فعال | 📢 سیگنال ۴h | 📚 آموزش ۱h")
     logger.info("="*50)
     
     try:
