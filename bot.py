@@ -4,11 +4,17 @@
 💰 ربات قیمت زنده دلار و طلا - به تومان
 📡 منابع: tgju.org | call1.ir
 📅 تاریخ شمسی | ⏰ ساعت تهران
+🔑 توکن مستقیماً در کد قرار داده شده
 """
 
 import os, sys, subprocess, asyncio, logging, time
 from datetime import datetime, timedelta
 from typing import Dict
+
+# ============================================================
+# توکن تلگرام - مستقیماً اینجا
+# ============================================================
+TELEGRAM_BOT_TOKEN = "7225279768:AAHwZEmSxRxx5ZGCyx88BMP2DSEoarcZSxw"
 
 # ============================================================
 # نصب خودکار کتابخانه‌ها
@@ -25,17 +31,13 @@ def install(pkg, import_name=None):
 install("httpx")
 install("jdatetime")
 install("pytz")
-install("python-dotenv", "dotenv")
 install("python-telegram-bot", "telegram")
 
 import httpx
 import jdatetime
 import pytz
-from dotenv import load_dotenv
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
-
-load_dotenv()
 
 # ============================================================
 # LOGGING ساده
@@ -217,12 +219,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # اجرا
 # ============================================================
 async def main():
-    TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-    if not TOKEN:
-        logger.error("❌ TELEGRAM_BOT_TOKEN در .env تنظیم نشده!")
-        return
-
-    app = Application.builder().token(TOKEN).build()
+    app = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CallbackQueryHandler(button_handler))
 
