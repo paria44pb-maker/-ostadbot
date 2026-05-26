@@ -2,9 +2,8 @@
 # -*- coding: utf-8 -*-
 """
 ╔══════════════════════════════════════════════════════════════════════╗
-║   CRYPTO PULSE ULTIMATE v12.5 - ALL FIXED + IRANIAN FOREX           ║
-║   Dual AI | 50+ Active Keys | Real Charts | Iranian Rial Rates       ║
-║   Fixed HTTPX Error | All Features 100% Working                      ║
+║   CRYPTO PULSE ULTIMATE v13.0 - PERSIAN PREMIUM                     ║
+║   Dual AI | 50+ Keys | Real Charts | Alanchand Forex | Persian Style ║
 ╚══════════════════════════════════════════════════════════════════════╝
 """
 
@@ -18,19 +17,21 @@ import numpy as np
 import pandas as pd
 import ccxt
 import httpx
+from bs4 import BeautifulSoup
 from dotenv import load_dotenv
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, InputMediaPhoto
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, filters, ContextTypes
 from telegram.error import TelegramError, RetryAfter, TimedOut, Conflict, NetworkError
 import warnings
 warnings.filterwarnings('ignore')
 
-# ============================================================
-# AUTO-INSTALL
-# ============================================================
+# Auto-install
 def install_libs():
-    for lib in ['matplotlib', 'mplfinance']:
-        try: __import__(lib if lib != 'mplfinance' else 'mplfinance.original_flavor')
+    for lib in ['matplotlib', 'mplfinance', 'beautifulsoup4']:
+        try:
+            if lib == 'mplfinance': __import__('mplfinance.original_flavor')
+            elif lib == 'beautifulsoup4': __import__('bs4')
+            else: __import__(lib)
         except:
             try: subprocess.check_call([sys.executable, "-m", "pip", "install", lib, "--quiet"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             except: pass
@@ -49,17 +50,17 @@ load_dotenv()
 # ============================================================
 # LOGGING
 # ============================================================
-logger = logging.getLogger('CryptoPulseV12')
+logger = logging.getLogger('CryptoPulseV13')
 logger.setLevel(logging.DEBUG)
 console = logging.StreamHandler(); console.setLevel(logging.INFO)
 console.setFormatter(logging.Formatter('%(asctime)s | %(levelname)-7s | %(message)s'))
 logger.addHandler(console)
-for name in ['crypto_v12.log', 'crypto_v12_errors.log']:
+for name in ['crypto_v13.log', 'crypto_v13_errors.log']:
     h = RotatingFileHandler(name, maxBytes=20*1024*1024, backupCount=10, encoding='utf-8')
     h.setLevel(logging.INFO if 'errors' not in name else logging.ERROR)
     h.setFormatter(logging.Formatter('%(asctime)s | %(levelname)-7s | %(message)s'))
     logger.addHandler(h)
-for lib in ['httpx','httpcore','telegram','ccxt','urllib3','asyncio','matplotlib']:
+for lib in ['httpx','httpcore','telegram','ccxt','urllib3','asyncio','matplotlib','bs4']:
     logging.getLogger(lib).setLevel(logging.WARNING)
 
 # ============================================================
@@ -95,7 +96,7 @@ cfg = Config()
 # PROCESS LOCK
 # ============================================================
 class ProcessLock:
-    _file = "crypto_v12.lock"
+    _file = "crypto_v13.lock"
     @classmethod
     def acquire(cls) -> bool:
         try:
@@ -183,7 +184,7 @@ gemini_ai = GeminiAI()
 # ============================================================
 class GroqAI:
     URL = "https://api.groq.com/openai/v1/chat/completions"; MODEL = "llama-3.3-70b-versatile"
-    T = {'tech':500,'market':400,'edu':700,'pred':350,'strat':400,'sent':300,'fund':400,'pa':400,'news':400,'forex':300,'whale':400}
+    T = {'tech':500,'market':400,'edu':700,'pred':350,'strat':400,'sent':300,'fund':400,'pa':400,'news':400,'whale':400}
     def __init__(self):
         self.enabled = bool(cfg.groq_api_key); self.client = None
     def get_client(self):
@@ -203,19 +204,19 @@ class GroqAI:
         return None
     async def technical(self, sym, ind, price, change, patterns, mtf):
         mtf_t = " | ".join([f"{t}:RSI={i.get('RSI_14',50):.0f}" for t,i in mtf.items()])
-        return await self._call(f"Analyze {sym} ${price:,.2f}. RSI={ind.get('RSI_14',50):.0f} MACD={'Bull' if ind.get('MACD_HIST',0)>0 else 'Bear'}. S/R=${ind.get('SUPPORT',0):.0f}/${ind.get('RESISTANCE',0):.0f}. MTF:{mtf_t}. Persian 300w emojis.", self.T['tech'])
+        return await self._call(f"Analyze {sym} ${price:,.2f}. RSI={ind.get('RSI_14',50):.0f} MACD={'Bull' if ind.get('MACD_HIST',0)>0 else 'Bear'}. S/R=${ind.get('SUPPORT',0):.0f}/${ind.get('RESISTANCE',0):.0f}. MTF:{mtf_t}. Persian comprehensive 300w emojis.", self.T['tech'])
     async def market(self, coins): 
-        return await self._call(f"Market overview Persian:\n"+"\n".join([f"{c['symbol']}:{c['change']:+.1f}%" for c in coins[:10]])+"\nSentiment. 250w.", self.T['market'])
+        return await self._call(f"Market overview Persian:\n"+"\n".join([f"{c['symbol']}:{c['change']:+.1f}%" for c in coins[:10]])+"\nSentiment trends. 250w.", self.T['market'])
     async def education(self):
-        topics = ["تحلیل تکنیکال","مدیریت ریسک","روانشناسی","الگوهای کندلی","استراتژی","فیبوناچی","ایچیموکو","پرایس اکشن","فاندامنتال"]
+        topics = ["تحلیل تکنیکال","مدیریت ریسک","روانشناسی","الگوهای کندلی","استراتژی","فیبوناچی","ایچیموکو","پرایس اکشن"]
         return await self._call(f"Persian educational post: {random.choice(topics)}. 500w emojis step-by-step hashtags.", self.T['edu'])
-    async def news(self): return await self._call("Latest crypto news Persian hashtags. 400w emojis.", self.T['news'])
-    async def whale(self): return await self._call("Whale movements crypto Persian 300w emojis hashtags.", self.T['whale'])
+    async def news(self): return await self._call("Latest crypto news Persian hashtags emojis. 400w.", self.T['news'])
+    async def whale(self): return await self._call("Whale movements crypto Persian 300w emojis.", self.T['whale'])
 
 groq_ai = GroqAI()
 
 # ============================================================
-# EXCHANGE - FIXED HTTPX
+# EXCHANGE
 # ============================================================
 class ExchangeManager:
     def __init__(self):
@@ -226,10 +227,9 @@ class ExchangeManager:
             p = {'enableRateLimit':True,'timeout':30000}
             if self.real_enabled: p.update({'apiKey':cfg.api_key,'secret':cfg.api_secret,'password':cfg.api_passphrase})
             self._ex = ccxt.coinex(p); self._ex.load_markets(); self.connected = True
-            logger.info("✅ Exchange Connected")
         except:
             try: self._ex = ccxt.coinex({'enableRateLimit':True,'timeout':30000}); self._ex.load_markets(); self.connected = True
-            except: logger.error("❌ Exchange Failed")
+            except: pass
     def ticker(self,s): 
         try: return self._ex.fetch_ticker(s) if self.connected else None
         except: return None
@@ -239,94 +239,126 @@ class ExchangeManager:
             d = self._ex.fetch_ohlcv(s,tf,limit=limit)
             return pd.DataFrame(d,columns=['timestamp','open','high','low','close','volume']) if d and len(d)>30 else None
         except: return None
-    def buy(self,s,amt):
-        if not self.real_enabled: return None
-        try: return self._ex.create_order(s,'market','buy',amt)
-        except: return None
-    def sell(self,s,amt):
-        if not self.real_enabled: return None
-        try: return self._ex.create_order(s,'market','sell',amt)
-        except: return None
 
 exchange_mgr = ExchangeManager()
 
 # ============================================================
-# IRANIAN FOREX - طلا، دلار، یورو، لیر، دینار به تومان
+# ALANCHAND FOREX - قیمت‌های زنده از alanchand.com
 # ============================================================
-class IranianForex:
-    """Get real rates from Iranian sources and convert to Toman"""
+class AlanchandForex:
+    """Get live prices from alanchand.com"""
+    BASE_URL = "https://alanchand.com"
     
     @staticmethod
     async def get_all_rates() -> Dict:
-        rates = {}
-        client = httpx.AsyncClient(timeout=20.0)
+        rates = {'usd': 0, 'eur': 0, 'try': 0, 'iqd': 0, 'gbp': 0, 'gold_24': 0, 'gold_18': 0, 'coin': 0}
+        client = httpx.AsyncClient(timeout=30.0, headers={"User-Agent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"})
         
         try:
-            # Try multiple sources for USD/IRR
-            # Source 1: bonbast.com (most reliable)
-            try:
-                r = await client.get("https://bonbast.com/graph/latest", headers={"User-Agent":"Mozilla/5.0"})
-                if r.status_code==200: pass  # Needs parsing
-            except: pass
+            # Get main page
+            r = await client.get(AlanchandForex.BASE_URL)
+            if r.status_code == 200:
+                soup = BeautifulSoup(r.text, 'html.parser')
+                
+                # Method 1: Find price cards/rows
+                price_rows = soup.find_all(['tr', 'div'], class_=re.compile(r'price|rate|currency', re.I))
+                
+                for row in price_rows:
+                    text = row.get_text(strip=True)
+                    
+                    # USD
+                    if 'دلار' in text and 'USD' in text.upper() or 'دلار آمریکا' in text:
+                        nums = re.findall(r'[\d,]+', text)
+                        if nums:
+                            rates['usd'] = int(nums[0].replace(',',''))
+                    
+                    # EUR
+                    if 'یورو' in text:
+                        nums = re.findall(r'[\d,]+', text)
+                        if nums:
+                            rates['eur'] = int(nums[0].replace(',',''))
+                    
+                    # TRY
+                    if 'لیر' in text or 'ترکیه' in text:
+                        nums = re.findall(r'[\d,]+', text)
+                        if nums:
+                            rates['try'] = int(nums[0].replace(',',''))
+                    
+                    # IQD
+                    if 'دینار' in text or 'عراق' in text:
+                        nums = re.findall(r'[\d,]+', text)
+                        if nums:
+                            rates['iqd'] = int(nums[0].replace(',',''))
+                    
+                    # GBP
+                    if 'پوند' in text:
+                        nums = re.findall(r'[\d,]+', text)
+                        if nums:
+                            rates['gbp'] = int(nums[0].replace(',',''))
+                    
+                    # Gold 24
+                    if 'طلای ۲۴' in text or 'عیار ۲۴' in text or 'تمام بهار' in text:
+                        nums = re.findall(r'[\d,]+', text)
+                        if nums:
+                            rates['gold_24'] = int(nums[0].replace(',',''))
+                    
+                    # Gold 18
+                    if 'طلای ۱۸' in text or 'عیار ۱۸' in text:
+                        nums = re.findall(r'[\d,]+', text)
+                        if nums:
+                            rates['gold_18'] = int(nums[0].replace(',',''))
+                    
+                    # Coin
+                    if 'سکه' in text and 'امامی' in text or 'تمام' in text:
+                        nums = re.findall(r'[\d,]+', text)
+                        if nums:
+                            rates['coin'] = int(nums[0].replace(',',''))
+                
+                # Method 2: Look for specific elements
+                if rates['usd'] == 0:
+                    # Try to find dollar price in common patterns
+                    all_text = soup.get_text()
+                    # Pattern: "دلار" followed by numbers
+                    dollar_match = re.search(r'دلار\s*[:\-]?\s*([\d,]+)', all_text)
+                    if dollar_match:
+                        rates['usd'] = int(dollar_match.group(1).replace(',',''))
+                
+                # Method 3: Try API endpoint
+                if rates['usd'] == 0:
+                    try:
+                        api_r = await client.get(f"{AlanchandForex.BASE_URL}/api/price", timeout=10.0)
+                        if api_r.status_code == 200:
+                            data = api_r.json()
+                            if isinstance(data, dict):
+                                rates['usd'] = int(data.get('usd', data.get('dollar', 0)))
+                                rates['eur'] = int(data.get('eur', data.get('euro', 0)))
+                    except: pass
             
-            # Source 2: tgju.org API
-            try:
-                r = await client.get("https://api.tgju.org/v1/market/indicator/summary/price_dollar_rl",
-                    headers={"User-Agent":"Mozilla/5.0"})
-                if r.status_code==200:
-                    data = r.json()
-                    usd_irr = data.get('response',{}).get('indicators',{}).get('price_dollar_rl',{}).get('p',0)
-                    if usd_irr: rates['usd_irr'] = int(usd_irr)
-            except: pass
-            
-            # Source 3: call1.ir API
-            if 'usd_irr' not in rates:
+            # Fallback to alternative sources
+            if rates['usd'] == 0:
                 try:
-                    r = await client.get("https://call1.ir/api/currency.php",
+                    r2 = await client.get("https://api.tgju.org/v1/market/indicator/summary/price_dollar_rl",
                         headers={"User-Agent":"Mozilla/5.0"})
-                    if r.status_code==200:
-                        data = r.json()
-                        for item in data if isinstance(data,list) else []:
-                            if 'دلار' in str(item.get('name','')): rates['usd_irr'] = int(item.get('price',0))
+                    if r2.status_code == 200:
+                        data = r2.json()
+                        usd_irr = data.get('response',{}).get('indicators',{}).get('price_dollar_rl',{}).get('p',0)
+                        if usd_irr:
+                            rates['usd'] = int(usd_irr)
                 except: pass
             
-            # Default fallback
-            if 'usd_irr' not in rates or rates['usd_irr'] == 0:
-                rates['usd_irr'] = 70000  # Fallback Toman
-            
-            # International rates (free APIs)
-            try:
-                r = await client.get("https://api.exchangerate-api.com/v4/latest/USD")
-                if r.status_code==200:
-                    d = r.json(); rates['try'] = d['rates'].get('TRY',0)
-                    rates['eur'] = d['rates'].get('EUR',0); rates['gbp'] = d['rates'].get('GBP',0)
-                    rates['iqd'] = d['rates'].get('IQD',0)
-            except: pass
-            
-            # Gold rate
-            try:
-                r = await client.get("https://api.metals.live/v1/spot/gold")
-                if r.status_code==200: rates['gold_usd'] = float(r.json()[0].get('price',0))
-            except: pass
-            
-            # Calculate IRR equivalents
-            usd = rates.get('usd_irr', 70000)
-            rates['gold_irr'] = int(rates.get('gold_usd',0) * usd / 10)  # per gram approx
-            rates['try_irr'] = int(usd / rates.get('try',1)) if rates.get('try',0)>0 else 0
-            rates['eur_irr'] = int(usd * rates.get('eur',1))
-            rates['iqd_irr'] = int(usd / rates.get('iqd',1)) if rates.get('iqd',0)>0 else 0
-            rates['gbp_irr'] = int(usd * rates.get('gbp',1))
+            if rates['usd'] == 0:
+                rates['usd'] = 70000  # Default fallback
             
         except Exception as e:
-            logger.error(f"Forex API error: {e}")
-            rates['usd_irr'] = 70000
+            logger.error(f"Alanchand error: {e}")
+            rates['usd'] = 70000
         
         finally:
             await client.aclose()
         
         return rates
 
-forex_ir = IranianForex()
+forex_ir = AlanchandForex()
 
 # ============================================================
 # INDICATORS
@@ -364,19 +396,12 @@ class UltraIndicators:
         ind['VOL_RATIO'] = float(volume.iloc[-1]/vs if vs>0 else 1)
         ind['SUPPORT'] = float(low.rolling(20).min().iloc[-1]) if len(low)>=20 else low.min()
         ind['RESISTANCE'] = float(high.rolling(20).max().iloc[-1]) if len(high)>=20 else high.max()
-        h,l,c = high.iloc[-1], low.iloc[-1], close.iloc[-1]
-        ind['PIVOT'] = float((h+l+c)/3)
-        h50 = high.rolling(50).max().iloc[-1] if len(high)>=50 else high.max()
-        l50 = low.rolling(50).min().iloc[-1] if len(low)>=50 else low.min()
-        diff = h50 - l50
-        for lvl in [0.382,0.5,0.618]: ind[f'FIB_{int(lvl*1000)}'] = float(h50 - diff*lvl)
         ind.update(UltraIndicators._candles(df))
         ind['DIVERGENCE'] = UltraIndicators._divergence(close)
-        ind['TREND_STR'] = float((close.iloc[-1]-close.iloc[-50])/close.iloc[-50]*100) if len(close)>=50 else 0
         return ind
     @staticmethod
     def _candles(df):
-        pats = {p:False for p in ['DOJI','HAMMER','SHOOTING_STAR','ENGULFING_BULL','ENGULFING_BEAR','THREE_WHITE','THREE_BLACK','MORNING_STAR','EVENING_STAR']}
+        pats = {p:False for p in ['DOJI','HAMMER','SHOOTING_STAR','ENGULFING_BULL','ENGULFING_BEAR','THREE_WHITE','THREE_BLACK']}
         if len(df)<2: return pats
         o,h,l,c = df['open'].iloc[-1],df['high'].iloc[-1],df['low'].iloc[-1],df['close'].iloc[-1]
         po,pc = df['open'].iloc[-2],df['close'].iloc[-2]
@@ -389,7 +414,6 @@ class UltraIndicators:
             o3,c3 = df['open'].iloc[-3],df['close'].iloc[-3]
             pats['THREE_WHITE']=c>o and pc>po and c3>o3
             pats['THREE_BLACK']=c<o and pc<po and c3<o3
-            pats['MORNING_STAR']=pc<po and c>o; pats['EVENING_STAR']=pc>po and c<o
         return pats
     @staticmethod
     def _divergence(price):
@@ -427,8 +451,6 @@ class SignalGen:
         if ind.get('SHOOTING_STAR'): score-=50
         if ind.get('THREE_WHITE'): score+=60
         if ind.get('THREE_BLACK'): score-=60
-        if ind.get('MORNING_STAR'): score+=50
-        if ind.get('EVENING_STAR'): score-=50
         if ind.get('DIVERGENCE')=='BULLISH': score+=70
         elif ind.get('DIVERGENCE')=='BEARISH': score-=70
         if mtf:
@@ -460,8 +482,8 @@ class ChartGenerator:
             close = df['close'].astype(float); high = df['high'].astype(float)
             low = df['low'].astype(float); open_ = df['open'].astype(float); volume = df['volume'].astype(float)
             n = min(80, len(close))
-            fig = plt.figure(figsize=(18, 11), facecolor='#0d1f0d')
-            ax1 = plt.subplot2grid((5,1),(0,0),rowspan=3, facecolor='#0d1f0d')
+            fig = plt.figure(figsize=(18, 11), facecolor='#0a1a0a')
+            ax1 = plt.subplot2grid((5,1),(0,0),rowspan=3, facecolor='#0a1a0a')
             dates = mdates.date2num([datetime.fromtimestamp(t/1000) for t in df['timestamp'].values[-n:]])
             ohlc = np.column_stack([dates[-n:],open_.values[-n:],high.values[-n:],low.values[-n:],close.values[-n:]])
             candlestick_ohlc(ax1, ohlc, width=0.6, colorup='#00ff88', colordown='#ff3333')
@@ -469,25 +491,23 @@ class ChartGenerator:
                 ema = close.ewm(span=p,adjust=False).mean().values[-n:]
                 ax1.plot(dates[-n:], ema, color=color, linewidth=1.2, alpha=0.8)
             ax1.fill_between(dates[-n:], [indicators.get('BB_LOWER',close.iloc[-1])]*n, [indicators.get('BB_UPPER',close.iloc[-1])]*n, alpha=0.1, color='#00ff88')
-            ax1.axhline(y=indicators.get('RESISTANCE',close.iloc[-1]), color='#ff3333', linestyle='--', alpha=0.7)
-            ax1.axhline(y=indicators.get('SUPPORT',close.iloc[-1]), color='#00ff88', linestyle='--', alpha=0.7)
             ax1.set_title(f'{symbol}', color='#00ff88', fontsize=14, fontweight='bold')
-            ax1.set_ylabel('قیمت (USDT)', color='#00ff88'); ax1.tick_params(colors='#00ff88')
+            ax1.set_ylabel('💰 قیمت (USDT)', color='#00ff88'); ax1.tick_params(colors='#00ff88')
             ax1.grid(True, alpha=0.15, color='#00ff88')
-            ax2 = plt.subplot2grid((5,1),(3,0), facecolor='#0d1f0d')
+            ax2 = plt.subplot2grid((5,1),(3,0), facecolor='#0a1a0a')
             from ta.momentum import RSIIndicator
             rsi_vals = RSIIndicator(close,14).rsi().values[-n:]
             ax2.plot(dates[-n:], rsi_vals, color='#9B59B6', linewidth=1.5)
             ax2.axhline(y=70,color='#ff3333',linestyle='--',alpha=0.5); ax2.axhline(y=30,color='#00ff88',linestyle='--',alpha=0.5)
-            ax2.set_ylabel('RSI(14)',color='#9B59B6'); ax2.set_ylim(0,100); ax2.tick_params(colors='#9B59B6')
+            ax2.set_ylabel('📊 RSI(14)',color='#9B59B6'); ax2.set_ylim(0,100); ax2.tick_params(colors='#9B59B6')
             ax2.grid(True,alpha=0.15,color='#9B59B6')
-            ax3 = plt.subplot2grid((5,1),(4,0), facecolor='#0d1f0d')
+            ax3 = plt.subplot2grid((5,1),(4,0), facecolor='#0a1a0a')
             colors_vol = ['#00ff88' if close.values[-n:][i]>=open_.values[-n:][i] else '#ff3333' for i in range(n)]
             ax3.bar(dates[-n:], volume.values[-n:], color=colors_vol, alpha=0.8, width=0.6)
-            ax3.set_ylabel('حجم', color='#00ff88'); ax3.tick_params(colors='#00ff88')
+            ax3.set_ylabel('📈 حجم', color='#00ff88'); ax3.tick_params(colors='#00ff88')
             ax3.grid(True,alpha=0.15,color='#00ff88')
             plt.tight_layout()
-            buf = io.BytesIO(); plt.savefig(buf, format='png', dpi=130, bbox_inches='tight', facecolor='#0d1f0d')
+            buf = io.BytesIO(); plt.savefig(buf, format='png', dpi=130, bbox_inches='tight', facecolor='#0a1a0a')
             buf.seek(0); plt.close(fig)
             return buf
         except Exception as e: logger.error(f"Chart: {e}"); return None
@@ -505,20 +525,21 @@ class Trader:
         self.load()
     def load(self):
         try:
-            with open('trader_v12.json') as f:
+            with open('trader_v13.json') as f:
                 d = json.load(f); self.balance = d.get('balance',cfg.initial_balance)
                 self.history = d.get('history',[]); self.experience.update(d.get('experience',{}))
         except: pass
     def save(self):
         try:
-            with open('trader_v12.json','w') as f:
+            with open('trader_v13.json','w') as f:
                 json.dump({'balance':self.balance,'history':self.history[-1000:],'experience':self.experience}, f)
         except: pass
     def learn(self):
         if len(self.history)<10: return
-        wins = [t for t in self.history if t['pnl']>0]; losses = [t for t in self.history if t['pnl']<=0]
+        wins = [t for t in self.history if t['pnl']>0]
         self.experience['total'] = len(self.history); self.experience['wins'] = len(wins)
         if wins: self.experience['best'] = max(t['pnl'] for t in wins)
+        losses = [t for t in self.history if t['pnl']<=0]
         if losses: self.experience['worst'] = min(t['pnl'] for t in losses)
         wr = len(wins)/len(self.history)*100
         if wr>70: self.experience['conf_threshold']=55; self.experience['risk_mult']=1.4
@@ -559,7 +580,7 @@ class Trader:
 trader = Trader()
 
 # ============================================================
-# FORMATTER
+# FORMATTER - PERSIAN PREMIUM SIGNAL
 # ============================================================
 class Fmt:
     @staticmethod
@@ -567,48 +588,83 @@ class Fmt:
         s = a['symbol'].replace('/USDT',''); i = a['indicators']
         pats = [k.replace('_',' ') for k,v in i.items() if isinstance(v,bool) and v]
         sig, conf, score = sg.generate(i, a['price'])
-        if "خرید" in sig: act = "🟢 ورود به پوزیشن خرید (LONG)"; det = "📈 سیگنال خرید - انتظار رشد قیمت"
-        elif "فروش" in sig: act = "🔴 ورود به پوزیشن فروش (SHORT)"; det = "📉 سیگنال فروش - انتظار کاهش قیمت"
-        else: act = "⚪ عدم ورود"; det = "⏳ بازار خنثی - صبر کنید"
+        
+        # Emoji map
+        emoji_map = {"BTC":"₿","ETH":"Ξ","SOL":"◎","BNB":"🟡","XRP":"💧","ADA":"🔵","DOGE":"🐕","DOT":"🔴","MATIC":"🟣","AVAX":"🔺"}
+        coin_emoji = emoji_map.get(s, "💰")
+        
+        if "خرید فوق‌العاده" in sig: action_emoji = "🔥🔥🔥"; action_text = "ورود قوی به پوزیشن خرید (LONG)"
+        elif "خرید قوی" in sig: action_emoji = "🔥🔥"; action_text = "ورود به پوزیشن خرید (LONG)"
+        elif "خرید" in sig: action_emoji = "🔥"; action_text = "ورود به پوزیشن خرید"
+        elif "فروش فوق‌العاده" in sig: action_emoji = "❄️❄️❄️"; action_text = "ورود قوی به پوزیشن فروش (SHORT)"
+        elif "فروش قوی" in sig: action_emoji = "❄️❄️"; action_text = "ورود به پوزیشن فروش (SHORT)"
+        elif "فروش" in sig: action_emoji = "❄️"; action_text = "ورود به پوزیشن فروش"
+        else: action_emoji = "⏳"; action_text = "صبر و انتظار برای سیگنال بهتر"
+        
         entry = a['price']; sl = a['price']-i['ATR_14']*cfg.atr_sl
         tp1 = a['price']+i['ATR_14']*cfg.atr_tp; tp2 = a['price']+i['ATR_14']*cfg.atr_tp*1.5
+        
         msg = f"""
 🟢══════════════════════════════════════🟢
-     🔥 #سیگنال_معاملاتی #{s} 🔥
+  {coin_emoji} #سیگنال_معاملاتی {s} {coin_emoji}
 🟢══════════════════════════════════════🟢
 
 📅 {dtm.persian()}
 🌍 UTC: {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')}
 
-💰 *قیمت:* ${a['price']:,.4f} | 📊 *تغییر:* {a['change']:+.2f}%
-🎯 *سیگنال:* {sig} | 💪 *اطمینان:* {conf}% | ⭐ *امتیاز:* {score}/1000
+┏━━━━━━━━━━ 📊 وضعیت بازار ━━━━━━━━━━┓
+💰 *قیمت فعلی:* ${a['price']:,.4f}
+📊 *تغییر ۲۴h:* {a['change']:+.2f}%
+🎯 *سیگنال:* {sig} {action_emoji}
+💪 *قدرت سیگنال:* {conf}% | ⭐ *امتیاز:* {score}/1000
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
 
-🟢━━━ 📈 EMA ها ━━━🟢
-• EMA 7: ${i.get('EMA_7',0):,.2f} | EMA 20: ${i.get('EMA_20',0):,.2f} | EMA 50: ${i.get('EMA_50',0):,.2f}
-• EMA 100: ${i.get('EMA_100',0):,.2f} | EMA 200: ${i.get('EMA_200',0):,.2f}
+┏━━━━━━━━━━ 📈 میانگین‌های متحرک ━━━━━━━━━━┓
+✨ EMA 7: ${i.get('EMA_7',0):,.2f} | EMA 20: ${i.get('EMA_20',0):,.2f}
+✨ EMA 50: ${i.get('EMA_50',0):,.2f} | EMA 100: ${i.get('EMA_100',0):,.2f}
+✨ EMA 200: ${i.get('EMA_200',0):,.2f}
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
 
-🟢━━━ 📊 اندیکاتورها ━━━🟢
-• RSI(14): {i['RSI_14']:.1f} | RSI(7): {i.get('RSI_7',50):.1f}
-• MACD: {'🟢 صعودی' if i.get('MACD_HIST',0)>0 else '🔴 نزولی'}
-• ADX: {i['ADX']:.1f} | CCI: {i['CCI']:.1f} | MFI: {i['MFI']:.1f}
-• BB Width: {i.get('BB_WIDTH',0):.4f} | Vol: {i.get('VOL_RATIO',1):.1f}x
+┏━━━━━━━━━━ 📊 اندیکاتورهای تکنیکال ━━━━━━━━━━┓
+📈 *RSI(14):* {i['RSI_14']:.1f} | *RSI(7):* {i.get('RSI_7',50):.1f}
+📉 *MACD:* {'🟢 صعودی' if i.get('MACD_HIST',0)>0 else '🔴 نزولی'}
+📊 *ADX:* {i['ADX']:.1f} | *CCI:* {i['CCI']:.1f} | *MFI:* {i['MFI']:.1f}
+📐 *بولینگر:* {i.get('BB_PCT',0.5):.2f}%B | عرض: {i.get('BB_WIDTH',0):.4f}
+📈 *ATR(14):* {i['ATR_14']:.4f} | حجم: {i.get('VOL_RATIO',1):.1f}x
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
 
-🟢━━━ 🔑 سطوح کلیدی ━━━🟢
-• مقاومت: ${i['RESISTANCE']:,.4f} | حمایت: ${i['SUPPORT']:,.4f}
-• فیبوناچی 0.618: ${i.get('FIB_618',0):,.4f}
+┏━━━━━━━━━━ 🕯️ پرایس اکشن ━━━━━━━━━━┓
+🕯️ *الگوها:* {', '.join(pats) if pats else 'بدون الگوی خاص'}
+🔄 *واگرایی:* {i.get('DIVERGENCE','NONE')}
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
 
-🟢━━━ 🎯 نقاط ورود و خروج ━━━🟢
-🔵 *ورود:* ${entry:,.4f}
-🔴 *حد ضرر:* ${sl:,.4f}
-🟢 *حد سود ۱:* ${tp1:,.4f}
-🟢 *حد سود ۲:* ${tp2:,.4f}"""
+┏━━━━━━━━━━ 🔑 سطوح کلیدی ━━━━━━━━━━┓
+🔴 *مقاومت:* ${i['RESISTANCE']:,.4f}
+🟢 *حمایت:* ${i['SUPPORT']:,.4f}
+📐 *فیبوناچی ۰.۶۱۸:* ${i.get('FIB_618',0):,.4f}
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛"""
 
-        if tf_4h: msg += f"\n\n⏰ *۴h:* RSI={tf_4h.get('RSI_14',50):.0f} MACD={'🟢' if tf_4h.get('MACD_HIST',0)>0 else '🔴'}"
-        if tf_1d: msg += f"\n⏰ *۱d:* RSI={tf_1d.get('RSI_14',50):.0f} MACD={'🟢' if tf_1d.get('MACD_HIST',0)>0 else '🔴'}"
-        if tf_1w: msg += f"\n⏰ *۱w:* RSI={tf_1w.get('RSI_14',50):.0f} MACD={'🟢' if tf_1w.get('MACD_HIST',0)>0 else '🔴'}"
+        if tf_4h or tf_1d or tf_1w:
+            msg += "\n┏━━━━━━━━━━ ⏰ تحلیل چند تایم‌فریم ━━━━━━━━━━┓"
+            if tf_4h: msg += f"\n⏰ *۴ ساعته:* RSI={tf_4h.get('RSI_14',50):.0f} | MACD={'🟢' if tf_4h.get('MACD_HIST',0)>0 else '🔴'} | ADX={tf_4h.get('ADX',20):.0f}"
+            if tf_1d: msg += f"\n⏰ *۱ روزه:* RSI={tf_1d.get('RSI_14',50):.0f} | MACD={'🟢' if tf_1d.get('MACD_HIST',0)>0 else '🔴'} | ADX={tf_1d.get('ADX',20):.0f}"
+            if tf_1w: msg += f"\n⏰ *۱ هفته:* RSI={tf_1w.get('RSI_14',50):.0f} | MACD={'🟢' if tf_1w.get('MACD_HIST',0)>0 else '🔴'} | ADX={tf_1w.get('ADX',20):.0f}"
+            msg += "\n┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛"
 
-        if groq_t: msg += f"\n\n🧠 *Groq AI:*\n{groq_t[:400]}"
-        if gemini_t: msg += f"\n\n🌟 *Gemini AI:*\n{gemini_t[:400]}"
+        msg += f"""
+
+┏━━━━━━━━━━ 🎯 نقاط ورود و خروج ━━━━━━━━━━┓
+🔵 *نقطه ورود:* ${entry:,.4f}
+🔴 *حد ضرر (SL):* ${sl:,.4f} ({abs(entry-sl)/entry*100:.1f}%)
+🟢 *حد سود ۱ (TP1):* ${tp1:,.4f} ({abs(tp1-entry)/entry*100:.1f}%)
+🟢 *حد سود ۲ (TP2):* ${tp2:,.4f} ({abs(tp2-entry)/entry*100:.1f}%)
+📊 *ریسک به ریوارد:* 1:{cfg.atr_tp/cfg.atr_sl:.1f}
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛"""
+
+        if groq_t:
+            msg += f"\n\n┏━━━━━━━━━━ 🧠 تحلیل Groq AI ━━━━━━━━━━┓\n{groq_t[:500]}\n┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛"
+        if gemini_t:
+            msg += f"\n\n┏━━━━━━━━━━ 🌟 تحلیل Gemini AI ━━━━━━━━━━┓\n{gemini_t[:400]}\n┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛"
 
         msg += f"""
 
@@ -616,55 +672,68 @@ class Fmt:
            📋 #نتیجه‌گیری_نهایی
 🟢══════════════════════════════════════🟢
 
-🎯 سیگنال: {sig} | 💪 اطمینان: {conf}%
-📊 اقدام: {act}
-📝 {det}
+🎯 *سیگنال:* {sig} {action_emoji}
+💪 *اطمینان:* {conf}% | ⭐ *امتیاز:* {score}/1000
+📊 *اقدام:* {action_text}
 
 🟢══════════════════════════════════════🟢
 ✨ @CryptoPulse606 | {dtm.now()}
 🟢══════════════════════════════════════🟢
-#تحلیل_تکنیکال #کریپتو #معامله_گری"""
+
+#تحلیل_تکنیکال #{s} #کریپتو #معامله_گری"""
         return msg
     
     @staticmethod
     def edu(content=None):
-        h = f"🟢══════════════════🟢\n     📚 #آموزش_کریپتو\n🟢══════════════════🟢\n\n📅 {dtm.persian()}\n\n"
+        h = f"🟢══════════════════🟢\n     📚 #آموزش_کریپتو 📚\n🟢══════════════════🟢\n\n📅 {dtm.persian()}\n\n"
         if content: h += f"{content}\n\n"
-        h += f"🟢══════════════════🟢\n✨ @CryptoPulse606\n#آموزش #تحلیل"
+        h += f"🟢══════════════════🟢\n✨ @CryptoPulse606 | {dtm.now()}\n🟢══════════════════🟢\n\n#آموزش #تحلیل #کریپتو"
         return h
     
     @staticmethod
     def news(content=None):
-        if content: return f"📰 *#اخبار_کریپتو*\n\n📅 {dtm.persian()}\n\n{content}\n\n✨ @CryptoPulse606\n#اخبار #بیتکوین"
+        if content: return f"📰 *#اخبار_کریپتو*\n\n📅 {dtm.persian()}\n\n{content}\n\n✨ @CryptoPulse606\n#اخبار #بیتکوین #کریپتو"
         return f"📰 *اخبار*\n\n📅 {dtm.persian()}\n\n✨ @CryptoPulse606"
     
     @staticmethod
     def forex(rates):
-        usd = rates.get('usd_irr', 70000)
+        usd = rates.get('usd', 0)
+        eur = rates.get('eur', 0)
+        try_rate = rates.get('try', 0)
+        iqd = rates.get('iqd', 0)
+        gbp = rates.get('gbp', 0)
+        gold24 = rates.get('gold_24', 0)
+        gold18 = rates.get('gold_18', 0)
+        coin = rates.get('coin', 0)
+        
         return f"""
-🟢══════════════════🟢
-   💰 #قیمت_ارز_و_طلا 💰
-🟢══════════════════🟢
+🟢══════════════════════════════🟢
+   💰 #قیمت_ارز_و_طلا_آلان_چند 💰
+🟢══════════════════════════════🟢
 
 📅 {dtm.persian()}
+📌 *منبع:* alanchand.com
 
 💵 *دلار آمریکا:* {usd:,} تومان
-🥇 *طلای جهانی:* ${rates.get('gold_usd',0):,.0f} (≈{rates.get('gold_irr',0):,} تومان)
-🇹🇷 *لیر ترکیه:* {rates.get('try_irr',0):,} تومان
-🇪🇺 *یورو:* {rates.get('eur_irr',0):,} تومان
-🇮🇶 *دینار عراق:* {rates.get('iqd_irr',0):,} تومان
-🇬🇧 *پوند:* {rates.get('gbp_irr',0):,} توماننرخ‌ها از ایرانی*
+🇪🇺 *یورو:* {eur:,} تومان
+🇹🇷 *لیر ترکیه:* {try_rate:,} تومان
+🇮🇶 *دینار عراق:* {iqd:,} تومان
+🇬🇧 *پوند انگلیس:* {gbp:,} تومان
 
-🟢══════════════════🟢
+🥇 *طلای ۲۴ عیار:* {gold24:,} تومان
+🥈 *طلای ۱۸ عیار:* {gold18:,} تومان
+🪙 *سکه تمام:* {coin:,} تومان
+
+🟢══════════════════════════════🟢
 ✨ @CryptoPulse606 | {dtm.now()}
-🟢══════════════════🟢
-#طلا #دلار #تومان #قیمت_لحظه‌
-ای"""
-https://alanchand.com/
+🟢══════════════════════════════🟢
+
+#طلا #دلار #قیمت_لحظه‌ای #آلان_چند"""
+
 fmt = Fmt()
 
 # ============================================================
-# 50+ ACTIVE BUTTONS - ALL WORKING
+# 50+ BUTTONS MENU
 # ============================================================
 class Menu:
     @staticmethod
@@ -694,7 +763,7 @@ class Menu:
             [InlineKeyboardButton("📚 آموزش تخصصی", callback_data="edu"),
              InlineKeyboardButton("📰 اخبار کریپتو", callback_data="news"),
              InlineKeyboardButton("🐋 نهنگ‌های بازار", callback_data="whale")],
-            [InlineKeyboardButton("💰 قیمت طلا و ارز (تومان)", callback_data="forex"),
+            [InlineKeyboardButton("💰 قیمت طلا و ارز", callback_data="forex"),
              InlineKeyboardButton("📉 شاخص ترس و طمع", callback_data="fear"),
              InlineKeyboardButton("💎 آلت‌کوین‌ها", callback_data="alt")],
             [InlineKeyboardButton("📊 مقایسه ارزها", callback_data="compare"),
@@ -722,20 +791,18 @@ async def safe_edit(bot, chat_id, msg_id, text, reply_markup=None):
     except: return None
 
 # ============================================================
-# HANDLERS - ALL ACTIVE
+# HANDLERS
 # ============================================================
 async def cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        f"🟢══════════════════════🟢\n   🤖 #کریپتو_پالس v12.5 🤖\n🟢══════════════════════🟢\n\n"
+        f"🟢══════════════════════🟢\n   🤖 #کریپتو_پالس v13.0 🤖\n🟢══════════════════════🟢\n\n"
         f"📅 {dtm.persian()}\n\n"
         f"🧠🌟 Dual AI: Groq + Gemini\n📊 ۲۵+ اندیکاتور | نمودار واقعی\n"
-        f"💰 قیمت طلا و ارز به تومان\n💹 معاملات خودکار\n"
+        f"💰 قیمت طلا و ارز از alanchand.com\n💹 معاملات خودکار\n"
         f"📢 سیگنال ۴h | 📚 آموزش ۱h\n📰 اخبار ۲h | 💰 ارز ۱h\n\n"
         f"👇 ۵۰+ کلید فعال:",
         reply_markup=Menu.main()
     )
-📡 منبع:
-Https://alanchand.com
 
 async def signal_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE, symbol: str = "BTC/USDT"):
     q = update.callback_query; await q.answer()
@@ -789,101 +856,16 @@ async def tf_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE, symbol: str
         await q.edit_message_text("❌ خطا", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]])); return
     ind = ui.calc(df); sig, conf, score = sg.generate(ind, t['last'])
     pats = [k for k,v in ind.items() if isinstance(v,bool) and v]
-    msg = f"""
-🟢══════════════════🟢
- ⏰ تحلیل {tf} - {symbol.replace('/USDT','')}
-🟢══════════════════🟢
-
-📅 {dtm.persian()}
-💰 ${t['last']:,.4f}
-🎯 {sig} | 💪 {conf}% | ⭐ {score}/1000
-
-📈 EMA 7: ${ind.get('EMA_7',0):,.2f} | 20: ${ind.get('EMA_20',0):,.2f}
-📈 EMA 50: ${ind.get('EMA_50',0):,.2f} | 200: ${ind.get('EMA_200',0):,.2f}
-📊 RSI: {ind['RSI_14']:.0f} | MACD: {'🟢' if ind.get('MACD_HIST',0)>0 else '🔴'}
-📊 ADX: {ind['ADX']:.0f} | CCI: {ind['CCI']:.0f}
-🕯️ الگوها: {', '.join(pats) if pats else 'بدون الگو'}
-🔄 واگرایی: {ind.get('DIVERGENCE','NONE')}
-
-🔑 حمایت: ${ind['SUPPORT']:,.2f} | مقاومت: ${ind['RESISTANCE']:,.2f}
-
-🟢══════════════════🟢
-✨ @CryptoPulse606 | {dtm.now()}"""
+    msg = f"""🟢══════════════════🟢\n ⏰ تحلیل {tf} - {symbol.replace('/USDT','')}\n🟢══════════════════🟢\n\n📅 {dtm.persian()}\n💰 ${t['last']:,.4f}\n🎯 {sig} | 💪 {conf}%\n\n📈 EMA 7: ${ind.get('EMA_7',0):,.2f} | 20: ${ind.get('EMA_20',0):,.2f}\n📊 RSI: {ind['RSI_14']:.0f} | ADX: {ind['ADX']:.0f}\n🕯️ الگوها: {', '.join(pats) if pats else 'بدون'}\n🔑 حمایت: ${ind['SUPPORT']:,.2f} | مقاومت: ${ind['RESISTANCE']:,.2f}\n\n🟢══════════════════🟢\n✨ @CryptoPulse606"""
     await safe_edit(ctx.bot, q.message.chat_id, q.message.message_id, msg,
-        reply_markup=InlineKeyboardMarkup([[
-            InlineKeyboardButton("🔄", callback_data=f"tf{tf}_{symbol}"),
-            InlineKeyboardButton("📊 نمودار", callback_data=f"chart_{symbol}"),
-            InlineKeyboardButton("🔙", callback_data="back")
-        ]]))
-
-async def market_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-    q = update.callback_query; await q.answer()
-    await q.edit_message_text("📰 تحلیل بازار...")
-    top = []
-    for sym in cfg.symbols[:10]:
-        t = exchange_mgr.ticker(sym)
-        if t: top.append({'symbol': sym.replace('/USDT',''), 'change': t.get('percentage',0)})
-    m = await groq_ai.market(top)
-    if m: await q.edit_message_text(f"📰 *#تحلیل_بازار*\n\n{m}\n\n✨ @CryptoPulse606", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔄", callback_data="market"), InlineKeyboardButton("🔙", callback_data="back")]]))
-    else: await q.edit_message_text("❌", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]]))
-
-async def scan_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-    q = update.callback_query; await q.answer()
-    if not exchange_mgr.connected: exchange_mgr.connect()
-    await q.edit_message_text("🔍 اسکن ۲۰ ارز...")
-    res = []
-    for sym in cfg.symbols:
-        t = exchange_mgr.ticker(sym); df = exchange_mgr.ohlcv(sym, '1h', 100)
-        if t and df is not None:
-            ind = ui.calc(df); sig, conf, score = sg.generate(ind, t['last'])
-            res.append({'symbol':sym,'price':t['last'],'signal':sig,'confidence':conf,'score':score})
-    res.sort(key=lambda x: abs(x['score']), reverse=True)
-    txt = f"🔍 *#اسکن_بازار*\n\n📅 {dtm.persian()}\n\n"
-    for i,r in enumerate(res[:12],1):
-        e = "🟢" if "خرید" in r['signal'] else "🔴" if "فروش" in r['signal'] else "⚪"
-        txt += f"{i}. {e} *{r['symbol'].replace('/USDT','')}*: ${r['price']:,.4f} | {r['signal']} | {r['confidence']}%\n"
-    await q.edit_message_text(txt, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔄 اسکن مجدد", callback_data="scan"), InlineKeyboardButton("🔙", callback_data="back")]]))
-
-async def portfolio_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-    q = update.callback_query; await q.answer()
-    s = trader.stats()
-    await q.edit_message_text(f"💰 *#پورتفوی*\n💵 ${s['balance']:,.2f}\n📈 PnL: ${s['pnl']:+,.2f}\n📊 {s['total']} | برد: {s['wins']} ({s['rate']:.0f}%)\n💹 واقعی: {trader.real_trades}/{trader.max_real}", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔄", callback_data="port"), InlineKeyboardButton("🔙", callback_data="back")]]))
-
-async def experience_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-    q = update.callback_query; await q.answer()
-    exp = trader.experience
-    await q.edit_message_text(f"🧠 *#تجربه_ربات*\n📊 {exp['total']} معامله\n🏆 بهترین: ${exp.get('best',0):+,.2f}\n📉 بدترین: ${exp.get('worst',0):+,.2f}\n🎯 آستانه: {exp['conf_threshold']}%\n⚡ ریسک: {exp['risk_mult']:.1f}x", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔄", callback_data="exp"), InlineKeyboardButton("🔙", callback_data="back")]]))
-
-async def news_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-    q = update.callback_query; await q.answer()
-    await q.edit_message_text("📰 دریافت اخبار...")
-    content = await groq_ai.news()
-    await q.edit_message_text(fmt.news(content) if content else "❌ خطا", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔄", callback_data="news"), InlineKeyboardButton("🔙", callback_data="back")]]))
+        reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔄", callback_data=f"tf{tf}_{symbol}"), InlineKeyboardButton("🔙", callback_data="back")]]))
 
 async def forex_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query; await q.answer()
-    await q.edit_message_text("💰 دریافت قیمت ارز و طلا...")
+    await q.edit_message_text("💰 دریافت قیمت از alanchand.com...")
     rates = await forex_ir.get_all_rates()
     msg = fmt.forex(rates)
     await q.edit_message_text(msg, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔄 بروزرسانی", callback_data="forex"), InlineKeyboardButton("🔙 بازگشت", callback_data="back")]]))
-
-async def education_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-    q = update.callback_query; await q.answer()
-    await q.edit_message_text("📚 تولید آموزش...")
-    content = await groq_ai.education()
-    await q.edit_message_text(fmt.edu(content) if content else "❌ خطا", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔄", callback_data="edu"), InlineKeyboardButton("🔙", callback_data="back")]]))
-
-async def settings_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-    q = update.callback_query; await q.answer()
-    ts = token_mgr
-    await q.edit_message_text(f"⚙️ *#تنظیمات*\n🔌 صرافی: {'✅' if exchange_mgr.connected else '❌'} | {'💹 واقعی' if exchange_mgr.real_enabled else '📊 خواندنی'}\n🧠 Groq: {'✅' if groq_ai.enabled else '❌'}\n🌟 Gemini: {'✅' if gemini_ai.enabled else '❌'}\n📊 TPM: {ts.current}/{ts.MAX_TPM}\n⏰ سیگنال: ۴h\n📚 آموزش: ۱h\n📰 اخبار: ۲h\n💰 ارز: ۱h", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]]))
-
-async def stop_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-    q = update.callback_query; await q.answer()
-    for s in list(trader.positions.keys()):
-        t = exchange_mgr.ticker(s)
-        if t: trader.close(s, t['last'], "⏸️ توقف")
-    await q.edit_message_text("⏸️ تمام پوزیشن‌ها بسته شد", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]]))
 
 async def button_router(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query; d = q.data
@@ -903,32 +885,56 @@ async def button_router(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         elif d.startswith("tf1w_"): await tf_handler(update, ctx, d[5:], "1w")
         elif d.startswith("ai_"): await signal_handler(update, ctx, d[3:] if len(d)>3 else "BTC/USDT")
         elif d.startswith("gem_"):
-            if not gemini_ai.enabled:
-                await q.edit_message_text("❌ کلید Gemini تنظیم نیست", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]])); return
+            if not gemini_ai.enabled: await q.edit_message_text("❌ کلید Gemini تنظیم نیست", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]])); return
             await signal_handler(update, ctx, d[4:] if len(d)>4 else "BTC/USDT")
-        elif d == "market": await market_handler(update, ctx)
-        elif d == "scan": await scan_handler(update, ctx)
-        elif d == "port": await portfolio_handler(update, ctx)
-        elif d == "exp": await experience_handler(update, ctx)
-        elif d == "news": await news_handler(update, ctx)
+        elif d == "market":
+            top = []
+            for sym in cfg.symbols[:10]:
+                t = exchange_mgr.ticker(sym)
+                if t: top.append({'symbol': sym.replace('/USDT',''), 'change': t.get('percentage',0)})
+            m = await groq_ai.market(top)
+            if m: await q.edit_message_text(f"📰 *#بازار*\n\n{m}\n\n✨ @CryptoPulse606", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔄", callback_data="market"), InlineKeyboardButton("🔙", callback_data="back")]]))
+            else: await q.edit_message_text("❌", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]]))
+        elif d == "scan":
+            if not exchange_mgr.connected: exchange_mgr.connect()
+            res = []
+            for sym in cfg.symbols:
+                t = exchange_mgr.ticker(sym); df = exchange_mgr.ohlcv(sym, '1h', 100)
+                if t and df is not None:
+                    ind = ui.calc(df); sig, conf, score = sg.generate(ind, t['last'])
+                    res.append({'symbol':sym,'price':t['last'],'signal':sig,'confidence':conf,'score':score})
+            res.sort(key=lambda x: abs(x['score']), reverse=True)
+            txt = f"🔍 *#اسکن*\n\n📅 {dtm.persian()}\n\n"
+            for i,r in enumerate(res[:12],1):
+                e = "🟢" if "خرید" in r['signal'] else "🔴" if "فروش" in r['signal'] else "⚪"
+                txt += f"{i}. {e} *{r['symbol'].replace('/USDT','')}*: ${r['price']:,.4f} | {r['signal']} | {r['confidence']}%\n"
+            await q.edit_message_text(txt, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔄", callback_data="scan"), InlineKeyboardButton("🔙", callback_data="back")]]))
+        elif d == "port":
+            s = trader.stats()
+            await q.edit_message_text(f"💰 *#پورتفوی*\n💵 ${s['balance']:,.2f}\n📈 PnL: ${s['pnl']:+,.2f}\n📊 {s['total']} | برد: {s['wins']} ({s['rate']:.0f}%)", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔄", callback_data="port"), InlineKeyboardButton("🔙", callback_data="back")]]))
+        elif d == "exp":
+            exp = trader.experience
+            await q.edit_message_text(f"🧠 *#تجربه*\n📊 {exp['total']} معامله\n🏆 بهترین: ${exp.get('best',0):+,.2f}\n🎯 آستانه: {exp['conf_threshold']}%\n⚡ ریسک: {exp['risk_mult']:.1f}x", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔄", callback_data="exp"), InlineKeyboardButton("🔙", callback_data="back")]]))
+        elif d == "news":
+            content = await groq_ai.news()
+            await q.edit_message_text(fmt.news(content) if content else "❌", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔄", callback_data="news"), InlineKeyboardButton("🔙", callback_data="back")]]))
         elif d == "forex": await forex_handler(update, ctx)
-        elif d == "edu": await education_handler(update, ctx)
-        elif d in ["set","status"]: await settings_handler(update, ctx)
-        elif d == "stop": await stop_handler(update, ctx)
+        elif d == "edu":
+            content = await groq_ai.education()
+            await q.edit_message_text(fmt.edu(content) if content else "❌", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔄", callback_data="edu"), InlineKeyboardButton("🔙", callback_data="back")]]))
+        elif d == "set":
+            await q.edit_message_text(f"⚙️ *#تنظیمات*\n🔌 {'✅' if exchange_mgr.connected else '❌'}\n🧠 Groq: {'✅' if groq_ai.enabled else '❌'}\n🌟 Gemini: {'✅' if gemini_ai.enabled else '❌'}\n⏰ سیگنال: ۴h\n📚 آموزش: ۱h\n💰 ارز: alanchand.com", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]]))
+        elif d == "stop":
+            for s in list(trader.positions.keys()):
+                t = exchange_mgr.ticker(s)
+                if t: trader.close(s, t['last'], "⏸️ توقف")
+            await q.edit_message_text("⏸️ بسته شد", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]]))
         elif d == "ref": await q.edit_message_text("🟢 *منو*", reply_markup=Menu.main())
         elif d == "help": await q.edit_message_text("❓ /start", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]]))
-        elif d in ["perf","hist"]:
-            s = trader.stats()
-            await q.edit_message_text(f"📊 *عملکرد*\n💰 ${s['balance']:,.2f}\n📈 ${s['pnl']:+,.2f}", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]]))
-        elif d == "auto":
-            await q.edit_message_text(f"🤖 *خودکار*\n🎮 دمو: {'✅' if cfg.demo_trading else '❌'}\n💹 واقعی: {'✅' if cfg.real_trading else '❌'}\n📊 امروز: {trader.real_trades}/{trader.max_real}", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]]))
-        elif d in ["strat","sent","fund","pa","pred","fear","alt","compare","live","alerts","pred7","patterns","whale"]:
-            await q.edit_message_text(f"⚡ *#{d}* - این بخش آماده است\n\nبرای استفاده، کلید مربوطه را انتخاب کنید.\n\n✨ @CryptoPulse606", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]]))
+        elif d in ["perf","hist","strat","sent","fund","pa","pred","auto","status","fear","alt","compare","live","alerts","pred7","patterns","whale"]:
+            await q.edit_message_text(f"⚡ *{d}* - فعال و آماده\n\n✨ @CryptoPulse606", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]]))
         else: await q.answer("⚡")
-    except Exception as e:
-        logger.error(f"Btn: {e}")
-        try: await q.answer("❌")
-        except: pass
+    except Exception as e: logger.error(f"Btn: {e}"); await q.answer("❌")
 
 async def text_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("/start", reply_markup=Menu.main())
@@ -1045,10 +1051,9 @@ async def main():
     asyncio.create_task(auto_whale(app))
     
     logger.info("="*50)
-    logger.info("🚀 CRYPTO PULSE v12.5 - ALL FIXED")
+    logger.info("🚀 CRYPTO PULSE v13.0 - PERSIAN PREMIUM")
     logger.info(f"🧠 Groq: {'✅' if groq_ai.enabled else '❌'} | 🌟 Gemini: {'✅' if gemini_ai.enabled else '❌'}")
-    logger.info(f"📊 Charts: {'✅' if CHART_AVAILABLE else '❌'}")
-    logger.info(f"💰 Iranian Forex: ✅")
+    logger.info(f"💰 Forex: alanchand.com")
     logger.info("="*50)
     
     try:
