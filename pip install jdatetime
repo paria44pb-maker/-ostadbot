@@ -1,0 +1,4 @@
+import jdatetime
+
+now = jdatetime.datetime.now()
+print("امروز:", now.strftime("%Y/%m/%d - %H:%M:%S"))
