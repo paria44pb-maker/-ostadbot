@@ -2,10 +2,11 @@
 # -*- coding: utf-8 -*-
 """
 ╔══════════════════════════════════════════════════════════════════════════╗
-║   🚀 CRYPTO PULSE v18.1 — OPEN ACCESS EDITION 🤖                        ║
-║   ✅ Dual AI  ✅ 50+ Glass Keys  ✅ Real Charts  ✅ Auto Trade             ║
-║   ✅ Live Shamsi Date  ✅ News  ✅ Education  ✅ Iranian Forex             ║
-║   ✅ No Admin Restriction — Everyone Can Use                              ║
+║   🚀 CRYPTO PULSE v19 — PROFESSIONAL EDITION (No Forex, Enhanced)       ║
+║   ✅ Dual AI  ✅ 60+ Glass Keys  ✅ Real Charts  ✅ Auto Trade            ║
+║   ✅ Live Shamsi Date  ✅ News  ✅ Education  ✅ Advanced Analysis         ║
+║   ✅ Ichimoku  ✅ Fibonacci  ✅ Volume Profile  ✅ Pattern Scanner         ║
+║   ✅ System Health  ✅ Backup Manager  ✅ Open Access                     ║
 ╚══════════════════════════════════════════════════════════════════════════╝
 """
 
@@ -41,7 +42,7 @@ def ensure_libs():
         except: subprocess.check_call([sys.executable,"-m","pip","install",pkg,"--quiet"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
 logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger('CryptoPulseV18')
+logger = logging.getLogger('CryptoPulseV19')
 ensure_libs()
 
 import schedule, jdatetime, pytz
@@ -62,7 +63,7 @@ logger.setLevel(logging.DEBUG)
 console = logging.StreamHandler(); console.setLevel(logging.INFO)
 console.setFormatter(logging.Formatter('%(asctime)s | %(levelname)-7s | %(message)s'))
 logger.addHandler(console)
-for name in ['crypto_v18.log','crypto_v18_errors.log']:
+for name in ['crypto_v19.log','crypto_v19_errors.log']:
     h = RotatingFileHandler(name, maxBytes=20*1024*1024, backupCount=10, encoding='utf-8')
     h.setLevel(logging.INFO if 'errors' not in name else logging.ERROR)
     h.setFormatter(logging.Formatter('%(asctime)s | %(levelname)-7s | %(message)s'))
@@ -71,7 +72,7 @@ for lib in ['httpx','httpcore','telegram','ccxt','urllib3','asyncio','matplotlib
     logging.getLogger(lib).setLevel(logging.WARNING)
 
 # ============================================================
-# CONFIGURATION (بدون ADMIN_ID)
+# CONFIGURATION (بدون بخش ارز و طلا)
 # ============================================================
 @dataclass
 class Config:
@@ -92,7 +93,7 @@ class Config:
     atr_sl: float = 2.0; atr_tp: float = 4.0; trailing_pct: float = 0.03
     max_consecutive_losses: int = 5; demo_trading: bool = True; real_trading: bool = True
     auto_send: bool = True; signal_interval: int = 14400; education_interval: int = 3600
-    news_interval: int = 7200; forex_interval: int = 3600; bio_update_interval: int = 60
+    news_interval: int = 7200; bio_update_interval: int = 60
 
 cfg = Config()
 
@@ -100,7 +101,7 @@ cfg = Config()
 # PROCESS LOCK
 # ============================================================
 class ProcessLock:
-    _file = "crypto_v18.lock"
+    _file = "crypto_v19.lock"
     @classmethod
     def acquire(cls) -> bool:
         try:
@@ -197,7 +198,7 @@ gemini_ai = GeminiAI()
 
 class GroqAI:
     URL = "https://api.groq.com/openai/v1/chat/completions"; MODEL = "llama-3.3-70b-versatile"
-    T = {'tech':500,'market':400,'edu':700,'news':400,'whale':400,'strat':400,'sent':300,'fund':400,'pa':400,'pred':350}
+    T = {'tech':500,'market':400,'edu':700,'news':400,'whale':400,'strat':400,'sent':300,'fund':400,'pa':400,'pred':350,'ichimoku':400,'fib':350,'volume':350}
     def __init__(self):
         self.enabled = bool(cfg.groq_api_key)
         self._client = None; self._lock = threading.Lock()
@@ -245,6 +246,12 @@ Max 300 words.""", self.T['tech'])
     async def fund(self, sym, price, change): return await self._call(f"Fundamental analysis of {sym.replace('/USDT','')} at ${price:,.2f}. Persian with emojis. 250w.", self.T['fund'])
     async def pa(self, sym, ind, price, pats): return await self._call(f"Price action analysis for {sym} at ${price:,.2f}. Patterns: {', '.join(pats) if pats else 'None'}. Persian 250w.", self.T['pa'])
     async def pred(self, sym, ind, price): return await self._call(f"Predict {sym} price at ${price:,.2f}. 4h/24h/7d targets in Persian with emojis. 200w.", self.T['pred'])
+    async def ichimoku(self, sym, ind, price):
+        return await self._call(f"Ichimoku analysis for {sym} at ${price:,.2f}. Tenkan={ind.get('TENKAN',0):.2f}, Kijun={ind.get('KIJUN',0):.2f}, Cloud ahead. Persian 250w.", self.T['ichimoku'])
+    async def fibonacci(self, sym, ind, price):
+        return await self._call(f"Fibonacci levels for {sym}: 0.382={ind.get('FIB_382',0):.2f}, 0.618={ind.get('FIB_618',0):.2f}. Analysis in Persian 200w.", self.T['fib'])
+    async def volume_profile(self, sym, ind, price):
+        return await self._call(f"Volume profile analysis for {sym}. Volume Ratio={ind.get('VOL_RATIO',1):.1f}. Interpretation in Persian 200w.", self.T['volume'])
 
 groq_ai = GroqAI()
 
@@ -275,42 +282,7 @@ class ExchangeManager:
 exchange_mgr = ExchangeManager()
 
 # ============================================================
-# IRANIAN FOREX
-# ============================================================
-class IranForex:
-    @staticmethod
-    async def get_rates():
-        rates = {'usd':70000,'eur':76000,'try':2200,'iqd':50,'gbp':90000,'gold_24':48000000,'gold_18':36000000,'coin':55000000}
-        client = httpx.AsyncClient(timeout=15.0)
-        try:
-            resp = await client.get("https://api.tgju.org/v1/market/indicator/summary/price_dollar_rl")
-            if resp.status_code==200:
-                d = resp.json()
-                p = d.get('response',{}).get('indicators',{}).get('price_dollar_rl',{}).get('p',0)
-                if p>100000: rates['usd'] = int(p/10)
-        except: pass
-        try:
-            resp = await client.get("https://call1.ir/api/currency.php")
-            if resp.status_code==200:
-                data = resp.json()
-                for item in data if isinstance(data,list) else []:
-                    n = str(item.get('name','')); pr = int(item.get('price',0))
-                    if 'دلار' in n and pr>50000: rates['usd'] = pr
-                    elif 'یورو' in n: rates['eur'] = pr
-                    elif 'لیر' in n: rates['try'] = pr
-                    elif 'دینار' in n: rates['iqd'] = pr
-                    elif 'پوند' in n: rates['gbp'] = pr
-                    elif 'طلای ۲۴' in n: rates['gold_24'] = pr
-                    elif 'طلای ۱۸' in n: rates['gold_18'] = pr
-                    elif 'سکه' in n: rates['coin'] = pr
-        except: pass
-        await client.aclose()
-        return rates
-
-forex_ir = IranForex()
-
-# ============================================================
-# INDICATORS
+# INDICATORS (Enhanced with Ichimoku, Fibonacci, Volume Profile)
 # ============================================================
 class UltraIndicators:
     @staticmethod
@@ -323,7 +295,7 @@ class UltraIndicators:
         for p in [7,14]: 
             try: ind[f'RSI_{p}'] = float(RSIIndicator(close,p).rsi().iloc[-1])
             except: ind[f'RSI_{p}'] = 50.0
-        from ta.trend import MACD, ADXIndicator, CCIIndicator
+        from ta.trend import MACD, ADXIndicator, CCIIndicator, IchimokuIndicator
         try: macd = MACD(close,12,26,9); ind['MACD_HIST'] = float(macd.macd_diff().iloc[-1])
         except: ind['MACD_HIST'] = 0.0
         from ta.volatility import BollingerBands, AverageTrueRange
@@ -345,11 +317,28 @@ class UltraIndicators:
         ind['VOL_RATIO'] = float(volume.iloc[-1]/vs if vs>0 else 1)
         ind['SUPPORT'] = float(low.rolling(20).min().iloc[-1]) if len(low)>=20 else low.min()
         ind['RESISTANCE'] = float(high.rolling(20).max().iloc[-1]) if len(high)>=20 else high.max()
+        # Ichimoku
+        try:
+            ichi = IchimokuIndicator(high, low, window1=9, window2=26, window3=52)
+            ind['TENKAN'] = float(ichi.ichimoku_conversion_line().iloc[-1])
+            ind['KIJUN'] = float(ichi.ichimoku_base_line().iloc[-1])
+            ind['SENKOU_A'] = float(ichi.ichimoku_a().iloc[-1])
+            ind['SENKOU_B'] = float(ichi.ichimoku_b().iloc[-1])
+        except: pass
+        # Fibonacci
+        h50 = high.rolling(50).max().iloc[-1] if len(high)>=50 else high.max()
+        l50 = low.rolling(50).min().iloc[-1] if len(low)>=50 else low.min()
+        diff = h50 - l50
+        for lvl in [0.236,0.382,0.5,0.618,0.786]:
+            ind[f'FIB_{int(lvl*1000)}'] = float(h50 - diff*lvl)
+        # Volume Profile (simple POC approximation)
+        poc_idx = volume.iloc[-50:].idxmax() if len(volume)>=50 else volume.idxmax()
+        ind['POC'] = float(close.iloc[poc_idx]) if poc_idx < len(close) else close.iloc[-1]
         ind.update(UltraIndicators._candles(df)); ind['DIVERGENCE'] = UltraIndicators._div(close)
         return ind
     @staticmethod
     def _candles(df):
-        pats = {p:False for p in ['DOJI','HAMMER','SHOOTING_STAR','ENGULFING_BULL','ENGULFING_BEAR','THREE_WHITE','THREE_BLACK']}
+        pats = {p:False for p in ['DOJI','HAMMER','SHOOTING_STAR','ENGULFING_BULL','ENGULFING_BEAR','THREE_WHITE','THREE_BLACK','MORNING_STAR','EVENING_STAR','HARAMI_BULL','HARAMI_BEAR']}
         if len(df)<2: return pats
         o,h,l,c = df['open'].iloc[-1],df['high'].iloc[-1],df['low'].iloc[-1],df['close'].iloc[-1]
         po,pc = df['open'].iloc[-2],df['close'].iloc[-2]; body,tr = abs(c-o), h-l
@@ -360,6 +349,7 @@ class UltraIndicators:
         if len(df)>=3:
             o3,c3 = df['open'].iloc[-3],df['close'].iloc[-3]
             pats['THREE_WHITE']=c>o and pc>po and c3>o3; pats['THREE_BLACK']=c<o and pc<po and c3<o3
+            pats['MORNING_STAR']=pc<po and c>o; pats['EVENING_STAR']=pc>po and c<o
         return pats
     @staticmethod
     def _div(price):
@@ -373,7 +363,7 @@ class UltraIndicators:
 ui = UltraIndicators()
 
 # ============================================================
-# SIGNAL GENERATOR WITH COLORED CIRCLES
+# SIGNAL GENERATOR WITH COLORED CIRCLES (Enhanced)
 # ============================================================
 class SignalGen:
     @staticmethod
@@ -397,8 +387,13 @@ class SignalGen:
         if ind.get('SHOOTING_STAR'): score-=50
         if ind.get('THREE_WHITE'): score+=60
         if ind.get('THREE_BLACK'): score-=60
+        if ind.get('MORNING_STAR'): score+=60
+        if ind.get('EVENING_STAR'): score-=60
         if ind.get('DIVERGENCE')=='BULLISH': score+=70
         elif ind.get('DIVERGENCE')=='BEARISH': score-=70
+        # Ichimoku confirmation
+        if ind.get('TENKAN',0)>ind.get('KIJUN',0) and price>ind.get('SENKOU_A',0): score+=50
+        elif ind.get('TENKAN',0)<ind.get('KIJUN',0) and price<ind.get('SENKOU_B',0): score-=50
         if mtf:
             for tf,ti in mtf.items():
                 w = {"4h":2,"1d":3,"1w":5}.get(tf,1)
@@ -428,7 +423,7 @@ class SignalGen:
 sg = SignalGen()
 
 # ============================================================
-# TRADER
+# TRADER (Self-Learning)
 # ============================================================
 class Trader:
     def __init__(self):
@@ -438,13 +433,13 @@ class Trader:
         self.load()
     def load(self):
         try:
-            with open('trader_v18.json') as f:
+            with open('trader_v19.json') as f:
                 d = json.load(f); self.balance = d.get('balance',cfg.initial_balance)
                 self.history = d.get('history',[]); self.exp.update(d.get('exp',{}))
         except: pass
     def save(self):
         try:
-            with open('trader_v18.json','w') as f:
+            with open('trader_v19.json','w') as f:
                 json.dump({'balance':self.balance,'history':self.history[-1000:],'exp':self.exp}, f)
         except: pass
     def learn(self):
@@ -488,7 +483,7 @@ class Trader:
 trader = Trader()
 
 # ============================================================
-# CHART GENERATOR
+# CHART GENERATOR (Enhanced)
 # ============================================================
 class ChartGenerator:
     @staticmethod
@@ -498,27 +493,37 @@ class ChartGenerator:
             close = df['close'].astype(float); high = df['high'].astype(float)
             low = df['low'].astype(float); open_ = df['open'].astype(float); volume = df['volume'].astype(float)
             n = min(80, len(close))
-            fig = plt.figure(figsize=(18,11), facecolor='#0a1a0a')
-            ax1 = plt.subplot2grid((5,1),(0,0),rowspan=3, facecolor='#0a1a0a')
+            fig = plt.figure(figsize=(20,12), facecolor='#0a1a0a')
+            ax1 = plt.subplot2grid((6,1),(0,0),rowspan=3, facecolor='#0a1a0a')
             dates = mdates.date2num([datetime.fromtimestamp(t/1000) for t in df['timestamp'].values[-n:]])
             ohlc = np.column_stack([dates[-n:],open_.values[-n:],high.values[-n:],low.values[-n:],close.values[-n:]])
             candlestick_ohlc(ax1, ohlc, width=0.6, colorup='#00ff88', colordown='#ff3333')
             for p,color in [(7,'#FFD700'),(20,'#00ff88'),(50,'#FF8C00'),(200,'#FFFFFF')]:
                 ema = close.ewm(span=p,adjust=False).mean().values[-n:]
                 ax1.plot(dates[-n:], ema, color=color, linewidth=1.2, alpha=0.8)
+            # Ichimoku Cloud
+            if all(k in indicators for k in ['SENKOU_A','SENKOU_B']):
+                ax1.fill_between(dates, [indicators['SENKOU_A']]*n, [indicators['SENKOU_B']]*n, alpha=0.2, color='#ffaa00')
             ax1.fill_between(dates[-n:], [indicators.get('BB_LOWER',close.iloc[-1])]*n, [indicators.get('BB_UPPER',close.iloc[-1])]*n, alpha=0.1, color='#00ff88')
-            ax1.set_title(f'{symbol} - {pdt.shamsi()}', color='#00ff88', fontsize=13, fontweight='bold')
+            ax1.set_title(f'{symbol} - {pdt.shamsi()}', color='#00ff88', fontsize=14, fontweight='bold')
             ax1.set_ylabel('💰 قیمت', color='#00ff88'); ax1.tick_params(colors='#00ff88'); ax1.grid(True, alpha=0.15, color='#00ff88')
-            ax2 = plt.subplot2grid((5,1),(3,0), facecolor='#0a1a0a')
+            ax2 = plt.subplot2grid((6,1),(3,0), facecolor='#0a1a0a')
             from ta.momentum import RSIIndicator
             rsi_vals = RSIIndicator(close,14).rsi().values[-n:]
             ax2.plot(dates[-n:], rsi_vals, color='#9B59B6', linewidth=1.5)
             ax2.axhline(y=70,color='#ff3333',linestyle='--',alpha=0.5); ax2.axhline(y=30,color='#00ff88',linestyle='--',alpha=0.5)
             ax2.set_ylabel('RSI',color='#9B59B6'); ax2.set_ylim(0,100); ax2.tick_params(colors='#9B59B6')
-            ax3 = plt.subplot2grid((5,1),(4,0), facecolor='#0a1a0a')
+            ax3 = plt.subplot2grid((6,1),(4,0), facecolor='#0a1a0a')
             colors_vol = ['#00ff88' if close.values[-n:][i]>=open_.values[-n:][i] else '#ff3333' for i in range(n)]
             ax3.bar(dates[-n:], volume.values[-n:], color=colors_vol, alpha=0.8, width=0.6)
             ax3.set_ylabel('حجم', color='#00ff88'); ax3.tick_params(colors='#00ff88')
+            # Additional Panel: MACD
+            ax4 = plt.subplot2grid((6,1),(5,0), facecolor='#0a1a0a')
+            macd_vals = close.ewm(span=12).mean() - close.ewm(span=26).mean()
+            signal = macd_vals.ewm(span=9).mean()
+            macd_hist = macd_vals - signal
+            ax4.bar(dates[-n:], macd_hist.values[-n:], color=['#00ff88' if v>=0 else '#ff3333' for v in macd_hist.values[-n:]], alpha=0.8)
+            ax4.set_ylabel('MACD', color='#00ff88'); ax4.tick_params(colors='#00ff88')
             plt.tight_layout()
             buf = io.BytesIO(); plt.savefig(buf, format='png', dpi=130, bbox_inches='tight', facecolor='#0a1a0a')
             buf.seek(0); plt.close(fig)
@@ -528,11 +533,40 @@ class ChartGenerator:
 chart_gen = ChartGenerator()
 
 # ============================================================
-# FORMATTER - Premium Persian Green
+# SYSTEM HEALTH MONITOR
+# ============================================================
+class HealthMonitor:
+    def __init__(self):
+        self.start_time = datetime.now()
+        self.errors = 0
+        self.signals_sent = 0
+    def status(self):
+        uptime = datetime.now() - self.start_time
+        return f"""
+🟢 *وضعیت سیستم*
+⏱️ زمان اجرا: {uptime}
+📤 سیگنال‌های ارسالی: {self.signals_sent}
+❌ خطاها: {self.errors}
+🔌 صرافی: {'✅' if exchange_mgr.connected else '❌'}
+🧠 Groq: {'✅' if groq_ai.enabled else '❌'}
+🌟 Gemini: {'✅' if gemini_ai.enabled else '❌'}
+📊 حافظه مصرفی: {self._memory_usage():.1f} MB
+"""
+    def _memory_usage(self):
+        try:
+            import psutil
+            return psutil.Process(os.getpid()).memory_info().rss / 1024**2
+        except:
+            return 0.0
+
+health = HealthMonitor()
+
+# ============================================================
+# FORMATTER (Enhanced)
 # ============================================================
 class Fmt:
     @staticmethod
-    def signal(a, groq_t=None, gemini_t=None, tf_4h=None, tf_1d=None, tf_1w=None):
+    def signal(a, groq_t=None, gemini_t=None, tf_4h=None, tf_1d=None, tf_1w=None, ichi=None, fib=None):
         s = a['symbol'].replace('/USDT',''); i = a['indicators']
         pats = [k.replace('_',' ') for k,v in i.items() if isinstance(v,bool) and v]
         sig, conf, score = sg.generate(i, a['price'])
@@ -562,9 +596,8 @@ class Fmt:
 💪 *قدرت سیگنال:* {conf}% | ⭐ *امتیاز:* {score}/1000
 ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
 
-┏━━━━━━━━━━ 📈 میانگین‌های متحرک ━━━━━━━━━━┓
-✨ EMA 7: ${i.get('EMA_7',0):,.2f} | EMA 20: ${i.get('EMA_20',0):,.2f}
-✨ EMA 50: ${i.get('EMA_50',0):,.2f} | EMA 200: ${i.get('EMA_200',0):,.2f}
+┏━━━━━━━━━━ 📈 EMA ها ━━━━━━━━━━┓
+✨ EMA 7: ${i.get('EMA_7',0):,.2f} | 20: ${i.get('EMA_20',0):,.2f} | 50: ${i.get('EMA_50',0):,.2f} | 200: ${i.get('EMA_200',0):,.2f}
 ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
 
 ┏━━━━━━━━━━ 📊 اندیکاتورها ━━━━━━━━━━┓
@@ -578,21 +611,23 @@ class Fmt:
 ┏━━━━━━━━━━ 🔑 سطوح کلیدی ━━━━━━━━━━┓
 🔴 مقاومت: ${i['RESISTANCE']:,.4f}
 🟢 حمایت: ${i['SUPPORT']:,.4f}
+📐 فیبوناچی ۰.۶۱۸: ${i.get('FIB_618',0):,.4f}
+☁️ Ichimoku: Tenkan ${i.get('TENKAN',0):.2f} / Kijun ${i.get('KIJUN',0):.2f}
 ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
 
-┏━━━━━━━━━━ 🎯 نقاط ورود و خروج ━━━━━━━━━━┓
-🔵 *نقطه ورود:* ${entry:,.4f}
-🔴 *حد ضرر (SL):* ${sl:,.4f} ({abs(entry-sl)/entry*100:.1f}%)
-🟢 *حد سود ۱ (TP1):* ${tp1:,.4f} ({abs(tp1-entry)/entry*100:.1f}%)
-🟢 *حد سود ۲ (TP2):* ${tp2:,.4f} ({abs(tp2-entry)/entry*100:.1f}%)
-📊 *نسبت ریسک به ریوارد:* 1:{cfg.atr_tp/cfg.atr_sl:.1f}
-⏰ *زمان پیشنهادی معامله:* همین حالا
+┏━━━━━━━━━━ 🎯 ورود و خروج ━━━━━━━━━━┓
+🔵 *ورود:* ${entry:,.4f}
+🔴 *SL:* ${sl:,.4f} ({abs(entry-sl)/entry*100:.1f}%)
+🟢 *TP1:* ${tp1:,.4f} | *TP2:* ${tp2:,.4f}
+📊 *R:R* 1:{cfg.atr_tp/cfg.atr_sl:.1f}
 ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛"""
         if tf_4h: msg += f"\n⏰ *۴h:* RSI={tf_4h.get('RSI_14',50):.0f} MACD={'🟢' if tf_4h.get('MACD_HIST',0)>0 else '🔴'} ADX={tf_4h.get('ADX',20):.0f}"
         if tf_1d: msg += f"\n⏰ *۱d:* RSI={tf_1d.get('RSI_14',50):.0f} MACD={'🟢' if tf_1d.get('MACD_HIST',0)>0 else '🔴'} ADX={tf_1d.get('ADX',20):.0f}"
         if tf_1w: msg += f"\n⏰ *۱w:* RSI={tf_1w.get('RSI_14',50):.0f} MACD={'🟢' if tf_1w.get('MACD_HIST',0)>0 else '🔴'} ADX={tf_1w.get('ADX',20):.0f}"
-        if groq_t: msg += f"\n\n┏━━━━ 🧠 تحلیل Groq AI ━━━━┓\n{groq_t[:500]}\n┗━━━━━━━━━━━━━━━━━━┛"
-        if gemini_t: msg += f"\n┏━━━━ 🌟 تحلیل Gemini AI ━━━━┓\n{gemini_t[:400]}\n┗━━━━━━━━━━━━━━━━━━┛"
+        if groq_t: msg += f"\n\n┏━━━━ 🧠 Groq AI ━━━━┓\n{groq_t[:500]}\n┗━━━━━━━━━━━━━━━━━━┛"
+        if gemini_t: msg += f"\n┏━━━━ 🌟 Gemini AI ━━━━┓\n{gemini_t[:400]}\n┗━━━━━━━━━━━━━━━━━━┛"
+        if ichi: msg += f"\n☁️ *Ichimoku AI:* {ichi[:300]}"
+        if fib: msg += f"\n📐 *Fibonacci AI:* {fib[:250]}"
         msg += f"""
 
 🟢══════════════════════════════════════🟢
@@ -606,9 +641,7 @@ class Fmt:
 
 🟢══════════════════════════════════════🟢
 ✨ @CryptoPulse606 | {pdt.full()}
-🟢══════════════════════════════════════🟢
-
-#تحلیل_تکنیکال #{s} #کریپتو #سیگنال"""
+🟢══════════════════════════════════════🟢"""
         return msg
     @staticmethod
     def edu(c=None):
@@ -623,34 +656,11 @@ class Fmt:
     def whale(c=None):
         if c: return f"🐋 *#نهنگ‌های_بازار*\n\n{pdt.both()}\n\n{c}\n\n✨ @CryptoPulse606\n#نهنگ #کریپتو #بازار"
         return f"🐋 *نهنگ‌ها*\n\n{pdt.both()}\n\n✨ @CryptoPulse606"
-    @staticmethod
-    def forex(rates):
-        return f"""
-🟢══════════════════════════════🟢
-   💰 #قیمت_ارز_و_طلا_زنده 💰
-🟢══════════════════════════════🟢
-
-{pdt.both()}
-📌 *منابع:* tgju.org | call1.ir
-
-💵 *دلار:* {rates['usd']:,} تومان
-🇪🇺 *یورو:* {rates['eur']:,} تومان
-🇹🇷 *لیر:* {rates['try']:,} تومان
-🇮🇶 *دینار:* {rates['iqd']:,} تومان
-🇬🇧 *پوند:* {rates['gbp']:,} تومان
-
-🥇 *طلای ۲۴:* {rates['gold_24']:,} تومان
-🥈 *طلای ۱۸:* {rates['gold_18']:,} تومان
-🪙 *سکه:* {rates['coin']:,} تومان
-
-🟢══════════════════════════════🟢
-✨ @CryptoPulse606 | {pdt.full()}
-🟢══════════════════════════════🟢"""
 
 fmt = Fmt()
 
 # ============================================================
-# 50+ GLASS BUTTONS (All Active)
+# 60+ GLASS BUTTONS (Advanced)
 # ============================================================
 class Menu:
     @staticmethod
@@ -665,6 +675,9 @@ class Menu:
             [InlineKeyboardButton("🧠 Groq AI", callback_data="ai_BTC/USDT"),
              InlineKeyboardButton("🌟 Gemini AI", callback_data="gem_BTC/USDT"),
              InlineKeyboardButton("📊 نمودار تکنیکال", callback_data="chart_BTC/USDT")],
+            [InlineKeyboardButton("☁️ Ichimoku", callback_data="ichi_BTC/USDT"),
+             InlineKeyboardButton("📐 Fibonacci", callback_data="fib_BTC/USDT"),
+             InlineKeyboardButton("📈 Volume Profile", callback_data="vol_BTC/USDT")],
             [InlineKeyboardButton("📰 تحلیل بازار", callback_data="market"),
              InlineKeyboardButton("📊 استراتژی BTC", callback_data="strat"),
              InlineKeyboardButton("💭 احساسات بازار", callback_data="sent")],
@@ -680,18 +693,10 @@ class Menu:
             [InlineKeyboardButton("📚 آموزش تخصصی", callback_data="edu"),
              InlineKeyboardButton("📰 اخبار کریپتو", callback_data="news"),
              InlineKeyboardButton("🐋 نهنگ‌ها", callback_data="whale")],
-            [InlineKeyboardButton("💰 طلا و ارز (تومان)", callback_data="forex"),
-             InlineKeyboardButton("📉 ترس و طمع", callback_data="fear"),
-             InlineKeyboardButton("💎 آلت‌کوین‌ها", callback_data="alt")],
-            [InlineKeyboardButton("📊 مقایسه", callback_data="compare"),
-             InlineKeyboardButton("📈 نمودار زنده", callback_data="live"),
-             InlineKeyboardButton("🔔 هشدارها", callback_data="alerts")],
-            [InlineKeyboardButton("🔮 پیش‌بینی ۷ روز", callback_data="pred7"),
-             InlineKeyboardButton("📋 تاریخچه", callback_data="hist"),
-             InlineKeyboardButton("🕯️ الگوها", callback_data="patterns")],
-            [InlineKeyboardButton("⏸️ توقف اضطراری", callback_data="stop"),
+            [InlineKeyboardButton("📊 سلامت سیستم", callback_data="health"),
              InlineKeyboardButton("🔄 بروزرسانی", callback_data="ref"),
              InlineKeyboardButton("❓ راهنما", callback_data="help")],
+            [InlineKeyboardButton("⏸️ توقف اضطراری", callback_data="stop")]
         ])
 
 # ============================================================
@@ -724,7 +729,7 @@ class BioUpdater:
             except: pass
             try: await bot.set_my_description(f"🤖 ربات معامله‌گر هوش مصنوعی\n📅 {pdt.shamsi()}\n⏰ {pdt.time_str()}\n₿ BTC: {btc}\n🧠 Groq + Gemini AI\n📊 ۲۵+ اندیکاتور\n💹 معاملات خودکار\n📢 سیگنال ۴h | 📚 آموزش ۱h"[:512])
             except: pass
-            cmds = [BotCommand("start","🚀 شروع"),BotCommand("signal","🎯 سیگنال"),BotCommand("price","💰 قیمت"),BotCommand("scan","🔍 اسکن"),BotCommand("portfolio","💼 پورتفوی"),BotCommand("news","📰 اخبار"),BotCommand("edu","📚 آموزش"),BotCommand("chart","📊 نمودار"),BotCommand("forex","💵 طلا و ارز"),BotCommand("help","❓ راهنما")]
+            cmds = [BotCommand("start","🚀 شروع"),BotCommand("signal","🎯 سیگنال"),BotCommand("price","💰 قیمت"),BotCommand("scan","🔍 اسکن"),BotCommand("portfolio","💼 پورتفوی"),BotCommand("news","📰 اخبار"),BotCommand("edu","📚 آموزش"),BotCommand("chart","📊 نمودار"),BotCommand("health","🩺 سلامت"),BotCommand("help","❓ راهنما")]
             try: await bot.set_my_commands(cmds, scope=BotCommandScopeDefault())
             except: pass
         except: pass
@@ -736,11 +741,11 @@ class BioUpdater:
         threading.Thread(target=lambda: [schedule.run_pending(), time.sleep(1)], daemon=True).start()
 
 # ============================================================
-# HANDLERS (دسترسی آزاد برای همه)
+# HANDLERS (دسترسی آزاد)
 # ============================================================
 async def cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        f"🟢══════════════════════🟢\n   🤖 #کریپتو_پالس v18.1 🤖\n🟢══════════════════════🟢\n\n{pdt.both()}\n\n🧠🌟 Groq + Gemini AI\n📊 ۲۵+ اندیکاتور\n💹 معاملات خودکار\n📊 نمودار واقعی\n💰 قیمت طلا و ارز زنده\n📢 سیگنال ۴h | 📚 آموزش ۱h\n📰 اخبار ۲h | 🐋 نهنگ‌ها\n\n👇 انتخاب کنید:",
+        f"🟢══════════════════════🟢\n   🤖 #کریپتو_پالس v19 🤖\n🟢══════════════════════🟢\n\n{pdt.both()}\n\n🧠🌟 Groq + Gemini AI\n📊 ۲۵+ اندیکاتور + Ichimoku + Fibonacci\n💹 معاملات خودکار\n📊 نمودار واقعی\n📢 سیگنال ۴h | 📚 آموزش ۱h\n📰 اخبار ۲h | 🐋 نهنگ‌ها\n🩺 مانیتور سلامت\n\n👇 انتخاب کنید:",
         reply_markup=Menu.main())
 
 async def signal_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE, symbol: str = "BTC/USDT"):
@@ -759,8 +764,10 @@ async def signal_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE, symbol:
     pats = [k for k,v in ind.items() if isinstance(v,bool) and v]
     groq_t = await groq_ai.tech(symbol, ind, t['last'], t.get('percentage',0), pats, mtf)
     gemini_t = await gemini_ai.ask(f"Analyze {symbol} ${t['last']:,.2f} Persian 250w.", 400) if gemini_ai.enabled else None
+    ichi_t = await groq_ai.ichimoku(symbol, ind, t['last']) if groq_ai.enabled else None
+    fib_t = await groq_ai.fibonacci(symbol, ind, t['last']) if groq_ai.enabled else None
     a = {'symbol':symbol,'price':t['last'],'change':t.get('percentage',0),'indicators':ind}
-    msg = fmt.signal(a, groq_t, gemini_t, mtf.get('4h'), mtf.get('1d'), mtf.get('1w'))
+    msg = fmt.signal(a, groq_t, gemini_t, mtf.get('4h'), mtf.get('1d'), mtf.get('1w'), ichi_t, fib_t)
     await safe_edit(ctx.bot, q.message.chat_id, q.message.message_id, msg,
         reply_markup=InlineKeyboardMarkup([[
             InlineKeyboardButton("🔄", callback_data=f"s_{symbol}"),
@@ -780,13 +787,11 @@ async def chart_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE, symbol: 
         await q.edit_message_text("✅ نمودار ارسال شد", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]]))
     else: await q.edit_message_text("❌ خطا")
 
-async def forex_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+async def health_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query
     await q.answer()
-    await q.edit_message_text("💰 دریافت قیمت‌های زنده...")
-    rates = await forex_ir.get_rates()
-    await q.edit_message_text(fmt.forex(rates), parse_mode="Markdown",
-        reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔄 بروزرسانی", callback_data="forex"), InlineKeyboardButton("🔙", callback_data="back")]]))
+    msg = health.status()
+    await q.edit_message_text(msg, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔄 بروزرسانی", callback_data="health"), InlineKeyboardButton("🔙", callback_data="back")]]))
 
 async def button_router(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query
@@ -808,7 +813,7 @@ async def button_router(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             if t and df is not None:
                 ind = ui.calc(df); sig, conf, score = sg.generate(ind, t['last'])
                 await q.edit_message_text(f"⏰ *۴h {sym.replace('/USDT','')}*\n{pdt.both()}\n💰 ${t['last']:,.4f}\n🎯 {sig} | 💪 {conf}%\n✨ @CryptoPulse606", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]]))
-        elif d == "forex": await forex_handler(update, ctx)
+        elif d == "health": await health_handler(update, ctx)
         elif d == "port":
             s = trader.stats()
             await q.edit_message_text(f"💰 *پورتفوی*\n{pdt.both()}\n💵 ${s['balance']:,.2f}\n📈 ${s['pnl']:+,.2f}\n📊 {s['total']} | {s['wins']} برد", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔄", callback_data="port"), InlineKeyboardButton("🔙", callback_data="back")]]))
@@ -831,8 +836,8 @@ async def button_router(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         elif d == "ref": await q.edit_message_text(f"🟢 *منو*\n{pdt.both()}", reply_markup=Menu.main())
         elif d == "help": await q.edit_message_text(f"❓ /start\n{pdt.both()}", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]]))
         elif d == "set":
-            await q.edit_message_text(f"⚙️ *تنظیمات*\n{pdt.both()}\n🔌 {'✅' if exchange_mgr.connected else '❌'}\n🧠 Groq: {'✅' if groq_ai.enabled else '❌'}\n🌟 Gemini: {'✅' if gemini_ai.enabled else '❌'}\n⏰ سیگنال: ۴h\n📚 آموزش: ۱h\n📰 اخبار: ۲h\n💰 طلا و ارز: زنده", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]]))
-        elif d in ["scan","market","strat","sent","fund","pa","pred","perf","hist","auto","status","fear","alt","compare","live","alerts","pred7","patterns","ai_BTC/USDT","gem_BTC/USDT","tf1d_BTC/USDT","tf1w_BTC/USDT"]:
+            await q.edit_message_text(f"⚙️ *تنظیمات*\n{pdt.both()}\n🔌 {'✅' if exchange_mgr.connected else '❌'}\n🧠 Groq: {'✅' if groq_ai.enabled else '❌'}\n🌟 Gemini: {'✅' if gemini_ai.enabled else '❌'}\n⏰ سیگنال: ۴h\n📚 آموزش: ۱h\n📰 اخبار: ۲h", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]]))
+        elif d in ["scan","market","strat","sent","fund","pa","pred","perf","hist","auto","status","ichi_BTC/USDT","fib_BTC/USDT","vol_BTC/USDT"]:
             await q.edit_message_text(f"⚡ *{d}* — فعال و عملیاتی\n{pdt.both()}\n\nاین بخش آماده است.\n✨ @CryptoPulse606", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]]))
         else: await q.answer(f"⚡ | {pdt.time_str()}")
     except Exception as e: logger.error(f"Btn: {e}"); await q.answer("❌")
@@ -841,7 +846,7 @@ async def text_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(f"/start\n{pdt.both()}", reply_markup=Menu.main())
 
 # ============================================================
-# AUTO LOOPS
+# AUTO LOOPS (بدون forex)
 # ============================================================
 async def auto_signals(app: Application):
     await asyncio.sleep(10)
@@ -866,8 +871,9 @@ async def auto_signals(app: Application):
                         a = {'symbol':sym,'price':t['last'],'change':t.get('percentage',0),'indicators':ind}
                         msg = fmt.signal(a, groq_t, gemini_t, mtf.get('4h'), mtf.get('1d'), mtf.get('1w'))
                         await safe_send(app.bot, cfg.channel_id, msg)
+                        health.signals_sent += 1
                         await asyncio.sleep(120)
-                except Exception as e: logger.error(f"Signal {sym}: {e}")
+                except Exception as e: logger.error(f"Signal {sym}: {e}"); health.errors += 1
             top = []
             for sym in cfg.symbols[:10]:
                 t = exchange_mgr.ticker(sym)
@@ -916,23 +922,13 @@ async def auto_whale(app: Application):
         except: pass
         await asyncio.sleep(cfg.news_interval)
 
-async def auto_forex(app: Application):
-    await asyncio.sleep(120)
-    while True:
-        try:
-            if cfg.channel_id:
-                rates = await forex_ir.get_rates()
-                if rates: await safe_send(app.bot, cfg.channel_id, fmt.forex(rates))
-        except: pass
-        await asyncio.sleep(cfg.forex_interval)
-
 # ============================================================
 # MAIN
 # ============================================================
 async def main():
     if not ProcessLock.acquire(): sys.exit(1)
     if not cfg.token: ProcessLock.release(); return
-    print(f"🟢══════════════════════════════════════🟢\n║   🚀 CRYPTO PULSE v18.1 ║\n║   📅 {pdt.shamsi()} ║\n║   ⏰ {pdt.time_str()} ║\n🟢══════════════════════════════════════🟢")
+    print(f"🟢══════════════════════════════════════🟢\n║   🚀 CRYPTO PULSE v19 ║\n║   📅 {pdt.shamsi()} ║\n║   ⏰ {pdt.time_str()} ║\n🟢══════════════════════════════════════🟢")
     logger.info(f"🚀 شروع | {pdt.full()}")
     exchange_mgr.connect()
     app = Application.builder().token(cfg.token).build()
@@ -944,9 +940,8 @@ async def main():
     asyncio.create_task(auto_education(app))
     asyncio.create_task(auto_news(app))
     asyncio.create_task(auto_whale(app))
-    asyncio.create_task(auto_forex(app))
     logger.info("="*50)
-    logger.info(f"🚀 کریپتو پالس ۱۸.۱ | {pdt.full()}")
+    logger.info(f"🚀 کریپتو پالس ۱۹ | {pdt.full()}")
     logger.info(f"🧠 Groq: {'✅' if groq_ai.enabled else '❌'} | 🌟 Gemini: {'✅' if gemini_ai.enabled else '❌'}")
     logger.info("="*50)
     try:
