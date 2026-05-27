@@ -2,13 +2,12 @@
 # -*- coding: utf-8 -*-
 """
 ╔══════════════════════════════════════════════════════════════════════════╗
-║   🚀 CRYPTO PULSE v21.3 — STABLE BONBAST API                            ║
+║   🚀 CRYPTO PULSE v21.3 — PURE CRYPTO EDITION                           ║
 ║   ✅ Dual AI (Groq + Gemini)  ✅ 30 Functional Glass Keys                ║
 ║   ✅ Real Charts  ✅ Auto Trade (Demo + Real)  ✅ Live Shamsi Date      ║
 ║   ✅ 25+ Indicators  ✅ Ichimoku  ✅ Fibonacci  ✅ Price Action          ║
 ║   ✅ Whale Tracking  ✅ Market Sentiment  ✅ Portfolio Management        ║
 ║   ✅ Self‑Learning  ✅ News  ✅ Education                               ║
-║   ✅ LIVE IRAN MARKET (REAL ENGINE — CoinEx USDT + Estimated Tehran)     ║
 ╚══════════════════════════════════════════════════════════════════════════╝
 """
 
@@ -78,7 +77,7 @@ for lib in ['httpx','httpcore','telegram','ccxt','urllib3','asyncio','matplotlib
     logging.getLogger(lib).setLevel(logging.WARNING)
 
 # ============================================================
-# CONFIGURATION (CoinEx Only)
+# CONFIGURATION (CoinEx Only, Pure Crypto)
 # ============================================================
 @dataclass
 class Config:
@@ -99,7 +98,7 @@ class Config:
     atr_sl: float = 2.0; atr_tp: float = 4.0; trailing_pct: float = 0.03
     max_consecutive_losses: int = 5; demo_trading: bool = True; real_trading: bool = True
     auto_send: bool = True; signal_interval: int = 14400; education_interval: int = 3600
-    news_interval: int = 7200; forex_interval: int = 3600; bio_update_interval: int = 60
+    news_interval: int = 7200; bio_update_interval: int = 60
 
 cfg = Config()
 
@@ -286,58 +285,6 @@ class ExchangeManager:
         except: return None
 
 exchange_mgr = ExchangeManager()
-
-# ============================================================
-# REAL IRAN MARKET ENGINE (CoinEx USDT + Estimated Tehran)
-# ============================================================
-import ssl
-ssl._create_default_https_context = ssl._create_unverified_context
-
-class IranMarket:
-    CACHE = {}
-    CACHE_DURATION = 60
-
-    @classmethod
-    async def fetch(cls):
-        now = time.time()
-        if cls.CACHE and (now - cls.CACHE.get("timestamp", 0)) < cls.CACHE_DURATION:
-            return cls.CACHE
-
-        try:
-            async with httpx.AsyncClient(timeout=20, verify=False) as client:
-                # USDT price from CoinEx (USDT/USDC)
-                tether_req = await client.get("https://api.coinex.com/v2/spot/ticker?market=USDTUSDC")
-                tether_data = tether_req.json()
-
-            tether_price = "1.00"
-            try:
-                tether_price = tether_data["data"][0]["last"]
-            except:
-                pass
-
-            # Estimated Tehran market rates (can be replaced with live API if available)
-            iran_usd = 177000  # approximate IRR/USD
-
-            result = {
-                "usd_tehran": f"{iran_usd:,}",
-                "gold18": "18,400,000",
-                "coin": "82,000,000",
-                "usdt": tether_price,
-                "time": PersianLive.full(),
-                "timestamp": now
-            }
-            cls.CACHE = result
-            return result
-
-        except Exception as e:
-            logger.error(f"IranMarket error: {e}")
-            return {
-                "usd_tehran": "خطا",
-                "gold18": "خطا",
-                "coin": "خطا",
-                "usdt": "خطا",
-                "time": PersianLive.full()
-            }
 
 # ============================================================
 # INDICATORS (25+ with High Accuracy)
@@ -606,13 +553,6 @@ class Fmt:
         sig, conf, score = sg.generate(i, a['price'])
         em = {"BTC":"₿","ETH":"Ξ","SOL":"◎","BNB":"🟡","XRP":"💧","ADA":"🔵","DOGE":"🐕"}
         ce = em.get(s, "💰")
-        if "خرید فوق‌العاده" in sig: ae, at = "🔥🔥🔥", "🚀 ورود قوی به پوزیشن خرید (LONG)"
-        elif "خرید قوی" in sig: ae, at = "🔥🔥", "📈 ورود به پوزیشن خرید (LONG)"
-        elif "خرید" in sig: ae, at = "🔥", "📈 ورود به پوزیشن خرید"
-        elif "فروش فوق‌العاده" in sig: ae, at = "❄️❄️❄️", "💥 ورود قوی به پوزیشن فروش (SHORT)"
-        elif "فروش قوی" in sig: ae, at = "❄️❄️", "📉 ورود به پوزیشن فروش (SHORT)"
-        elif "فروش" in sig: ae, at = "❄️", "📉 ورود به پوزیشن فروش"
-        else: ae, at = "⏳", "⚪ صبر و انتظار"
         entry, sl = a['price'], a['price']-i['ATR_14']*cfg.atr_sl
         tp1, tp2 = a['price']+i['ATR_14']*cfg.atr_tp, a['price']+i['ATR_14']*cfg.atr_tp*1.5
         msg = f"""
@@ -654,7 +594,6 @@ BB %B={i.get('BB_PCT',0.5):.2f}  Vol={i.get('VOL_RATIO',1):.1f}x
         msg += f"""
 🟢══════════════════════🟢
 📋 *نتیجه‌گیری:* {sig} | اطمینان {conf}%
-📊 *اقدام:* {at}
 ⏰ {pdt.time_str()}
 🟢══════════════════════🟢
 ✨ @CryptoPulse606 | {pdt.full()}
@@ -675,26 +614,11 @@ BB %B={i.get('BB_PCT',0.5):.2f}  Vol={i.get('VOL_RATIO',1):.1f}x
     def whale(c=None):
         if c: return f"🐋 #نهنگ‌ها\n\n{pdt.both()}\n\n{c}\n\n✨ @CryptoPulse606\n#نهنگ #کریپتو"
         return f"🐋 نهنگ‌ها\n\n{pdt.both()}\n\n✨ @CryptoPulse606"
-    @staticmethod
-    def iran_market(data: Dict[str, str]) -> str:
-        return f"""
-💵 بازار ایران
-
-💲 دلار تهران: {data.get('usd_tehran','نامشخص')} تومان
-🥇 طلا: {data.get('gold18','نامشخص')} تومان
-🪙 سکه: {data.get('coin','نامشخص')} تومان
-💎 تتر: {data.get('usdt','نامشخص')}
-
-⏰ بروزرسانی: {data.get('time', pdt.full())}
-
-#دلار #طلا #بازار #تتر
-✨ @CryptoPulse606
-"""
 
 fmt = Fmt()
 
 # ============================================================
-# 30 FUNCTIONAL GLASS BUTTONS
+# 30 FUNCTIONAL GLASS BUTTONS (بدون بخش دلار و طلا)
 # ============================================================
 class Menu:
     @staticmethod
@@ -727,8 +651,7 @@ class Menu:
             [InlineKeyboardButton("📚 آموزش", callback_data="edu"),
              InlineKeyboardButton("📰 اخبار", callback_data="news"),
              InlineKeyboardButton("🐋 نهنگ‌ها", callback_data="whale")],
-            [InlineKeyboardButton("💵 دلار و طلا", callback_data="iran_market"),
-             InlineKeyboardButton("⏸️ توقف", callback_data="stop"),
+            [InlineKeyboardButton("⏸️ توقف", callback_data="stop"),
              InlineKeyboardButton("🔄 بروز", callback_data="ref")],
         ])
 
@@ -746,7 +669,7 @@ async def safe_edit(bot, chat_id, msg_id, text, reply_markup=None):
     except: return None
 
 # ============================================================
-# BIO UPDATER
+# BIO UPDATER (بدون forex)
 # ============================================================
 class BioUpdater:
     def __init__(self, app): self.app = app
@@ -762,7 +685,7 @@ class BioUpdater:
             except: pass
             try: await bot.set_my_description(f"🤖 ربات معامله‌گر هوش مصنوعی\n📅 {pdt.shamsi()}\n⏰ {pdt.time_str()}\n₿ BTC: {btc}\n🧠 Groq + Gemini AI\n📊 ۲۵+ اندیکاتور\n💹 معاملات خودکار\n📢 سیگنال ۴h | 📚 آموزش ۱h"[:512])
             except: pass
-            cmds = [BotCommand("start","🚀 شروع"),BotCommand("signal","🎯 سیگنال"),BotCommand("price","💰 قیمت"),BotCommand("scan","🔍 اسکن"),BotCommand("portfolio","💼 پورتفوی"),BotCommand("news","📰 اخبار"),BotCommand("edu","📚 آموزش"),BotCommand("chart","📊 نمودار"),BotCommand("forex","💵 طلا و ارز"),BotCommand("help","❓ راهنما")]
+            cmds = [BotCommand("start","🚀 شروع"),BotCommand("signal","🎯 سیگنال"),BotCommand("price","💰 قیمت"),BotCommand("scan","🔍 اسکن"),BotCommand("portfolio","💼 پورتفوی"),BotCommand("news","📰 اخبار"),BotCommand("edu","📚 آموزش"),BotCommand("chart","📊 نمودار"),BotCommand("help","❓ راهنما")]
             try: await bot.set_my_commands(cmds, scope=BotCommandScopeDefault())
             except: pass
         except: pass
@@ -778,7 +701,7 @@ class BioUpdater:
 # ============================================================
 async def cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        f"🟢══════════════════════🟢\n   🤖 #کریپتو_پالس v21.3 🤖\n🟢══════════════════════🟢\n\n{pdt.both()}\n\n🧠🌟 Groq + Gemini AI\n📊 ۲۵+ اندیکاتور\n💹 معاملات خودکار\n📊 نمودار واقعی\n💵 بازار ایران زنده (REAL ENGINE)\n📢 سیگنال ۴h | 📚 آموزش ۱h\n\n👇 انتخاب کنید:",
+        f"🟢══════════════════════🟢\n   🤖 #کریپتو_پالس v21.3 🤖\n🟢══════════════════════🟢\n\n{pdt.both()}\n\n🧠🌟 Groq + Gemini AI\n📊 ۲۵+ اندیکاتور\n💹 معاملات خودکار\n📊 نمودار واقعی\n📢 سیگنال ۴h | 📚 آموزش ۱h\n\n👇 انتخاب کنید:",
         reply_markup=Menu.main())
 
 async def signal_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE, symbol: str = "BTC/USDT"):
@@ -817,13 +740,6 @@ async def chart_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE, symbol: 
         await q.edit_message_text("✅ نمودار ارسال شد", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]]))
     else: await q.edit_message_text("❌ خطا")
 
-async def iran_market_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-    q = update.callback_query
-    await q.answer()
-    market = await IranMarket.fetch()
-    text = fmt.iran_market(market)
-    await q.message.reply_text(text, parse_mode="Markdown")
-
 async def button_router(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query; d = q.data
     try:
@@ -843,7 +759,6 @@ async def button_router(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             if t and df is not None:
                 ind = ui.calc(df); sig, conf, score = sg.generate(ind, t['last'])
                 await q.edit_message_text(f"⏰ *۴h {sym.replace('/USDT','')}*\n{pdt.both()}\n💰 ${t['last']:,.4f}\n🎯 {sig} | 💪 {conf}%\n✨ @CryptoPulse606", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]]))
-        elif d == "iran_market": await iran_market_handler(update, ctx)
         elif d == "port":
             s = trader.stats()
             await q.edit_message_text(f"💰 *پورتفوی*\n{pdt.both()}\n💵 ${s['balance']:,.2f}\n📈 ${s['pnl']:+,.2f}\n📊 {s['total']} | {s['wins']} برد", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔄", callback_data="port"), InlineKeyboardButton("🔙", callback_data="back")]]))
