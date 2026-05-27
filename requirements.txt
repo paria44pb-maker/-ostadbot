@@ -15,3 +15,7 @@ requests
 lxml
 certifi
 aiohttp
+mplfinance
+plotly
+kaleido
+pillow
