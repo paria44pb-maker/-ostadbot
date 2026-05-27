@@ -4,7 +4,8 @@
 ╔══════════════════════════════════════════════════════════════════════════╗
 ║   🚀 CRYPTO PULSE v21.3 — PURE CRYPTO — ALL BUTTONS ACTIVE              ║
 ║   ✅ Dual AI (Groq + Gemini)  ✅ 30 Functional Glass Keys (All Working)  ║
-║   ✅ Real Charts  ✅ Auto Trade (Demo + Real)  ✅ Live Shamsi Date      ║
+║   ✅ mplfinance Professional Dark Green Chart                            ║
+║   ✅ Auto Trade (Demo + Real)  ✅ Live Shamsi Date                      ║
 ║   ✅ 25+ Indicators  ✅ Ichimoku  ✅ Fibonacci  ✅ Price Action          ║
 ║   ✅ Whale Tracking  ✅ Market Sentiment  ✅ Portfolio Management        ║
 ║   ✅ Self‑Learning  ✅ News  ✅ Education                               ║
@@ -55,9 +56,11 @@ TEHRAN_TZ = pytz.timezone('Asia/Tehran')
 try: from bs4 import BeautifulSoup
 except: BeautifulSoup = None
 try:
-    import matplotlib; matplotlib.use('Agg'); import matplotlib.pyplot as plt; import matplotlib.dates as mdates
-    from mplfinance.original_flavor import candlestick_ohlc; CHART_AVAILABLE = True
-except: CHART_AVAILABLE = False
+    import matplotlib; matplotlib.use('Agg'); import matplotlib.pyplot as plt
+    import mplfinance as mpf
+    CHART_AVAILABLE = True
+except:
+    CHART_AVAILABLE = False
 
 load_dotenv()
 
@@ -495,50 +498,80 @@ class Trader:
 trader = Trader()
 
 # ============================================================
-# CHART GENERATOR
+# CHART GENERATOR (mplfinance + custom dark green style)
 # ============================================================
 class ChartGenerator:
     @staticmethod
     def create(df, symbol, indicators):
         if not CHART_AVAILABLE: return None
         try:
-            close = df['close'].astype(float); high = df['high'].astype(float)
-            low = df['low'].astype(float); open_ = df['open'].astype(float); volume = df['volume'].astype(float)
-            n = min(80, len(close))
-            fig = plt.figure(figsize=(20,12), facecolor='#0a1a0a')
-            ax1 = plt.subplot2grid((6,1),(0,0),rowspan=3, facecolor='#0a1a0a')
-            dates = mdates.date2num([datetime.fromtimestamp(t/1000) for t in df['timestamp'].values[-n:]])
-            ohlc = np.column_stack([dates[-n:],open_.values[-n:],high.values[-n:],low.values[-n:],close.values[-n:]])
-            candlestick_ohlc(ax1, ohlc, width=0.6, colorup='#00ff88', colordown='#ff3333')
-            for p,color in [(7,'#FFD700'),(20,'#00ff88'),(50,'#FF8C00'),(200,'#FFFFFF')]:
-                ema = close.ewm(span=p,adjust=False).mean().values[-n:]
-                ax1.plot(dates[-n:], ema, color=color, linewidth=1.2, alpha=0.8)
-            if all(k in indicators for k in ['SENKOU_A','SENKOU_B']):
-                ax1.fill_between(dates, [indicators['SENKOU_A']]*n, [indicators['SENKOU_B']]*n, alpha=0.2, color='#ffaa00')
-            ax1.fill_between(dates[-n:], [indicators.get('BB_LOWER',close.iloc[-1])]*n, [indicators.get('BB_UPPER',close.iloc[-1])]*n, alpha=0.1, color='#00ff88')
-            ax1.set_title(f'{symbol} - {pdt.shamsi()}', color='#00ff88', fontsize=14, fontweight='bold')
-            ax1.set_ylabel('💰 قیمت', color='#00ff88'); ax1.tick_params(colors='#00ff88'); ax1.grid(True, alpha=0.15, color='#00ff88')
-            ax2 = plt.subplot2grid((6,1),(3,0), facecolor='#0a1a0a')
+            data = df.copy()
+            data['timestamp'] = pd.to_datetime(data['timestamp'], unit='ms')
+            data = data.set_index('timestamp')
+            data = data.rename(columns={
+                'open': 'Open', 'high': 'High', 'low': 'Low',
+                'close': 'Close', 'volume': 'Volume'
+            })[['Open','High','Low','Close','Volume']]
+            data = data.astype(float)
+            n = min(80, len(data))
+            data = data.iloc[-n:]
+
+            add_plots = []
+            for p, color in [(7,'#FFD700'),(20,'#00ff88'),(50,'#FF8C00'),(200,'#FFFFFF')]:
+                ema = data['Close'].ewm(span=p, adjust=False).mean()
+                add_plots.append(mpf.make_addplot(ema, color=color, width=1.2, alpha=0.8))
+
             from ta.momentum import RSIIndicator
-            rsi_vals = RSIIndicator(close,14).rsi().values[-n:]
-            ax2.plot(dates[-n:], rsi_vals, color='#9B59B6', linewidth=1.5)
-            ax2.axhline(y=70,color='#ff3333',linestyle='--',alpha=0.5); ax2.axhline(y=30,color='#00ff88',linestyle='--',alpha=0.5)
-            ax2.set_ylabel('RSI',color='#9B59B6'); ax2.set_ylim(0,100); ax2.tick_params(colors='#9B59B6')
-            ax3 = plt.subplot2grid((6,1),(4,0), facecolor='#0a1a0a')
-            colors_vol = ['#00ff88' if close.values[-n:][i]>=open_.values[-n:][i] else '#ff3333' for i in range(n)]
-            ax3.bar(dates[-n:], volume.values[-n:], color=colors_vol, alpha=0.8, width=0.6)
-            ax3.set_ylabel('حجم', color='#00ff88'); ax3.tick_params(colors='#00ff88')
-            ax4 = plt.subplot2grid((6,1),(5,0), facecolor='#0a1a0a')
-            macd_vals = close.ewm(span=12).mean() - close.ewm(span=26).mean()
-            signal = macd_vals.ewm(span=9).mean()
-            macd_hist = macd_vals - signal
-            ax4.bar(dates[-n:], macd_hist.values[-n:], color=['#00ff88' if v>=0 else '#ff3333' for v in macd_hist.values[-n:]], alpha=0.8)
-            ax4.set_ylabel('MACD', color='#00ff88'); ax4.tick_params(colors='#00ff88')
-            plt.tight_layout()
-            buf = io.BytesIO(); plt.savefig(buf, format='png', dpi=130, bbox_inches='tight', facecolor='#0a1a0a')
-            buf.seek(0); plt.close(fig)
+            rsi_vals = RSIIndicator(data['Close'], 14).rsi()
+            add_plots.append(mpf.make_addplot(rsi_vals, panel=2, color='#9B59B6', ylabel='RSI', width=1.5))
+            add_plots.append(mpf.make_addplot(pd.Series([70]*len(data), index=data.index), panel=2, color='#ff3333', linestyle='--', alpha=0.5))
+            add_plots.append(mpf.make_addplot(pd.Series([30]*len(data), index=data.index), panel=2, color='#00ff88', linestyle='--', alpha=0.5))
+
+            exp12 = data['Close'].ewm(span=12, adjust=False).mean()
+            exp26 = data['Close'].ewm(span=26, adjust=False).mean()
+            macd_line = exp12 - exp26
+            signal_line = macd_line.ewm(span=9, adjust=False).mean()
+            macd_hist = macd_line - signal_line
+            add_plots.append(mpf.make_addplot(macd_hist, type='bar', panel=3, color='#00ff88', alpha=0.8, ylabel='MACD'))
+
+            add_plots.append(mpf.make_addplot(data['Volume'], panel=1, type='bar', color='#00ff88', alpha=0.8, ylabel='Volume'))
+
+            mc = mpf.make_marketcolors(
+                up='#00ff88',
+                down='#ff3355',
+                edge='inherit',
+                wick='inherit',
+                volume='inherit'
+            )
+            style = mpf.make_mpf_style(
+                marketcolors=mc,
+                facecolor='#061a14',
+                figcolor='#061a14',
+                gridcolor='#1d3b34',
+                rc={'font.size': 12}
+            )
+
+            fig, axlist = mpf.plot(
+                data,
+                type='candle',
+                style=style,
+                title=f'{symbol} - {pdt.shamsi()}',
+                ylabel='💰 قیمت',
+                volume=True,
+                addplot=add_plots,
+                panel_ratios=(3, 1, 1, 1),
+                figsize=(20, 12),
+                returnfig=True
+            )
+
+            buf = io.BytesIO()
+            fig.savefig(buf, format='png', dpi=130, bbox_inches='tight', facecolor=style['facecolor'])
+            buf.seek(0)
+            plt.close(fig)
             return buf
-        except: return None
+        except Exception as e:
+            logger.error(f"Chart error: {e}")
+            return None
 
 chart_gen = ChartGenerator()
 
@@ -614,7 +647,7 @@ BB %B={i.get('BB_PCT',0.5):.2f}  Vol={i.get('VOL_RATIO',1):.1f}x
 fmt = Fmt()
 
 # ============================================================
-# MENU (بدون دلار و طلا)
+# MENU
 # ============================================================
 class Menu:
     @staticmethod
@@ -739,10 +772,8 @@ async def chart_handler(update, ctx, symbol="BTC/USDT"):
 async def button_router(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query; d = q.data
     try:
-        # Back
         if d == "back":
             await q.edit_message_text(f"🟢 *منو*\n\n{pdt.both()}", parse_mode="Markdown", reply_markup=Menu.main())
-        # Prices
         elif d == "p":
             if not exchange_mgr.connected: exchange_mgr.connect()
             txt = f"💰 *#قیمت‌ها*\n\n{pdt.both()}\n\n"
@@ -750,34 +781,26 @@ async def button_router(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
                 t = exchange_mgr.ticker(sym)
                 if t: txt += f"{'🟢' if t.get('percentage',0)>0 else '🔴'} *{sym.replace('/USDT','')}*: ${t['last']:,.4f} ({t.get('percentage',0):+.1f}%)\n"
             await q.edit_message_text(txt, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔄", callback_data="p"), InlineKeyboardButton("🔙", callback_data="back")]]))
-        # Signal (s_)
-        elif d.startswith("s_"):
-            await signal_handler(update, ctx, d[2:])
-        # Chart
-        elif d.startswith("chart_"):
-            await chart_handler(update, ctx, d[6:] if len(d)>6 else "BTC/USDT")
-        # 4h
+        elif d.startswith("s_"): await signal_handler(update, ctx, d[2:])
+        elif d.startswith("chart_"): await chart_handler(update, ctx, d[6:] if len(d)>6 else "BTC/USDT")
         elif d.startswith("tf4_"):
             sym = d[4:] if len(d)>4 else "BTC/USDT"
             t = exchange_mgr.ticker(sym); df = exchange_mgr.ohlcv(sym, '4h', 200)
             if t and df is not None:
                 ind = ui.calc(df); sig, conf, _ = sg.generate(ind, t['last'])
                 await q.edit_message_text(f"⏰ *۴h {sym.replace('/USDT','')}*\n{pdt.both()}\n💰 ${t['last']:,.4f}\n🎯 {sig} | 💪 {conf}%\n✨ @CryptoPulse606", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]]))
-        # 1d
         elif d.startswith("tf1d_"):
             sym = d[5:] if len(d)>5 else "BTC/USDT"
             t = exchange_mgr.ticker(sym); df = exchange_mgr.ohlcv(sym, '1d', 200)
             if t and df is not None:
                 ind = ui.calc(df); sig, conf, _ = sg.generate(ind, t['last'])
                 await q.edit_message_text(f"⏰ *۱d {sym.replace('/USDT','')}*\n{pdt.both()}\n💰 ${t['last']:,.4f}\n🎯 {sig} | 💪 {conf}%\n✨ @CryptoPulse606", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]]))
-        # 1w
         elif d.startswith("tf1w_"):
             sym = d[5:] if len(d)>5 else "BTC/USDT"
             t = exchange_mgr.ticker(sym); df = exchange_mgr.ohlcv(sym, '1w', 200)
             if t and df is not None:
                 ind = ui.calc(df); sig, conf, _ = sg.generate(ind, t['last'])
                 await q.edit_message_text(f"⏰ *۱w {sym.replace('/USDT','')}*\n{pdt.both()}\n💰 ${t['last']:,.4f}\n🎯 {sig} | 💪 {conf}%\n✨ @CryptoPulse606", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]]))
-        # Groq AI (ai_)
         elif d.startswith("ai_"):
             sym = d[3:] if len(d)>3 else "BTC/USDT"
             t = exchange_mgr.ticker(sym); df = exchange_mgr.ohlcv(sym, '1h', 200)
@@ -790,7 +813,6 @@ async def button_router(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
                 res = await groq_ai.tech(sym, ind, t['last'], t.get('percentage',0), pats, mtf)
                 if res: await q.edit_message_text(f"🧠 *Groq AI {sym}*\n\n{res}\n\n✨ @CryptoPulse606", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]]))
             else: await q.edit_message_text("❌", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]]))
-        # Gemini AI (gem_)
         elif d.startswith("gem_"):
             sym = d[4:] if len(d)>4 else "BTC/USDT"
             t = exchange_mgr.ticker(sym)
@@ -798,28 +820,24 @@ async def button_router(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
                 res = await gemini_ai.ask(f"Analyze {sym} at ${t['last']:,.2f}. Provide a brief technical outlook in Persian with emojis. 300 words max.", 500)
                 if res: await q.edit_message_text(f"🌟 *Gemini AI {sym}*\n\n{res}\n\n✨ @CryptoPulse606", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]]))
             else: await q.edit_message_text("❌ Gemini در دسترس نیست", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]]))
-        # Ichimoku (ichi_)
         elif d.startswith("ichi_"):
             sym = d[5:] if len(d)>5 else "BTC/USDT"
             t = exchange_mgr.ticker(sym); df = exchange_mgr.ohlcv(sym, '1h', 200)
             if t and df is not None:
                 ind = ui.calc(df); res = await groq_ai.ichimoku(sym, ind, t['last']) if groq_ai.enabled else None
                 await q.edit_message_text(f"☁️ *Ichimoku {sym}*\n\n{res if res else 'داده ناکافی'}\n\n✨ @CryptoPulse606", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]]))
-        # Fibonacci (fib_)
         elif d.startswith("fib_"):
             sym = d[4:] if len(d)>4 else "BTC/USDT"
             t = exchange_mgr.ticker(sym); df = exchange_mgr.ohlcv(sym, '1h', 200)
             if t and df is not None:
                 ind = ui.calc(df); res = await groq_ai.fibonacci(sym, ind, t['last']) if groq_ai.enabled else None
                 await q.edit_message_text(f"📐 *Fibonacci {sym}*\n\n{res if res else 'داده ناکافی'}\n\n✨ @CryptoPulse606", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]]))
-        # Volume Profile (vol_)
         elif d.startswith("vol_"):
             sym = d[4:] if len(d)>4 else "BTC/USDT"
             t = exchange_mgr.ticker(sym); df = exchange_mgr.ohlcv(sym, '1h', 200)
             if t and df is not None:
                 ind = ui.calc(df); res = await groq_ai.volume_profile(sym, ind, t['last']) if groq_ai.enabled else None
                 await q.edit_message_text(f"📈 *Volume Profile {sym}*\n\n{res if res else 'داده ناکافی'}\n\n✨ @CryptoPulse606", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]]))
-        # Market overview
         elif d == "market":
             top = []
             for sym in cfg.symbols[:10]:
@@ -828,7 +846,6 @@ async def button_router(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             m = await groq_ai.market(top)
             if m: await q.edit_message_text(f"📰 *بازار*\n\n{m}\n\n✨ @CryptoPulse606 | {pdt.full()}", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]]))
             else: await q.edit_message_text("❌", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]]))
-        # Scan
         elif d == "scan":
             if not exchange_mgr.connected: exchange_mgr.connect()
             res = []
@@ -843,55 +860,45 @@ async def button_router(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
                 e = "🟢" if "خرید" in r['signal'] else "🔴" if "فروش" in r['signal'] else "⚪"
                 txt += f"{i}. {e} *{r['symbol'].replace('/USDT','')}*: ${r['price']:,.4f} | {r['signal'][:30]} | {r['confidence']}%\n"
             await q.edit_message_text(txt, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔄", callback_data="scan"), InlineKeyboardButton("🔙", callback_data="back")]]))
-        # Strategy
         elif d == "strat":
             t = exchange_mgr.ticker("BTC/USDT"); df = exchange_mgr.ohlcv("BTC/USDT",'1h',200)
             if t and df is not None:
                 ind = ui.calc(df); res = await groq_ai.strat("BTC/USDT", ind, t['last'])
                 if res: await q.edit_message_text(f"📊 *استراتژی*\n\n{res}\n\n✨ @CryptoPulse606", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]]))
-        # Sentiment
         elif d == "sent":
             t = exchange_mgr.ticker("BTC/USDT")
             if t:
                 res = await groq_ai.sent("BTC/USDT", t['last'], t.get('percentage',0))
                 if res: await q.edit_message_text(f"💭 *احساسات*\n\n{res}\n\n✨ @CryptoPulse606", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]]))
-        # Fundamental
         elif d == "fund":
             t = exchange_mgr.ticker("BTC/USDT")
             if t:
                 res = await groq_ai.fund("BTC/USDT", t['last'], t.get('percentage',0))
                 if res: await q.edit_message_text(f"📰 *فاندامنتال*\n\n{res}\n\n✨ @CryptoPulse606", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]]))
-        # Price Action
         elif d == "pa":
             t = exchange_mgr.ticker("BTC/USDT"); df = exchange_mgr.ohlcv("BTC/USDT",'1h',200)
             if t and df is not None:
                 ind = ui.calc(df); pats = [k for k,v in ind.items() if isinstance(v,bool) and v]
                 res = await groq_ai.pa("BTC/USDT", ind, t['last'], pats)
                 if res: await q.edit_message_text(f"📊 *پرایس اکشن*\n\n{res}\n\n✨ @CryptoPulse606", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]]))
-        # Prediction
         elif d == "pred":
             t = exchange_mgr.ticker("BTC/USDT"); df = exchange_mgr.ohlcv("BTC/USDT",'1h',200)
             if t and df is not None:
                 ind = ui.calc(df); res = await groq_ai.pred("BTC/USDT", ind, t['last'])
                 if res: await q.edit_message_text(f"🔮 *پیش‌بینی*\n\n{res}\n\n✨ @CryptoPulse606", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]]))
-        # Portfolio
         elif d == "port":
             s = trader.stats()
             await q.edit_message_text(f"💰 *پورتفوی*\n{pdt.both()}\n💵 ${s['balance']:,.2f}\n📈 ${s['pnl']:+,.2f}\n📊 {s['total']} | {s['wins']} برد", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔄", callback_data="port"), InlineKeyboardButton("🔙", callback_data="back")]]))
-        # Performance
         elif d == "perf":
             s = trader.stats()
             txt = f"📊 *عملکرد*\n{pdt.both()}\n💵 موجودی: ${s['balance']:,.2f}\n📈 سود/زیان: ${s['pnl']:+,.2f}\n📊 کل معاملات: {s['total']}\n✅ برد: {s['wins']}\n📈 نرخ برد: {s['rate']:.1f}%"
             await q.edit_message_text(txt, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]]))
-        # Experience
         elif d == "exp":
             await q.edit_message_text(f"🧠 *تجربه*\n{pdt.both()}\n📊 {trader.exp['total']} معامله\n🏆 ${trader.exp.get('best',0):+,.2f}\n🎯 آستانه: {trader.exp['conf']}%\n⚡ ریسک: {trader.exp['risk']:.1f}x", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]]))
-        # Auto toggle
         elif d == "auto":
             cfg.auto_send = not cfg.auto_send
             state = "✅ فعال" if cfg.auto_send else "❌ غیرفعال"
             await q.edit_message_text(f"🤖 *حالت خودکار*: {state}\n{pdt.both()}", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]]))
-        # Status
         elif d == "status":
             txt = f"🔑 *وضعیت سیستم*\n{pdt.both()}\n"
             txt += f"🔌 CoinEx: {'✅' if exchange_mgr.connected else '❌'}\n"
@@ -901,28 +908,22 @@ async def button_router(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             txt += f"📊 پوزیشن‌ها: {len(trader.positions)}\n"
             txt += f"⏱️ آپتایم: {pdt.time_str()}"
             await q.edit_message_text(txt, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]]))
-        # Settings
         elif d == "set":
             await q.edit_message_text(f"⚙️ *تنظیمات*\n{pdt.both()}\n🔌 CoinEx: {'✅' if exchange_mgr.connected else '❌'}\n🧠 Groq: {'✅' if groq_ai.enabled else '❌'}\n🌟 Gemini: {'✅' if gemini_ai.enabled else '❌'}\n⏰ سیگنال: ۴h\n📚 آموزش: ۱h\n📰 اخبار: ۲h", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]]))
-        # Education
         elif d == "edu":
             c = await groq_ai.edu()
             await q.edit_message_text(fmt.edu(c) if c else "❌", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔄", callback_data="edu"), InlineKeyboardButton("🔙", callback_data="back")]]))
-        # News
         elif d == "news":
             c = await groq_ai.news()
             await q.edit_message_text(fmt.news(c) if c else "❌", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔄", callback_data="news"), InlineKeyboardButton("🔙", callback_data="back")]]))
-        # Whale
         elif d == "whale":
             c = await groq_ai.whale()
             await q.edit_message_text(fmt.whale(c) if c else "❌", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔄", callback_data="whale"), InlineKeyboardButton("🔙", callback_data="back")]]))
-        # Stop
         elif d == "stop":
             for s in list(trader.positions.keys()):
                 t = exchange_mgr.ticker(s)
                 if t: trader.close(s, t['last'], "⏸️")
             await q.edit_message_text(f"⏸️ بسته شد\n{pdt.both()}", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]]))
-        # Refresh
         elif d == "ref":
             await q.edit_message_text(f"🟢 *منو*\n{pdt.both()}", reply_markup=Menu.main())
         else:
