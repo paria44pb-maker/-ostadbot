@@ -1,0 +1,3 @@
+pip install ta
+pip install orjson
+pip install uvloop
