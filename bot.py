@@ -2,11 +2,10 @@
 # -*- coding: utf-8 -*-
 """
 ╔══════════════════════════════════════════════════════════════════════════╗
-║   🚀 CRYPTO PULSE v19 — PROFESSIONAL EDITION (No Forex, Enhanced)       ║
+║   🚀 CRYPTO PULSE v20 — NOBITEX EDITION 🤖                              ║
 ║   ✅ Dual AI  ✅ 60+ Glass Keys  ✅ Real Charts  ✅ Auto Trade            ║
 ║   ✅ Live Shamsi Date  ✅ News  ✅ Education  ✅ Advanced Analysis         ║
-║   ✅ Ichimoku  ✅ Fibonacci  ✅ Volume Profile  ✅ Pattern Scanner         ║
-║   ✅ System Health  ✅ Backup Manager  ✅ Open Access                     ║
+║   ✅ Nobitex Exchange  ✅ USDT Price (Toman)  ✅ Open Access              ║
 ╚══════════════════════════════════════════════════════════════════════════╝
 """
 
@@ -42,7 +41,7 @@ def ensure_libs():
         except: subprocess.check_call([sys.executable,"-m","pip","install",pkg,"--quiet"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
 logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger('CryptoPulseV19')
+logger = logging.getLogger('CryptoPulseV20')
 ensure_libs()
 
 import schedule, jdatetime, pytz
@@ -63,7 +62,7 @@ logger.setLevel(logging.DEBUG)
 console = logging.StreamHandler(); console.setLevel(logging.INFO)
 console.setFormatter(logging.Formatter('%(asctime)s | %(levelname)-7s | %(message)s'))
 logger.addHandler(console)
-for name in ['crypto_v19.log','crypto_v19_errors.log']:
+for name in ['crypto_v20.log','crypto_v20_errors.log']:
     h = RotatingFileHandler(name, maxBytes=20*1024*1024, backupCount=10, encoding='utf-8')
     h.setLevel(logging.INFO if 'errors' not in name else logging.ERROR)
     h.setFormatter(logging.Formatter('%(asctime)s | %(levelname)-7s | %(message)s'))
@@ -72,7 +71,7 @@ for lib in ['httpx','httpcore','telegram','ccxt','urllib3','asyncio','matplotlib
     logging.getLogger(lib).setLevel(logging.WARNING)
 
 # ============================================================
-# CONFIGURATION (بدون بخش ارز و طلا)
+# CONFIGURATION (Nobitex only, no forex)
 # ============================================================
 @dataclass
 class Config:
@@ -80,9 +79,10 @@ class Config:
     channel_id: str = os.getenv("CHANNEL_ID", "")
     groq_api_key: str = os.getenv("GROQ_API_KEY", "")
     gemini_api_key: str = os.getenv("GEMINI_API_KEY", "")
-    api_key: str = os.getenv("COINEX_API_KEY", "")
-    api_secret: str = os.getenv("COINEX_SECRET_KEY", "")
-    api_passphrase: str = os.getenv("COINEX_PASSPHRASE", "")
+    # Nobitex API credentials (از پنل Nobitex دریافت کنید)
+    api_key: str = os.getenv("NOBITEX_API_KEY", "")
+    api_secret: str = os.getenv("NOBITEX_SECRET_KEY", "")
+    # Nobitex معمولاً passphrase ندارد، در صورت نیاز می‌توانید اضافه کنید
     symbols: List[str] = field(default_factory=lambda: [
         "BTC/USDT","ETH/USDT","BNB/USDT","XRP/USDT","ADA/USDT","SOL/USDT","DOGE/USDT",
         "DOT/USDT","MATIC/USDT","AVAX/USDT","LINK/USDT","UNI/USDT","ATOM/USDT","LTC/USDT",
@@ -101,7 +101,7 @@ cfg = Config()
 # PROCESS LOCK
 # ============================================================
 class ProcessLock:
-    _file = "crypto_v19.lock"
+    _file = "crypto_v20.lock"
     @classmethod
     def acquire(cls) -> bool:
         try:
@@ -256,33 +256,59 @@ Max 300 words.""", self.T['tech'])
 groq_ai = GroqAI()
 
 # ============================================================
-# EXCHANGE
+# EXCHANGE (Nobitex only)
 # ============================================================
 class ExchangeManager:
     def __init__(self):
-        self._ex = None; self.connected = False; self.real = bool(cfg.api_key and cfg.api_secret)
+        self._ex = None; self.connected = False
+        self.real = bool(cfg.api_key and cfg.api_secret)
     def connect(self):
         try:
-            p = {'enableRateLimit':True,'timeout':30000}
-            if self.real: p.update({'apiKey':cfg.api_key,'secret':cfg.api_secret,'password':cfg.api_passphrase})
-            self._ex = ccxt.coinex(p); self._ex.load_markets(); self.connected = True
-        except:
-            try: self._ex = ccxt.coinex({'enableRateLimit':True,'timeout':30000}); self._ex.load_markets(); self.connected = True
-            except: pass
-    def ticker(self,s): 
-        try: return self._ex.fetch_ticker(s) if self.connected else None
-        except: return None
-    def ohlcv(self,s,tf,limit=200):
+            params = {'enableRateLimit': True, 'timeout': 30000}
+            if self.real:
+                params.update({
+                    'apiKey': cfg.api_key,
+                    'secret': cfg.api_secret,
+                    'options': {'defaultType': 'spot'}
+                })
+            self._ex = ccxt.nobitex(params)
+            self._ex.load_markets()
+            self.connected = True
+            logger.info(f"✅ Nobitex Connected ({'REAL' if self.real else 'READ-ONLY'})")
+        except Exception as e:
+            logger.error(f"❌ Nobitex Connection Failed: {e}")
+            try:
+                self._ex = ccxt.nobitex({'enableRateLimit': True, 'timeout': 30000})
+                self._ex.load_markets()
+                self.connected = True
+                logger.info("✅ Nobitex Connected (READ-ONLY Fallback)")
+            except:
+                self.connected = False
+    def ticker(self, symbol: str) -> Optional[Dict]:
+        if not self.connected or not self._ex: return None
+        try: return self._ex.fetch_ticker(symbol)
+        except Exception as e: logger.debug(f"Ticker error {symbol}: {e}"); return None
+    def ohlcv(self, symbol: str, timeframe: str, limit: int = 200) -> Optional[pd.DataFrame]:
+        if not self.connected or not self._ex: return None
         try:
-            if not self.connected: return None
-            d = self._ex.fetch_ohlcv(s,tf,limit=limit)
-            return pd.DataFrame(d,columns=['timestamp','open','high','low','close','volume']) if d and len(d)>30 else None
-        except: return None
+            data = self._ex.fetch_ohlcv(symbol, timeframe, limit=limit)
+            if data and len(data) > 30:
+                return pd.DataFrame(data, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
+        except Exception as e: logger.debug(f"OHLCV error {symbol}: {e}")
+        return None
+    def fetch_usdt_irt(self) -> Optional[float]:
+        """دریافت قیمت تتر به تومان"""
+        try:
+            ticker = self._ex.fetch_ticker("USDTIRT")
+            if ticker and ticker.get('last'):
+                return ticker['last']
+        except: pass
+        return None
 
 exchange_mgr = ExchangeManager()
 
 # ============================================================
-# INDICATORS (Enhanced with Ichimoku, Fibonacci, Volume Profile)
+# INDICATORS (با Ichimoku، Fibonacci، Volume Profile)
 # ============================================================
 class UltraIndicators:
     @staticmethod
@@ -317,7 +343,6 @@ class UltraIndicators:
         ind['VOL_RATIO'] = float(volume.iloc[-1]/vs if vs>0 else 1)
         ind['SUPPORT'] = float(low.rolling(20).min().iloc[-1]) if len(low)>=20 else low.min()
         ind['RESISTANCE'] = float(high.rolling(20).max().iloc[-1]) if len(high)>=20 else high.max()
-        # Ichimoku
         try:
             ichi = IchimokuIndicator(high, low, window1=9, window2=26, window3=52)
             ind['TENKAN'] = float(ichi.ichimoku_conversion_line().iloc[-1])
@@ -325,20 +350,18 @@ class UltraIndicators:
             ind['SENKOU_A'] = float(ichi.ichimoku_a().iloc[-1])
             ind['SENKOU_B'] = float(ichi.ichimoku_b().iloc[-1])
         except: pass
-        # Fibonacci
         h50 = high.rolling(50).max().iloc[-1] if len(high)>=50 else high.max()
         l50 = low.rolling(50).min().iloc[-1] if len(low)>=50 else low.min()
         diff = h50 - l50
         for lvl in [0.236,0.382,0.5,0.618,0.786]:
             ind[f'FIB_{int(lvl*1000)}'] = float(h50 - diff*lvl)
-        # Volume Profile (simple POC approximation)
         poc_idx = volume.iloc[-50:].idxmax() if len(volume)>=50 else volume.idxmax()
         ind['POC'] = float(close.iloc[poc_idx]) if poc_idx < len(close) else close.iloc[-1]
         ind.update(UltraIndicators._candles(df)); ind['DIVERGENCE'] = UltraIndicators._div(close)
         return ind
     @staticmethod
     def _candles(df):
-        pats = {p:False for p in ['DOJI','HAMMER','SHOOTING_STAR','ENGULFING_BULL','ENGULFING_BEAR','THREE_WHITE','THREE_BLACK','MORNING_STAR','EVENING_STAR','HARAMI_BULL','HARAMI_BEAR']}
+        pats = {p:False for p in ['DOJI','HAMMER','SHOOTING_STAR','ENGULFING_BULL','ENGULFING_BEAR','THREE_WHITE','THREE_BLACK','MORNING_STAR','EVENING_STAR']}
         if len(df)<2: return pats
         o,h,l,c = df['open'].iloc[-1],df['high'].iloc[-1],df['low'].iloc[-1],df['close'].iloc[-1]
         po,pc = df['open'].iloc[-2],df['close'].iloc[-2]; body,tr = abs(c-o), h-l
@@ -363,7 +386,7 @@ class UltraIndicators:
 ui = UltraIndicators()
 
 # ============================================================
-# SIGNAL GENERATOR WITH COLORED CIRCLES (Enhanced)
+# SIGNAL GENERATOR (همانند نسخه ۱۹)
 # ============================================================
 class SignalGen:
     @staticmethod
@@ -391,7 +414,6 @@ class SignalGen:
         if ind.get('EVENING_STAR'): score-=60
         if ind.get('DIVERGENCE')=='BULLISH': score+=70
         elif ind.get('DIVERGENCE')=='BEARISH': score-=70
-        # Ichimoku confirmation
         if ind.get('TENKAN',0)>ind.get('KIJUN',0) and price>ind.get('SENKOU_A',0): score+=50
         elif ind.get('TENKAN',0)<ind.get('KIJUN',0) and price<ind.get('SENKOU_B',0): score-=50
         if mtf:
@@ -423,7 +445,7 @@ class SignalGen:
 sg = SignalGen()
 
 # ============================================================
-# TRADER (Self-Learning)
+# TRADER (همانند نسخه ۱۹)
 # ============================================================
 class Trader:
     def __init__(self):
@@ -433,13 +455,13 @@ class Trader:
         self.load()
     def load(self):
         try:
-            with open('trader_v19.json') as f:
+            with open('trader_v20.json') as f:
                 d = json.load(f); self.balance = d.get('balance',cfg.initial_balance)
                 self.history = d.get('history',[]); self.exp.update(d.get('exp',{}))
         except: pass
     def save(self):
         try:
-            with open('trader_v19.json','w') as f:
+            with open('trader_v20.json','w') as f:
                 json.dump({'balance':self.balance,'history':self.history[-1000:],'exp':self.exp}, f)
         except: pass
     def learn(self):
@@ -483,7 +505,7 @@ class Trader:
 trader = Trader()
 
 # ============================================================
-# CHART GENERATOR (Enhanced)
+# CHART GENERATOR (همانند نسخه ۱۹)
 # ============================================================
 class ChartGenerator:
     @staticmethod
@@ -501,7 +523,6 @@ class ChartGenerator:
             for p,color in [(7,'#FFD700'),(20,'#00ff88'),(50,'#FF8C00'),(200,'#FFFFFF')]:
                 ema = close.ewm(span=p,adjust=False).mean().values[-n:]
                 ax1.plot(dates[-n:], ema, color=color, linewidth=1.2, alpha=0.8)
-            # Ichimoku Cloud
             if all(k in indicators for k in ['SENKOU_A','SENKOU_B']):
                 ax1.fill_between(dates, [indicators['SENKOU_A']]*n, [indicators['SENKOU_B']]*n, alpha=0.2, color='#ffaa00')
             ax1.fill_between(dates[-n:], [indicators.get('BB_LOWER',close.iloc[-1])]*n, [indicators.get('BB_UPPER',close.iloc[-1])]*n, alpha=0.1, color='#00ff88')
@@ -517,7 +538,6 @@ class ChartGenerator:
             colors_vol = ['#00ff88' if close.values[-n:][i]>=open_.values[-n:][i] else '#ff3333' for i in range(n)]
             ax3.bar(dates[-n:], volume.values[-n:], color=colors_vol, alpha=0.8, width=0.6)
             ax3.set_ylabel('حجم', color='#00ff88'); ax3.tick_params(colors='#00ff88')
-            # Additional Panel: MACD
             ax4 = plt.subplot2grid((6,1),(5,0), facecolor='#0a1a0a')
             macd_vals = close.ewm(span=12).mean() - close.ewm(span=26).mean()
             signal = macd_vals.ewm(span=9).mean()
@@ -547,10 +567,9 @@ class HealthMonitor:
 ⏱️ زمان اجرا: {uptime}
 📤 سیگنال‌های ارسالی: {self.signals_sent}
 ❌ خطاها: {self.errors}
-🔌 صرافی: {'✅' if exchange_mgr.connected else '❌'}
+🔌 Nobitex: {'✅' if exchange_mgr.connected else '❌'}
 🧠 Groq: {'✅' if groq_ai.enabled else '❌'}
 🌟 Gemini: {'✅' if gemini_ai.enabled else '❌'}
-📊 حافظه مصرفی: {self._memory_usage():.1f} MB
 """
     def _memory_usage(self):
         try:
@@ -562,7 +581,7 @@ class HealthMonitor:
 health = HealthMonitor()
 
 # ============================================================
-# FORMATTER (Enhanced)
+# FORMATTER (با قابلیت نمایش قیمت تتر)
 # ============================================================
 class Fmt:
     @staticmethod
@@ -644,6 +663,14 @@ class Fmt:
 🟢══════════════════════════════════════🟢"""
         return msg
     @staticmethod
+    def usdt_price(price_irt):
+        return f"""
+💵 *قیمت تتر (USDT)*
+📅 {pdt.full()}
+💰 *هر تتر:* {price_irt:,.0f} تومان
+📡 منبع: Nobitex
+"""
+    @staticmethod
     def edu(c=None):
         h = f"🟢══════════════════🟢\n     📚 #آموزش_کریپتو\n🟢══════════════════🟢\n\n{pdt.both()}\n\n"
         if c: h += f"{c}\n\n"
@@ -660,7 +687,7 @@ class Fmt:
 fmt = Fmt()
 
 # ============================================================
-# 60+ GLASS BUTTONS (Advanced)
+# 60+ GLASS BUTTONS (Nobitex Edition)
 # ============================================================
 class Menu:
     @staticmethod
@@ -693,10 +720,11 @@ class Menu:
             [InlineKeyboardButton("📚 آموزش تخصصی", callback_data="edu"),
              InlineKeyboardButton("📰 اخبار کریپتو", callback_data="news"),
              InlineKeyboardButton("🐋 نهنگ‌ها", callback_data="whale")],
-            [InlineKeyboardButton("📊 سلامت سیستم", callback_data="health"),
-             InlineKeyboardButton("🔄 بروزرسانی", callback_data="ref"),
-             InlineKeyboardButton("❓ راهنما", callback_data="help")],
-            [InlineKeyboardButton("⏸️ توقف اضطراری", callback_data="stop")]
+            [InlineKeyboardButton("💵 قیمت تتر (تومان)", callback_data="usdt"),
+             InlineKeyboardButton("📊 سلامت سیستم", callback_data="health"),
+             InlineKeyboardButton("🔄 بروزرسانی", callback_data="ref")],
+            [InlineKeyboardButton("⏸️ توقف اضطراری", callback_data="stop"),
+             InlineKeyboardButton("❓ راهنما", callback_data="help")]
         ])
 
 # ============================================================
@@ -729,7 +757,7 @@ class BioUpdater:
             except: pass
             try: await bot.set_my_description(f"🤖 ربات معامله‌گر هوش مصنوعی\n📅 {pdt.shamsi()}\n⏰ {pdt.time_str()}\n₿ BTC: {btc}\n🧠 Groq + Gemini AI\n📊 ۲۵+ اندیکاتور\n💹 معاملات خودکار\n📢 سیگنال ۴h | 📚 آموزش ۱h"[:512])
             except: pass
-            cmds = [BotCommand("start","🚀 شروع"),BotCommand("signal","🎯 سیگنال"),BotCommand("price","💰 قیمت"),BotCommand("scan","🔍 اسکن"),BotCommand("portfolio","💼 پورتفوی"),BotCommand("news","📰 اخبار"),BotCommand("edu","📚 آموزش"),BotCommand("chart","📊 نمودار"),BotCommand("health","🩺 سلامت"),BotCommand("help","❓ راهنما")]
+            cmds = [BotCommand("start","🚀 شروع"),BotCommand("signal","🎯 سیگنال"),BotCommand("price","💰 قیمت"),BotCommand("scan","🔍 اسکن"),BotCommand("portfolio","💼 پورتفوی"),BotCommand("news","📰 اخبار"),BotCommand("edu","📚 آموزش"),BotCommand("chart","📊 نمودار"),BotCommand("usdt","💵 تتر"),BotCommand("health","🩺 سلامت"),BotCommand("help","❓ راهنما")]
             try: await bot.set_my_commands(cmds, scope=BotCommandScopeDefault())
             except: pass
         except: pass
@@ -745,7 +773,7 @@ class BioUpdater:
 # ============================================================
 async def cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        f"🟢══════════════════════🟢\n   🤖 #کریپتو_پالس v19 🤖\n🟢══════════════════════🟢\n\n{pdt.both()}\n\n🧠🌟 Groq + Gemini AI\n📊 ۲۵+ اندیکاتور + Ichimoku + Fibonacci\n💹 معاملات خودکار\n📊 نمودار واقعی\n📢 سیگنال ۴h | 📚 آموزش ۱h\n📰 اخبار ۲h | 🐋 نهنگ‌ها\n🩺 مانیتور سلامت\n\n👇 انتخاب کنید:",
+        f"🟢══════════════════════🟢\n   🤖 #کریپتو_پالس v20 🤖\n🟢══════════════════════🟢\n\n{pdt.both()}\n\n🧠🌟 Groq + Gemini AI\n📊 ۲۵+ اندیکاتور + Ichimoku + Fibonacci\n💹 معاملات خودکار (Nobitex)\n📊 نمودار واقعی\n💵 قیمت تتر از Nobitex\n📢 سیگنال ۴h | 📚 آموزش ۱h\n📰 اخبار ۲h | 🐋 نهنگ‌ها\n🩺 مانیتور سلامت\n\n👇 انتخاب کنید:",
         reply_markup=Menu.main())
 
 async def signal_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE, symbol: str = "BTC/USDT"):
@@ -787,6 +815,19 @@ async def chart_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE, symbol: 
         await q.edit_message_text("✅ نمودار ارسال شد", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]]))
     else: await q.edit_message_text("❌ خطا")
 
+async def usdt_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    q = update.callback_query
+    await q.answer()
+    if not exchange_mgr.connected:
+        await q.edit_message_text("❌ اتصال به Nobitex برقرار نیست", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]]))
+        return
+    price = exchange_mgr.fetch_usdt_irt()
+    if price:
+        msg = fmt.usdt_price(price)
+        await q.edit_message_text(msg, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔄 بروزرسانی", callback_data="usdt"), InlineKeyboardButton("🔙", callback_data="back")]]))
+    else:
+        await q.edit_message_text("❌ خطا در دریافت قیمت تتر", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]]))
+
 async def health_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query
     await q.answer()
@@ -813,6 +854,7 @@ async def button_router(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             if t and df is not None:
                 ind = ui.calc(df); sig, conf, score = sg.generate(ind, t['last'])
                 await q.edit_message_text(f"⏰ *۴h {sym.replace('/USDT','')}*\n{pdt.both()}\n💰 ${t['last']:,.4f}\n🎯 {sig} | 💪 {conf}%\n✨ @CryptoPulse606", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]]))
+        elif d == "usdt": await usdt_handler(update, ctx)
         elif d == "health": await health_handler(update, ctx)
         elif d == "port":
             s = trader.stats()
@@ -836,7 +878,7 @@ async def button_router(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         elif d == "ref": await q.edit_message_text(f"🟢 *منو*\n{pdt.both()}", reply_markup=Menu.main())
         elif d == "help": await q.edit_message_text(f"❓ /start\n{pdt.both()}", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]]))
         elif d == "set":
-            await q.edit_message_text(f"⚙️ *تنظیمات*\n{pdt.both()}\n🔌 {'✅' if exchange_mgr.connected else '❌'}\n🧠 Groq: {'✅' if groq_ai.enabled else '❌'}\n🌟 Gemini: {'✅' if gemini_ai.enabled else '❌'}\n⏰ سیگنال: ۴h\n📚 آموزش: ۱h\n📰 اخبار: ۲h", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]]))
+            await q.edit_message_text(f"⚙️ *تنظیمات*\n{pdt.both()}\n🔌 Nobitex: {'✅' if exchange_mgr.connected else '❌'}\n🧠 Groq: {'✅' if groq_ai.enabled else '❌'}\n🌟 Gemini: {'✅' if gemini_ai.enabled else '❌'}\n⏰ سیگنال: ۴h\n📚 آموزش: ۱h\n📰 اخبار: ۲h", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]]))
         elif d in ["scan","market","strat","sent","fund","pa","pred","perf","hist","auto","status","ichi_BTC/USDT","fib_BTC/USDT","vol_BTC/USDT"]:
             await q.edit_message_text(f"⚡ *{d}* — فعال و عملیاتی\n{pdt.both()}\n\nاین بخش آماده است.\n✨ @CryptoPulse606", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]]))
         else: await q.answer(f"⚡ | {pdt.time_str()}")
@@ -928,7 +970,7 @@ async def auto_whale(app: Application):
 async def main():
     if not ProcessLock.acquire(): sys.exit(1)
     if not cfg.token: ProcessLock.release(); return
-    print(f"🟢══════════════════════════════════════🟢\n║   🚀 CRYPTO PULSE v19 ║\n║   📅 {pdt.shamsi()} ║\n║   ⏰ {pdt.time_str()} ║\n🟢══════════════════════════════════════🟢")
+    print(f"🟢══════════════════════════════════════🟢\n║   🚀 CRYPTO PULSE v20 ║\n║   📅 {pdt.shamsi()} ║\n║   ⏰ {pdt.time_str()} ║\n🟢══════════════════════════════════════🟢")
     logger.info(f"🚀 شروع | {pdt.full()}")
     exchange_mgr.connect()
     app = Application.builder().token(cfg.token).build()
@@ -941,8 +983,8 @@ async def main():
     asyncio.create_task(auto_news(app))
     asyncio.create_task(auto_whale(app))
     logger.info("="*50)
-    logger.info(f"🚀 کریپتو پالس ۱۹ | {pdt.full()}")
-    logger.info(f"🧠 Groq: {'✅' if groq_ai.enabled else '❌'} | 🌟 Gemini: {'✅' if gemini_ai.enabled else '❌'}")
+    logger.info(f"🚀 کریپتو پالس ۲۰ | {pdt.full()}")
+    logger.info(f"🔌 Nobitex | 🧠 Groq: {'✅' if groq_ai.enabled else '❌'} | 🌟 Gemini: {'✅' if gemini_ai.enabled else '❌'}")
     logger.info("="*50)
     try:
         await app.initialize(); await app.start()
