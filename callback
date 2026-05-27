@@ -1,8 +1,19 @@
-async def callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
+elif data == "iran_market":
 
-    data = query.data
+    market = await IranMarket.prices()
 
-    if data == "top":
-        await top_crypto(query, context)
+    text = f"""
+💵 بازار ایران
+
+💲 دلار آزاد:
+{market['usd']} تومان
+
+⏰ بروزرسانی:
+{market['time']}
+
+#دلار
+#طلا
+#بازار
+"""
+
+    await query.message.reply_text(text)
