@@ -288,11 +288,11 @@ class ExchangeManager:
 exchange_mgr = ExchangeManager()
 
 # ============================================================
-# LIVE IRAN MARKET ENGINE — FINAL STABLE VERSION (bonbast API)
+# LIVE IRAN MARKET ENGINE — ULTRA FINAL (SSL Bypass + Fallback)
 # ============================================================
 class IranMarket:
     CACHE = {}
-    CACHE_DURATION = 30
+    CACHE_DURATION = 60
 
     @classmethod
     async def fetch(cls):
@@ -300,42 +300,70 @@ class IranMarket:
         if cls.CACHE and (now - cls.CACHE.get("timestamp", 0)) < cls.CACHE_DURATION:
             return cls.CACHE
 
-        try:
-            url = "https://api.bonbast.com"
-            async with httpx.AsyncClient(timeout=20) as client:
-                response = await client.get(url)
-                data = response.json()
+        sources = [
+            "https://api.bonbast.com",
+            "https://api.tgju.online/v1/data/sana/json"
+        ]
+        headers = {
+            "User-Agent": "Mozilla/5.0"
+        }
 
-            usd = data.get("usd1", "نامشخص")
-            gold = data.get("gold", "نامشخص")
-            coin = data.get("sekeb", "نامشخص")
+        for url in sources:
+            try:
+                async with httpx.AsyncClient(
+                    timeout=20,
+                    verify=False,
+                    follow_redirects=True
+                ) as client:
+                    response = await client.get(url, headers=headers)
 
-            def clean(v):
-                try:
-                    return f"{int(float(str(v).replace(',', ''))):,}"
-                except:
-                    return "نامشخص"
+                if "bonbast" in url:
+                    data = response.json()
+                    usd = data.get("usd1")
+                    gold = data.get("gold")
+                    coin = data.get("sekeb")
 
-            result = {
-                "usd_tehran": clean(usd),
-                "gold18": clean(gold),
-                "coin": clean(coin),
-                "usdt": "لحظه‌ای",
-                "time": pdt.full(),
-                "timestamp": now
-            }
-            cls.CACHE = result
-            return result
+                    def clean(v):
+                        try:
+                            return f"{int(float(str(v).replace(',', ''))):,}"
+                        except:
+                            return "نامشخص"
 
-        except Exception as e:
-            logger.error(f"IranMarket Error: {e}")
-            return {
-                "usd_tehran": "خطا",
-                "gold18": "خطا",
-                "coin": "خطا",
-                "usdt": "خطا",
-                "time": pdt.full()
-            }
+                    result = {
+                        "usd_tehran": clean(usd),
+                        "gold18": clean(gold),
+                        "coin": clean(coin),
+                        "usdt": "لحظه‌ای",
+                        "time": PersianLive.full(),
+                        "timestamp": now
+                    }
+                    cls.CACHE = result
+                    return result
+
+                if "tgju" in url:
+                    data = response.json()
+                    result = {
+                        "usd_tehran": "استعلام",
+                        "gold18": "استعلام",
+                        "coin": "استعلام",
+                        "usdt": "لحظه‌ای",
+                        "time": PersianLive.full(),
+                        "timestamp": now
+                    }
+                    cls.CACHE = result
+                    return result
+
+            except Exception as e:
+                logger.error(f"IranMarket source error [{url}] => {e}")
+                continue
+
+        return {
+            "usd_tehran": "در دسترس نیست",
+            "gold18": "در دسترس نیست",
+            "coin": "در دسترس نیست",
+            "usdt": "در دسترس نیست",
+            "time": PersianLive.full()
+        }
 
 # ============================================================
 # INDICATORS (25+ with High Accuracy)
