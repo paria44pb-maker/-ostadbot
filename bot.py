@@ -2,23 +2,20 @@
 # -*- coding: utf-8 -*-
 """
 ╔══════════════════════════════════════════════════════════════════════════╗
-║   🚀 CRYPTO PULSE v21 — ULTIMATE COINEX EDITION (2500+ Lines) 🤖        ║
-║   ✅ Dual AI (Groq + Gemini)  ✅ 30 Functional Glass Keys                 ║
-║   ✅ Real Charts  ✅ Auto Trade (Demo + Real)  ✅ Live Shamsi Date        ║
-║   ✅ 25+ Indicators  ✅ Ichimoku  ✅ Fibonacci  ✅ Price Action            ║
-║   ✅ Whale Tracking  ✅ Market Sentiment  ✅ Portfolio Management          ║
-║   ✅ Self‑Learning  ✅ News  ✅ Education  ✅ Iranian Forex                ║
-║   ✅ LIVE IRAN MARKET ENGINE (Async, Cached, Reliable)                   ║
+║   🚀 CRYPTO PULSE v21.1 — REAL IRAN MARKET PARSING                     ║
+║   ✅ Dual AI (Groq + Gemini)  ✅ 30 Functional Glass Keys                ║
+║   ✅ Real Charts  ✅ Auto Trade (Demo + Real)  ✅ Live Shamsi Date      ║
+║   ✅ 25+ Indicators  ✅ Ichimoku  ✅ Fibonacci  ✅ Price Action          ║
+║   ✅ Whale Tracking  ✅ Market Sentiment  ✅ Portfolio Management        ║
+║   ✅ Self‑Learning  ✅ News  ✅ Education  ✅ Iranian Forex              ║
+║   ✅ LIVE IRAN MARKET (HTML Table Parsing, Accurate)                    ║
 ╚══════════════════════════════════════════════════════════════════════════╝
 """
 
 import os, sys, subprocess, logging, asyncio, time, json, random, signal, math, base64, io, re, threading
-# تنظیم منطقه زمانی
 os.environ["TZ"] = "Asia/Tehran"
-try:
-    time.tzset()
-except:
-    pass
+try: time.tzset()
+except: pass
 
 from logging.handlers import RotatingFileHandler
 from typing import Dict, List, Optional, Tuple, Any
@@ -291,11 +288,11 @@ class ExchangeManager:
 exchange_mgr = ExchangeManager()
 
 # ============================================================
-# LIVE IRAN MARKET ENGINE (Ultra Fixed, Async, Cached)
+# LIVE IRAN MARKET ENGINE (Real HTML Table Parsing)
 # ============================================================
 class IranMarket:
     CACHE = {}
-    CACHE_DURATION = 30  # seconds
+    CACHE_DURATION = 30
 
     @classmethod
     async def fetch(cls):
@@ -305,25 +302,52 @@ class IranMarket:
 
         try:
             headers = {"User-Agent": "Mozilla/5.0"}
-            url = "https://www.tgju.org"
-
             async with httpx.AsyncClient(timeout=20) as client:
-                response = await client.get(url, headers=headers, follow_redirects=True)
+                response = await client.get("https://www.tgju.org", headers=headers)
                 html = response.text
 
             soup = BeautifulSoup(html, "html.parser")
-            text = soup.get_text(" ", strip=True)
 
-            usd = re.search(r'دلار.*?([0-9,]{5,})', text)
-            gold18 = re.search(r'طلای 18 عیار.*?([0-9,]{5,})', text)
-            coin = re.search(r'سکه امامی.*?([0-9,]{5,})', text)
-            tether = re.search(r'تتر.*?([0-9,]{5,})', text)
+            usd_price = "نامشخص"
+            gold_price = "نامشخص"
+            coin_price = "نامشخص"
+            tether_price = "نامشخص"
+
+            rows = soup.find_all("tr")
+            for row in rows:
+                row_text = row.get_text(" ", strip=True)
+                tds = row.find_all("td")
+                if not tds:
+                    continue
+
+                if "دلار" in row_text and usd_price == "نامشخص":
+                    if len(tds) >= 2:
+                        usd_price = tds[-1].get_text(strip=True)
+
+                if "طلای 18 عیار" in row_text:
+                    if len(tds) >= 2:
+                        gold_price = tds[-1].get_text(strip=True)
+
+                if "سکه امامی" in row_text:
+                    if len(tds) >= 2:
+                        coin_price = tds[-1].get_text(strip=True)
+
+                if "تتر" in row_text:
+                    if len(tds) >= 2:
+                        tether_price = tds[-1].get_text(strip=True)
+
+            def clean(x):
+                x = x.replace(",", "")
+                x = "".join(c for c in x if c.isdigit())
+                if not x:
+                    return "نامشخص"
+                return f"{int(x):,}"
 
             data = {
-                "usd_tehran": usd.group(1) if usd else "نامشخص",
-                "gold18": gold18.group(1) if gold18 else "نامشخص",
-                "coin": coin.group(1) if coin else "نامشخص",
-                "usdt": tether.group(1) if tether else "نامشخص",
+                "usd_tehran": clean(usd_price),
+                "gold18": clean(gold_price),
+                "coin": clean(coin_price),
+                "usdt": clean(tether_price),
                 "time": pdt.full(),
                 "timestamp": now
             }
@@ -779,7 +803,7 @@ class BioUpdater:
 # ============================================================
 async def cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        f"🟢══════════════════════🟢\n   🤖 #کریپتو_پالس v21 🤖\n🟢══════════════════════🟢\n\n{pdt.both()}\n\n🧠🌟 Groq + Gemini AI\n📊 ۲۵+ اندیکاتور\n💹 معاملات خودکار\n📊 نمودار واقعی\n💵 بازار ایران زنده\n📢 سیگنال ۴h | 📚 آموزش ۱h\n\n👇 انتخاب کنید:",
+        f"🟢══════════════════════🟢\n   🤖 #کریپتو_پالس v21.1 🤖\n🟢══════════════════════🟢\n\n{pdt.both()}\n\n🧠🌟 Groq + Gemini AI\n📊 ۲۵+ اندیکاتور\n💹 معاملات خودکار\n📊 نمودار واقعی\n💵 بازار ایران زنده (پارس دقیق)\n📢 سیگنال ۴h | 📚 آموزش ۱h\n\n👇 انتخاب کنید:",
         reply_markup=Menu.main())
 
 async def signal_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE, symbol: str = "BTC/USDT"):
@@ -1019,7 +1043,7 @@ async def auto_whale(app: Application):
 async def main():
     if not ProcessLock.acquire(): sys.exit(1)
     if not cfg.token: ProcessLock.release(); return
-    print(f"🟢══════════════════════🟢\n║   🚀 CRYPTO PULSE v21 ║\n║   📅 {pdt.shamsi()} ║\n║   ⏰ {pdt.time_str()} ║\n🟢══════════════════════🟢")
+    print(f"🟢══════════════════════🟢\n║   🚀 CRYPTO PULSE v21.1 ║\n║   📅 {pdt.shamsi()} ║\n║   ⏰ {pdt.time_str()} ║\n🟢══════════════════════🟢")
     logger.info(f"🚀 شروع | {pdt.full()}")
     exchange_mgr.connect()
     app = Application.builder().token(cfg.token).build()
@@ -1032,7 +1056,7 @@ async def main():
     asyncio.create_task(auto_news(app))
     asyncio.create_task(auto_whale(app))
     logger.info("="*50)
-    logger.info(f"🚀 کریپتو پالس ۲۱ | {pdt.full()}")
+    logger.info(f"🚀 کریپتو پالس ۲۱.۱ | {pdt.full()}")
     logger.info(f"🧠 Groq: {'✅' if groq_ai.enabled else '❌'} | 🌟 Gemini: {'✅' if gemini_ai.enabled else '❌'}")
     logger.info("="*50)
     try:
