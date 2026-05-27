@@ -2,12 +2,13 @@
 # -*- coding: utf-8 -*-
 """
 ╔══════════════════════════════════════════════════════════════════════════╗
-║   🚀 CRYPTO PULSE v21.2 — API‑BASED IRAN MARKET (tgju.online)          ║
-║   ✅ Dual AI  ✅ 30 Functional Glass Keys  ✅ Real Charts                ║
-║   ✅ Auto Trade (Demo + Real)  ✅ Live Shamsi Date  ✅ Iranian Forex     ║
-║   ✅ 25+ Indicators  ✅ Ichimoku  ✅ Fibonacci  ✅ Price Action           ║
-║   ✅ Whale Tracking  ✅ News  ✅ Education  ✅ Self‑Learning              ║
-║   ✅ LIVE IRAN MARKET (API, Fast, Reliable)                             ║
+║   🚀 CRYPTO PULSE v21.3 — STABLE BONBAST API                            ║
+║   ✅ Dual AI (Groq + Gemini)  ✅ 30 Functional Glass Keys                ║
+║   ✅ Real Charts  ✅ Auto Trade (Demo + Real)  ✅ Live Shamsi Date      ║
+║   ✅ 25+ Indicators  ✅ Ichimoku  ✅ Fibonacci  ✅ Price Action          ║
+║   ✅ Whale Tracking  ✅ Market Sentiment  ✅ Portfolio Management        ║
+║   ✅ Self‑Learning  ✅ News  ✅ Education                               ║
+║   ✅ LIVE IRAN MARKET (bonbast API, Stable, Fast)                        ║
 ╚══════════════════════════════════════════════════════════════════════════╝
 """
 
@@ -287,7 +288,7 @@ class ExchangeManager:
 exchange_mgr = ExchangeManager()
 
 # ============================================================
-# LIVE IRAN MARKET ENGINE (API Version)
+# LIVE IRAN MARKET ENGINE — FINAL STABLE VERSION (bonbast API)
 # ============================================================
 class IranMarket:
     CACHE = {}
@@ -300,32 +301,26 @@ class IranMarket:
             return cls.CACHE
 
         try:
-            url = "https://api.tgju.online/v1/data/sana/json"
+            url = "https://api.bonbast.com"
             async with httpx.AsyncClient(timeout=20) as client:
                 response = await client.get(url)
                 data = response.json()
 
-            usd = "نامشخص"
-            gold18 = "نامشخص"
-            coin = "نامشخص"
+            usd = data.get("usd1", "نامشخص")
+            gold = data.get("gold", "نامشخص")
+            coin = data.get("sekeb", "نامشخص")
 
-            if "data" in data:
-                items = data["data"]
-                for item in items:
-                    title = item.get("title", "")
-                    price = item.get("p", "")
-                    if "دلار" in title and usd == "نامشخص":
-                        usd = f"{int(float(price)):,}"
-                    if "طلای 18" in title:
-                        gold18 = f"{int(float(price)):,}"
-                    if "سکه امامی" in title:
-                        coin = f"{int(float(price)):,}"
+            def clean(v):
+                try:
+                    return f"{int(float(str(v).replace(',', ''))):,}"
+                except:
+                    return "نامشخص"
 
             result = {
-                "usd_tehran": usd,
-                "gold18": gold18,
-                "coin": coin,
-                "usdt": "از صرافی کریپتو",
+                "usd_tehran": clean(usd),
+                "gold18": clean(gold),
+                "coin": clean(coin),
+                "usdt": "لحظه‌ای",
                 "time": pdt.full(),
                 "timestamp": now
             }
@@ -333,7 +328,7 @@ class IranMarket:
             return result
 
         except Exception as e:
-            logger.error(f"IranMarket API Error: {e}")
+            logger.error(f"IranMarket Error: {e}")
             return {
                 "usd_tehran": "خطا",
                 "gold18": "خطا",
@@ -684,9 +679,9 @@ BB %B={i.get('BB_PCT',0.5):.2f}  Vol={i.get('VOL_RATIO',1):.1f}x
 💵 بازار ایران
 
 💲 دلار تهران: {data.get('usd_tehran','نامشخص')} تومان
-🥇 طلای ۱۸: {data.get('gold18','نامشخص')} تومان
-🪙 سکه امامی: {data.get('coin','نامشخص')} تومان
-💎 تتر: {data.get('usdt','نامشخص')} تومان
+🥇 طلا: {data.get('gold18','نامشخص')} تومان
+🪙 سکه: {data.get('coin','نامشخص')} تومان
+💎 تتر: {data.get('usdt','نامشخص')}
 
 ⏰ بروزرسانی: {data.get('time', pdt.full())}
 
@@ -781,7 +776,7 @@ class BioUpdater:
 # ============================================================
 async def cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        f"🟢══════════════════════🟢\n   🤖 #کریپتو_پالس v21.2 🤖\n🟢══════════════════════🟢\n\n{pdt.both()}\n\n🧠🌟 Groq + Gemini AI\n📊 ۲۵+ اندیکاتور\n💹 معاملات خودکار\n📊 نمودار واقعی\n💵 بازار ایران زنده (API)\n📢 سیگنال ۴h | 📚 آموزش ۱h\n\n👇 انتخاب کنید:",
+        f"🟢══════════════════════🟢\n   🤖 #کریپتو_پالس v21.3 🤖\n🟢══════════════════════🟢\n\n{pdt.both()}\n\n🧠🌟 Groq + Gemini AI\n📊 ۲۵+ اندیکاتور\n💹 معاملات خودکار\n📊 نمودار واقعی\n💵 بازار ایران زنده (bonbast)\n📢 سیگنال ۴h | 📚 آموزش ۱h\n\n👇 انتخاب کنید:",
         reply_markup=Menu.main())
 
 async def signal_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE, symbol: str = "BTC/USDT"):
@@ -1021,7 +1016,7 @@ async def auto_whale(app: Application):
 async def main():
     if not ProcessLock.acquire(): sys.exit(1)
     if not cfg.token: ProcessLock.release(); return
-    print(f"🟢══════════════════════🟢\n║   🚀 CRYPTO PULSE v21.2 ║\n║   📅 {pdt.shamsi()} ║\n║   ⏰ {pdt.time_str()} ║\n🟢══════════════════════🟢")
+    print(f"🟢══════════════════════🟢\n║   🚀 CRYPTO PULSE v21.3 ║\n║   📅 {pdt.shamsi()} ║\n║   ⏰ {pdt.time_str()} ║\n🟢══════════════════════🟢")
     logger.info(f"🚀 شروع | {pdt.full()}")
     exchange_mgr.connect()
     app = Application.builder().token(cfg.token).build()
@@ -1034,7 +1029,7 @@ async def main():
     asyncio.create_task(auto_news(app))
     asyncio.create_task(auto_whale(app))
     logger.info("="*50)
-    logger.info(f"🚀 کریپتو پالس ۲۱.۲ | {pdt.full()}")
+    logger.info(f"🚀 کریپتو پالس ۲۱.۳ | {pdt.full()}")
     logger.info(f"🧠 Groq: {'✅' if groq_ai.enabled else '❌'} | 🌟 Gemini: {'✅' if gemini_ai.enabled else '❌'}")
     logger.info("="*50)
     try:
