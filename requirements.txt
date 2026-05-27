@@ -19,3 +19,8 @@ mplfinance
 plotly
 kaleido
 pillow
+aiohttp
+httpx
+orjson
+uvloop
+numexpr
