@@ -11,3 +11,7 @@ jdatetime
 pytz
 schedule
 beautifulsoup4
+requests
+lxml
+certifi
+aiohttp
