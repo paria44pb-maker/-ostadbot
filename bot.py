@@ -8,11 +8,18 @@
 ║   ✅ 25+ Indicators  ✅ Ichimoku  ✅ Fibonacci  ✅ Price Action            ║
 ║   ✅ Whale Tracking  ✅ Market Sentiment  ✅ Portfolio Management          ║
 ║   ✅ Self‑Learning  ✅ News  ✅ Education  ✅ Iranian Forex                ║
-║   ✅ LIVE IRAN MARKET ENGINE (Async, Multi-Source, Cached)               ║
+║   ✅ LIVE IRAN MARKET ENGINE (Async, Cached, Reliable)                   ║
 ╚══════════════════════════════════════════════════════════════════════════╝
 """
 
 import os, sys, subprocess, logging, asyncio, time, json, random, signal, math, base64, io, re, threading
+# تنظیم منطقه زمانی
+os.environ["TZ"] = "Asia/Tehran"
+try:
+    time.tzset()
+except:
+    pass
+
 from logging.handlers import RotatingFileHandler
 from typing import Dict, List, Optional, Tuple, Any
 from dataclasses import dataclass, field
@@ -284,97 +291,54 @@ class ExchangeManager:
 exchange_mgr = ExchangeManager()
 
 # ============================================================
-# LIVE IRAN MARKET ENGINE (Async, Multi‑Source, Cached)
+# LIVE IRAN MARKET ENGINE (Ultra Fixed, Async, Cached)
 # ============================================================
-class LiveIranMarket:
-    """قیمت‌های زنده ایران با کش ۳۰ ثانیه، چند منبع و async"""
-    _cache: Dict[str, Any] = {}
-    _cache_time: float = 0
-    CACHE_TTL: int = 30  # seconds
+class IranMarket:
+    CACHE = {}
+    CACHE_DURATION = 30  # seconds
 
     @classmethod
-    async def _fetch_pashizi(cls, client: httpx.AsyncClient) -> Optional[Dict[str, str]]:
-        try:
-            resp = await client.get("https://www.pashizi.com/fa/currency/usd", headers={"User-Agent": "Mozilla/5.0"})
-            if resp.status_code != 200: return None
-            soup = BeautifulSoup(resp.text, "html.parser")
-            text = soup.get_text(" ", strip=True)
-            usd_match = re.search(r'(\d{1,3}(?:,\d{3})*)\s*تومان', text)
-            if usd_match:
-                return {"usd_tehran": usd_match.group(1).replace(",","")}
-        except Exception as e:
-            logger.debug(f"Pashizi fetch error: {e}")
-        return None
-
-    @classmethod
-    async def _fetch_call1(cls, client: httpx.AsyncClient) -> Optional[Dict[str, str]]:
-        try:
-            resp = await client.get("https://call1.ir/api/currency.php")
-            if resp.status_code != 200: return None
-            data = resp.json()
-            res = {}
-            for item in data if isinstance(data, list) else []:
-                name = str(item.get('name',''))
-                price = int(item.get('price',0))
-                if price <= 0: continue
-                if 'دلار' in name and 'هرات' in name: res['usd_herat'] = str(price)
-                elif 'دلار' in name and 'سلیمانیه' in name: res['usd_sulaymaniyah'] = str(price)
-                elif 'دلار' in name: res['usd_tehran'] = res.get('usd_tehran', str(price))
-                elif 'طلای ۱۸' in name: res['gold_18'] = str(price)
-                elif 'سکه' in name: res['coin'] = str(price)
-                elif 'تتر' in name: res['tether'] = str(price)
-            return res if res else None
-        except Exception as e:
-            logger.debug(f"Call1 fetch error: {e}")
-        return None
-
-    @classmethod
-    async def _fetch_tgju(cls, client: httpx.AsyncClient) -> Optional[Dict[str, str]]:
-        try:
-            symbols = {
-                'usd_tehran': 'price_dollar_rl',
-                'gold_18': 'price_gold_18',
-                'coin': 'price_coin_imami',
-            }
-            res = {}
-            for key, sym in symbols.items():
-                resp = await client.get(f"https://api.tgju.org/v1/market/indicator/summary/{sym}")
-                if resp.status_code == 200:
-                    p = resp.json().get('response',{}).get('indicators',{}).get(sym,{}).get('p',0)
-                    if p > 0:
-                        res[key] = str(int(p/10))  # Rial to Toman
-            return res if res else None
-        except Exception as e:
-            logger.debug(f"Tgju fetch error: {e}")
-        return None
-
-    @classmethod
-    async def prices(cls) -> Dict[str, str]:
+    async def fetch(cls):
         now = time.time()
-        if cls._cache and (now - cls._cache_time) < cls.CACHE_TTL:
-            return cls._cache
+        if cls.CACHE and (now - cls.CACHE.get("timestamp", 0)) < cls.CACHE_DURATION:
+            return cls.CACHE
 
-        client = httpx.AsyncClient(timeout=20.0, headers={"User-Agent": "Mozilla/5.0"})
         try:
-            # Try primary
-            data = await cls._fetch_pashizi(client)
-            if not data:
-                data = await cls._fetch_call1(client)
-            if not data:
-                data = await cls._fetch_tgju(client)
-            # Fallback defaults
-            if not data:
-                data = {"usd_tehran": "70000", "gold_18": "36000000", "coin": "55000000"}
-            # Ensure all keys present
-            for k in ['usd_tehran','usd_herat','usd_sulaymaniyah','gold_18','coin','tether']:
-                if k not in data:
-                    data[k] = "نامشخص"
-            data['time'] = pdt.full()
-            cls._cache = data
-            cls._cache_time = now
+            headers = {"User-Agent": "Mozilla/5.0"}
+            url = "https://www.tgju.org"
+
+            async with httpx.AsyncClient(timeout=20) as client:
+                response = await client.get(url, headers=headers, follow_redirects=True)
+                html = response.text
+
+            soup = BeautifulSoup(html, "html.parser")
+            text = soup.get_text(" ", strip=True)
+
+            usd = re.search(r'دلار.*?([0-9,]{5,})', text)
+            gold18 = re.search(r'طلای 18 عیار.*?([0-9,]{5,})', text)
+            coin = re.search(r'سکه امامی.*?([0-9,]{5,})', text)
+            tether = re.search(r'تتر.*?([0-9,]{5,})', text)
+
+            data = {
+                "usd_tehran": usd.group(1) if usd else "نامشخص",
+                "gold18": gold18.group(1) if gold18 else "نامشخص",
+                "coin": coin.group(1) if coin else "نامشخص",
+                "usdt": tether.group(1) if tether else "نامشخص",
+                "time": pdt.full(),
+                "timestamp": now
+            }
+            cls.CACHE = data
             return data
-        finally:
-            await client.aclose()
+
+        except Exception as e:
+            logger.error(f"IranMarket Error: {e}")
+            return {
+                "usd_tehran": "خطا",
+                "gold18": "خطا",
+                "coin": "خطا",
+                "usdt": "خطا",
+                "time": pdt.full()
+            }
 
 # ============================================================
 # INDICATORS (25+ with High Accuracy)
@@ -718,11 +682,9 @@ BB %B={i.get('BB_PCT',0.5):.2f}  Vol={i.get('VOL_RATIO',1):.1f}x
 💵 بازار ایران
 
 💲 دلار تهران: {data.get('usd_tehran','نامشخص')} تومان
-💲 دلار هرات: {data.get('usd_herat','نامشخص')} تومان
-💲 دلار سلیمانیه: {data.get('usd_sulaymaniyah','نامشخص')} تومان
-🥇 طلای ۱۸: {data.get('gold_18','نامشخص')} تومان
-🪙 سکه: {data.get('coin','نامشخص')} تومان
-💎 تتر: {data.get('tether','نامشخص')} تومان
+🥇 طلای ۱۸: {data.get('gold18','نامشخص')} تومان
+🪙 سکه امامی: {data.get('coin','نامشخص')} تومان
+💎 تتر: {data.get('usdt','نامشخص')} تومان
 
 ⏰ بروزرسانی: {data.get('time', pdt.full())}
 
@@ -859,7 +821,7 @@ async def chart_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE, symbol: 
 async def iran_market_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query
     await q.answer()
-    market = await LiveIranMarket.prices()
+    market = await IranMarket.fetch()
     text = fmt.iran_market(market)
     await q.message.reply_text(text, parse_mode="Markdown")
 
