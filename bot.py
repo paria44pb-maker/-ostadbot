@@ -2,9 +2,9 @@
 # -*- coding: utf-8 -*-
 """
 ╔══════════════════════════════════════════════════════════════════════════════╗
-║  💎 VIP PLATINUM v32.0 — وی آی پی پلاتینیوم — ULTIMATE FREE AI TRADER      ║
+║  💎 VIP PLATINUM v33.0 — وی آی پی پلاتینیوم — ULTIMATE FREE AI TRADER      ║
 ║  ✅ صرافی: CoinEx (کوینکس) با API KEY شما                                  ║
-║  ✅ ۱۰۰٪ رایگان — بدون دعوتنامه — بدون اشتراک                               ║
+║  ✅ ۱۰۰٪ رایگان — کد دعوت الزامی — بدون اشتراک                              ║
 ║  ✅ Owner ID: 7225279768 — Unlimited Access                                ║
 ║  ✅ AI Image Generator (Pollinations.ai) — Unique Every Time                ║
 ║  ✅ Dual AI (Groq + Gemini)  ✅ Smart Money (SMC)                          ║
@@ -19,6 +19,8 @@
 ║  ✅ Real & Demo Trading via CoinEx API                                      ║
 ║  ✅ Platinum Theme — Emoji-Rich — Fully Persian                             ║
 ║  ✅ Chart Analysis from User Uploaded Images                                ║
+║  ✅ Invite Code System — Secure Access                                      ║
+║  ✅ Optimized Course — No Errors — Auto Retry                               ║
 ╚══════════════════════════════════════════════════════════════════════════════╝
 
 توسعه‌دهنده: تیم VIP Platinum 💎
@@ -33,7 +35,7 @@ try: time.tzset()
 except: pass
 
 from logging.handlers import RotatingFileHandler
-from typing import Dict, List, Optional, Tuple, Any, Union
+from typing import Dict, List, Optional, Tuple, Any, Union, Set
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from collections import deque, OrderedDict
@@ -48,14 +50,6 @@ from telegram.ext import Application, CommandHandler, CallbackQueryHandler, Mess
 from telegram.request import HTTPXRequest
 from PIL import Image, ImageDraw, ImageFont, ImageFilter, ImageEnhance
 import warnings
-# ====== اینو بذار اول فایل، درست بعد از import ها ======
-import logging
-# کاملاً غیرفعال کردن لاگ کتابخونه های مزاحم
-for noisy_lib in ['httpx', 'httpcore', 'telegram', 'telegram.ext', 
-                    'telegram.request', 'apscheduler', 'ccxt', 
-                    'urllib3', 'asyncio', 'matplotlib', 'PIL']:
-    logging.getLogger(noisy_lib).setLevel(logging.CRITICAL + 1)
-    logging.getLogger(noisy_lib).propagate = False  # جلوگیری از انتشار به لاگر اصلی
 warnings.filterwarnings('ignore')
 
 # ============================================================
@@ -70,15 +64,26 @@ def ensure_libs():
         'feedparser':'feedparser','Pillow':'Pillow',
         'cachetools':'cachetools','tenacity':'tenacity',
         'aiohttp':'aiohttp','schedule':'schedule',
-        'colorama':'colorama','termcolor':'termcolor',
-        'pytesseract':'pytesseract','opencv-python':'opencv-python'
+        'colorama':'colorama','termcolor':'termcolor'
     }
     for mod, pkg in libs.items():
         try: __import__(mod)
         except: subprocess.check_call([sys.executable,"-m","pip","install",pkg,"--quiet"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
+# ============================================================
+# 🔇 SILENCE NOISY LIBRARIES
+# ============================================================
+import logging
+for noisy_lib in ['httpx', 'httpcore', 'telegram', 'telegram.ext', 
+                    'telegram.request', 'apscheduler', 'ccxt', 
+                    'urllib3', 'asyncio', 'matplotlib', 'PIL', 
+                    'aiohttp', 'chardet', 'openai', 'groq']:
+    logging.getLogger(noisy_lib).setLevel(logging.CRITICAL + 1)
+    logging.getLogger(noisy_lib).propagate = False
+    logging.getLogger(noisy_lib).handlers = []
+
 logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger('VIPPlatinumV32')
+logger = logging.getLogger('VIPPlatinumV33')
 ensure_libs()
 
 from colorama import init, Fore, Back, Style
@@ -110,25 +115,32 @@ async def cleanup_memory():
         if CHART_AVAILABLE:
             try: plt.close('all')
             except: pass
-        mem_usage = gc.get_count()
-        logger.info(f"{Fore.GREEN}🧹 حافظه پاکسازی شد | وضعیت: {mem_usage}")
         await asyncio.sleep(600)
 
 # ============================================================
-# 📝 LOGGING SYSTEM (COLORFUL & ROTATING)
+# 📝 LOGGING SYSTEM — ONLY OUR LOGS
 # ============================================================
 logger.setLevel(logging.INFO)
-console = logging.StreamHandler(); console.setLevel(logging.INFO)
+logger.propagate = False
+
+console = logging.StreamHandler()
+console.setLevel(logging.INFO)
 console.setFormatter(logging.Formatter(
     f'{Fore.CYAN}%(asctime)s{Style.RESET_ALL} | '
     f'{Fore.YELLOW}%(levelname)s{Style.RESET_ALL} | '
     f'{Fore.WHITE}%(message)s{Style.RESET_ALL}'
 ))
+console.addFilter(lambda record: record.name == 'VIPPlatinumV33')
 logger.addHandler(console)
 
-for name in ['vip_platinum.log','vip_platinum_errors.log']:
+for name in ['vip_platinum.log', 'vip_platinum_errors.log']:
     h = RotatingFileHandler(name, maxBytes=50*1024*1024, backupCount=10, encoding='utf-8')
     h.setFormatter(logging.Formatter('%(asctime)s | %(levelname)s | %(message)s'))
+    h.addFilter(lambda record: record.name == 'VIPPlatinumV33')
+    if 'errors' in name:
+        h.setLevel(logging.ERROR)
+    else:
+        h.setLevel(logging.INFO)
     logger.addHandler(h)
 
 # ============================================================
@@ -137,10 +149,90 @@ for name in ['vip_platinum.log','vip_platinum_errors.log']:
 def create_request():
     proxy_url = os.getenv("TELEGRAM_PROXY", "")
     if proxy_url: 
-        logger.info(f"{Fore.MAGENTA}🌐 پروکسی فعال شد{Style.RESET_ALL}")
         return HTTPXRequest(proxy_url=proxy_url, connect_timeout=90.0, read_timeout=90.0, write_timeout=90.0)
     else: 
         return HTTPXRequest(connect_timeout=90.0, read_timeout=90.0, write_timeout=90.0)
+
+# ============================================================
+# 🔑 INVITE CODE SYSTEM
+# ============================================================
+class InviteSystem:
+    """سیستم کد دعوت برای دسترسی به ربات"""
+    
+    # کدهای دعوت معتبر
+    VALID_CODES: Set[str] = field(default_factory=lambda: {
+        "VIP1404", "PLATINUM2026", "CRYPTOVIP", "GOLDEN1404",
+        "DIAMONDVIP", "PULSEGOLD", "VIPPLATINUM", "CRYPTOPULSE"
+    })
+    
+    # کاربرانی که کد رو وارد کردن
+    _authorized_users: Dict[int, bool] = {}
+    _user_codes: Dict[int, str] = {}
+    
+    # فایل ذخیره‌سازی کاربران مجاز
+    USERS_FILE = "authorized_users.json"
+    
+    @classmethod
+    def load_users(cls):
+        """بارگذاری کاربران مجاز از فایل"""
+        try:
+            if os.path.exists(cls.USERS_FILE):
+                with open(cls.USERS_FILE, 'r') as f:
+                    data = json.load(f)
+                    cls._authorized_users = {int(k): v for k, v in data.get('authorized', {}).items()}
+                    cls._user_codes = {int(k): v for k, v in data.get('codes', {}).items()}
+                logger.info(f"🔑 {len(cls._authorized_users)} کاربر مجاز بارگذاری شد")
+        except:
+            pass
+    
+    @classmethod
+    def save_users(cls):
+        """ذخیره کاربران مجاز در فایل"""
+        try:
+            data = {
+                'authorized': cls._authorized_users,
+                'codes': cls._user_codes
+            }
+            with open(cls.USERS_FILE, 'w') as f:
+                json.dump(data, f, indent=2)
+        except:
+            pass
+    
+    @classmethod
+    def is_authorized(cls, user_id: int) -> bool:
+        """بررسی مجاز بودن کاربر"""
+        # Owner همیشه مجازه
+        if user_id == cfg.owner_id:
+            return True
+        return cls._authorized_users.get(user_id, False)
+    
+    @classmethod
+    def validate_code(cls, code: str) -> bool:
+        """بررسی معتبر بودن کد دعوت"""
+        return code.upper().strip() in cls.VALID_CODES
+    
+    @classmethod
+    def authorize_user(cls, user_id: int, code: str) -> bool:
+        """مجاز کردن کاربر با کد دعوت"""
+        if cls.validate_code(code):
+            cls._authorized_users[user_id] = True
+            cls._user_codes[user_id] = code.upper().strip()
+            cls.save_users()
+            logger.info(f"🔑 کاربر {user_id} با کد {code} مجاز شد")
+            return True
+        return False
+    
+    @classmethod
+    def get_user_code(cls, user_id: int) -> Optional[str]:
+        """دریافت کد استفاده شده توسط کاربر"""
+        return cls._user_codes.get(user_id)
+    
+    @classmethod
+    def generate_new_code(cls) -> str:
+        """تولید کد دعوت جدید"""
+        prefix = random.choice(["VIP", "PLATINUM", "GOLDEN", "DIAMOND", "CRYPTO", "PULSE"])
+        number = ''.join(random.choices("0123456789", k=4))
+        return f"{prefix}{number}"
 
 # ============================================================
 # ⚙️ CONFIGURATION DATA CLASS
@@ -184,19 +276,20 @@ class ProcessLock:
     def acquire(cls) -> bool:
         try:
             if os.path.exists(cls._file):
-                with open(cls._file) as f:
-                    if cls._alive(int(f.read().strip() or 0)): return False
-                os.remove(cls._file)
+                try:
+                    with open(cls._file) as f:
+                        old_pid = int(f.read().strip() or 0)
+                    os.kill(old_pid, signal.SIGTERM)
+                    time.sleep(1)
+                except (ProcessLookupError, OSError):
+                    os.remove(cls._file)
+                except: pass
             with open(cls._file,'w') as f: f.write(str(os.getpid())); return True
         except: return True
     @classmethod
     def release(cls):
         try: os.remove(cls._file) if os.path.exists(cls._file) else None
         except: pass
-    @staticmethod
-    def _alive(pid): 
-        try: os.kill(pid,0); return True
-        except: return False
 
 for sig in [signal.SIGINT, signal.SIGTERM]:
     signal.signal(sig, lambda s,f: (ProcessLock.release(), sys.exit(0)))
@@ -211,23 +304,18 @@ class PersianLive:
     
     @classmethod
     def now(cls): return datetime.now(TEHRAN_TZ)
-    
     @classmethod
     def shamsi(cls):
         j = jdatetime.datetime.fromgregorian(datetime=cls.now())
         return f"{j.day} {cls.MONTHS[j.month-1]} {j.year}"
-    
     @classmethod
     def time_str(cls): return cls.now().strftime('%H:%M:%S')
-    
     @classmethod
     def day_str(cls): return cls.DAYS[cls.now().weekday()]
-    
     @classmethod
     def full(cls): 
         emoji = random.choice(cls.EMOJIS)
         return f"{cls.day_str()} {cls.shamsi()} ساعت {cls.time_str()} {emoji}"
-    
     @classmethod
     def platinum_greeting(cls):
         h = cls.now().hour
@@ -237,9 +325,6 @@ class PersianLive:
         elif 16 <= h < 18: return f"عصر بخیر تریدر حرفه‌ای {emoji} 🌇🌅"
         elif 20 <= h <= 23 or 1 <= h < 3: return f"شب خوش VIP عزیز {emoji} 🌙✨"
         else: return f"وقت بخیر پلاتینیومی جان {emoji} ⏰💫"
-    
-    @classmethod
-    def random_emoji(cls): return random.choice(cls.EMOJIS)
 
 pdt = PersianLive()
 
@@ -326,7 +411,7 @@ class AIImageGenerator:
                 async with session.get(url, timeout=aiohttp.ClientTimeout(total=90)) as response:
                     if response.status == 200:
                         self.generation_count += 1
-                        logger.info(f"{Fore.MAGENTA}🎨 تصویر #{self.generation_count} | استایل: {style} | تم: {color_theme}{Style.RESET_ALL}")
+                        logger.info(f"🎨 تصویر #{self.generation_count} | استایل: {style} | تم: {color_theme}")
                         return await response.read()
         except Exception as e:
             logger.error(f"🎨 AI Image error: {e}")
@@ -356,18 +441,18 @@ ai_image_gen = AIImageGenerator()
 # 🧠 DUAL AI (GROQ) — PLATINUM INTELLIGENCE — FULL PERSIAN
 # ============================================================
 class GroqAI:
-    """🧠 هوش مصنوعی پلاتینیوم — کاملاً فارسی و دوستانه"""
+    """🧠 هوش مصنوعی پلاتینیوم — کاملاً فارسی و دوستانه — بهینه‌شده"""
     
     URL = "https://api.groq.com/openai/v1/chat/completions"
     MODEL = "llama-3.3-70b-versatile"
     
     def __init__(self):
         self.enabled = bool(cfg.groq_api_key)
-        self._client = httpx.AsyncClient(timeout=120.0)
+        self._client = httpx.AsyncClient(timeout=180.0)
         self.call_count = 0
         self.error_count = 0
         self.last_call_time = 0
-        self.min_interval = 1.5
+        self.min_interval = 2.0
         
         self.system_prompt = """تو VIP پلاتینیوم هستی 💎✨ — حرفه‌ای‌ترین و دوست‌داشتنی‌ترین تحلیلگر کریپتو!
 کاملاً فارسی و خودمونی حرف بزن 🗣️
@@ -384,12 +469,8 @@ class GroqAI:
             await asyncio.sleep(self.min_interval - elapsed)
         self.last_call_time = time.time()
     
-    @retry(
-        stop=stop_after_attempt(3),
-        wait=wait_exponential(multiplier=1, min=2, max=10),
-        retry=retry_if_exception_type((httpx.HTTPError, aiohttp.ClientError, Exception))
-    )
-    async def ask(self, prompt, max_t=1200):
+    async def ask(self, prompt, max_t=800):
+        """درخواست استاندارد به Groq"""
         if not self.enabled: 
             return None
         
@@ -417,21 +498,28 @@ class GroqAI:
             )
             
             if r.status_code == 200:
-                logger.info(f"{Fore.CYAN}🧠 AI پاسخ داد (درخواست #{self.call_count}){Style.RESET_ALL}")
                 return r.json()["choices"][0]["message"]["content"]
             elif r.status_code == 429:
                 self.error_count += 1
-                logger.warning(f"{Fore.YELLOW}⚠️ Rate limit - تلاش مجدد{Style.RESET_ALL}")
-                raise Exception("Rate limit")
+                logger.warning(f"⚠️ Rate limit - صبر ۳ ثانیه")
+                await asyncio.sleep(3)
+                return None
             else:
                 self.error_count += 1
-                logger.error(f"{Fore.RED}❌ AI error: {r.status_code}{Style.RESET_ALL}")
                 return None
                 
         except Exception as e:
             self.error_count += 1
-            logger.error(f"{Fore.RED}❌ AI exception: {e}{Style.RESET_ALL}")
-            raise
+            return None
+    
+    async def ask_safe(self, prompt, max_t=600, retries=2):
+        """درخواست امن با retry — برای آموزش"""
+        for attempt in range(retries):
+            result = await self.ask(prompt, max_t)
+            if result:
+                return result
+            await asyncio.sleep(2 * (attempt + 1))
+        return None
     
     async def tech(self, sym, ind, price, change, candles, mtf):
         return await self.ask(f"""💎 تحلیل تکنیکال پلاتینیومی {sym} 💎
@@ -445,42 +533,42 @@ class GroqAI:
 
 🎯 تحلیل کاملاً فارسی و دوستانه ارائه بده:
 وضعیت فعلی بازار، روند اصلی، نقاط ورود و خروج، حد ضرر و اهداف قیمتی 💎
-۸۰۰ کلمه پر از شکلک و ایموجی 🎨✨""")
+۶۰۰ کلمه پر از شکلک و ایموجی 🎨✨""", max_t=700)
     
     async def smc(self, sym, smc_data):
-        return await self.ask(f"💎 اسمارت مانی پلاتینیومی {sym}:\n{json.dumps(smc_data, ensure_ascii=False)}\nتحلیل فارسی و دوستانه 👁️✨ ۶۰۰ کلمه پر ایموجی 🎨")
+        return await self.ask(f"💎 اسمارت مانی پلاتینیومی {sym}:\n{json.dumps(smc_data, ensure_ascii=False)}\nتحلیل فارسی و دوستانه 👁️✨ ۵۰۰ کلمه پر ایموجی 🎨", max_t=600)
     
     async def prediction(self, sym, price, ind):
-        return await self.ask(f"🔮 پیش‌بینی پلاتینیومی {sym} | قیمت: {price:,.2f}\nRSI={ind.get('RSI_14',50):.1f}\nپیش‌بینی دقیق برای امروز، فردا، هفته بعد و ماه بعد 👁️✨ ۶۰۰ کلمه پر از ایموجی 🚀")
+        return await self.ask(f"🔮 پیش‌بینی پلاتینیومی {sym} | قیمت: {price:,.2f}\nRSI={ind.get('RSI_14',50):.1f}\nپیش‌بینی دقیق برای امروز، فردا، هفته بعد و ماه بعد 👁️✨ ۵۰۰ کلمه پر از ایموجی 🚀", max_t=600)
     
     async def news_summary(self, headlines):
-        return await self.ask(f"📰 اخبار داغ کریپتو:\n{chr(10).join(headlines[:15])}\nخلاصه کن به فارسی شیرین و دوستانه 👁️✨ ۵۰۰ کلمه پر ایموجی 🎨")
+        return await self.ask(f"📰 اخبار داغ کریپتو:\n{chr(10).join(headlines[:15])}\nخلاصه کن به فارسی شیرین و دوستانه 👁️✨ ۴۰۰ کلمه پر ایموجی 🎨", max_t=500)
     
     async def market(self, coins): 
-        return await self.ask(f"🌍 بازار کریپتو:\n"+"\n".join([f"{c['symbol']}:{c['change']:+.1f}%" for c in coins[:10]])+"\nتحلیل فارسی و دوستانه 👁️✨ ۵۰۰ کلمه 🚀")
+        return await self.ask(f"🌍 بازار کریپتو:\n"+"\n".join([f"{c['symbol']}:{c['change']:+.1f}%" for c in coins[:10]])+"\nتحلیل فارسی و دوستانه 👁️✨ ۴۰۰ کلمه 🚀", max_t=500)
     
     async def whale(self): 
-        return await self.ask("🐋 نهنگ‌های کریپتو چی کار می‌کنن؟ تحلیل فارسی و دوستانه 👁️✨ ۴۰۰ کلمه پر ایموجی 🎨")
+        return await self.ask("🐋 نهنگ‌های کریپتو چی کار می‌کنن؟ تحلیل فارسی و دوستانه 👁️✨ ۳۰۰ کلمه پر ایموجی 🎨", max_t=400)
     
     async def fear_greed(self, v, t): 
-        return await self.ask(f"😱 شاخص ترس و طمع: {v} ({t}) 👁️✨ تحلیل فارسی و دوستانه ۴۰۰ کلمه پر ایموجی 🎨")
+        return await self.ask(f"😱 شاخص ترس و طمع: {v} ({t}) 👁️✨ تحلیل فارسی و دوستانه ۳۰۰ کلمه پر ایموجی 🎨", max_t=400)
     
     async def course_lesson(self, num, total, topic):
-        return await self.ask(f"""📚 درس {num} از {total}: {topic} ✨
-یه درس فوق‌العاده جذاب و کاربردی به فارسی بنویس 👁️✨ 
+        """📚 درس آموزشی — بهینه‌شده با max_tokens کمتر و retry"""
+        prompt = f"""📚 درس {num} از {total}: {topic} ✨
+یه درس جذاب و کاربردی به فارسی بنویس 👁️✨ 
 با مثال واقعی از بازار کریپتو 🎯
 نکات طلایی و نتیجه‌گیری عملی داشته باشه 💎
-۱۵۰۰ کلمه پر از شکلک و ایموجی 🎨🌟
-{chr(10).join(random.sample(cfg.hashtags, 4))}""")
+{chr(10).join(random.sample(cfg.hashtags, 4))}"""
+        return await self.ask_safe(prompt, max_t=600, retries=2)
     
     async def daily_summary(self, data):
-        return await self.ask(f"📊 خلاصه بازار امروز:\n{json.dumps(data, ensure_ascii=False)}\nتحلیل فارسی و دوستانه 👁️✨ ۶۰۰ کلمه پر ایموجی 🎨")
+        return await self.ask(f"📊 خلاصه بازار امروز:\n{json.dumps(data, ensure_ascii=False)}\nتحلیل فارسی و دوستانه 👁️✨ ۵۰۰ کلمه پر ایموجی 🎨", max_t=600)
     
     async def custom_ai_response(self, question):
-        return await self.ask(f"🙋 سوال VIP: {question}\nپاسخ کامل و حرفه‌ای به فارسی 👁️✨ ۱۵۰۰ کلمه پر از ایموجی و انرژی مثبت 🚀🎨")
+        return await self.ask(f"🙋 سوال VIP: {question}\nپاسخ کامل و حرفه‌ای به فارسی 👁️✨ ۱۰۰۰ کلمه پر از ایموجی و انرژی مثبت 🚀🎨", max_t=800)
     
     async def analyze_chart_image(self, symbol: str, description: str) -> str:
-        """تحلیل نمودار از روی توضیحات (OCR جایگزین)"""
         return await self.ask(f"""📊 تحلیل نمودار {symbol} 💎
 کاربر یک نمودار از {symbol} آپلود کرده.
 لطفاً بر اساس الگوهای رایج کندل استیک و تحلیل تکنیکال، یه تحلیل کامل به فارسی ارائه بده:
@@ -492,7 +580,7 @@ class GroqAI:
 
 {description}
 
-تحلیل فارسی و دوستانه با شکلک 👁️✨ ۸۰۰ کلمه""")
+تحلیل فارسی و دوستانه با شکلک 👁️✨ ۶۰۰ کلمه""", max_t=700)
 
 groq_ai = GroqAI()
 
@@ -523,39 +611,33 @@ class ExchangeManager:
                     'timeout': 30000,
                     'options': {'defaultType': 'spot'}
                 })
-                logger.info(f"{Fore.GREEN}🔑 CoinEx با API KEY شما متصل شد{Style.RESET_ALL}")
+                logger.info("🔑 CoinEx با API KEY شما متصل شد")
             else:
                 self._ex = ccxt.coinex({
                     'enableRateLimit': True,
                     'timeout': 30000
                 })
-                logger.info(f"{Fore.YELLOW}⚠️ CoinEx بدون API KEY (فقط خواندن){Style.RESET_ALL}")
+                logger.info("⚠️ CoinEx بدون API KEY (فقط خواندن)")
             
             self._ex.load_markets()
             self.connected = True
             self.last_connect_time = now
-            logger.info(f"{Fore.GREEN}✅ اتصال به CoinEx برقرار شد | {len(self._ex.markets)} بازار{Style.RESET_ALL}")
+            logger.info(f"✅ اتصال به CoinEx برقرار شد | {len(self._ex.markets)} بازار")
         except Exception as e:
             self.connected = False
-            logger.error(f"{Fore.RED}❌ خطای اتصال CoinEx: {e}{Style.RESET_ALL}")
+            logger.error(f"❌ خطای اتصال CoinEx: {e}")
     
-    @retry(stop=stop_after_attempt(2), wait=wait_exponential(multiplier=1, min=1, max=5))
     def ticker(self, s):
         try: 
             return self._ex.fetch_ticker(s) if self.connected else None
-        except Exception as e:
-            logger.error(f"Ticker error for {s}: {e}")
-            return None
+        except: return None
     
-    @retry(stop=stop_after_attempt(2), wait=wait_exponential(multiplier=1, min=1, max=5))
     def ohlcv(self, s, tf, limit=200):
         try:
             if not self.connected: return None
             d = self._ex.fetch_ohlcv(s, tf, limit=limit)
             return pd.DataFrame(d, columns=['timestamp','open','high','low','close','volume']) if d and len(d)>30 else None
-        except Exception as e:
-            logger.error(f"OHLCV error for {s} {tf}: {e}")
-            return None
+        except: return None
     
     def top_movers(self, n=5):
         movers = []
@@ -575,8 +657,7 @@ exchange_mgr = ExchangeManager()
 # 🧲 SMART MONEY ANALYSIS (SMC)
 # ============================================================
 class SmartMoney:
-    @staticmethod
-    def analyze(df):
+    @staticmethod    def analyze(df):
         if len(df) < 60: return {}
         high = df['high'].values; low = df['low'].values; close = df['close'].values
         from scipy.signal import argrelextrema
@@ -951,7 +1032,7 @@ fmt = Fmt()
 # ============================================================
 class CryptoNews:
     CACHE = {}
-    CACHE_DURATION = 7200  # 2 ساعت
+    CACHE_DURATION = 7200
     SOURCES = [
         ("https://cryptopanic.com/news/rss/", "CryptoPanic 🌐"),
         ("https://cointelegraph.com/rss", "CoinTelegraph 📰"),
@@ -979,7 +1060,7 @@ class CryptoNews:
             except: pass
         
         cls.CACHE = {"ts": now, "data": articles}
-        logger.info(f"{Fore.CYAN}📰 {len(articles)} خبر جدید دریافت شد{Style.RESET_ALL}")
+        logger.info(f"📰 {len(articles)} خبر جدید دریافت شد")
         return articles
 
 class FearGreedIndex:
@@ -1059,14 +1140,127 @@ class Menu:
             [InlineKeyboardButton("🟢 معامله واقعی 💰", url="https://www.coinex.com", callback_data="real_trade"),
              InlineKeyboardButton("🔵 معامله دمو 🎮", url="https://www.coinex.com/en/demo", callback_data="demo_trade")],
         ])
+    
+    @staticmethod
+    def invite_prompt() -> InlineKeyboardMarkup:
+        return InlineKeyboardMarkup([
+            [InlineKeyboardButton("🔑 وارد کردن کد دعوت", callback_data="enter_invite_code")],
+            [InlineKeyboardButton("📞 تماس با ادمین", url=f"https://t.me/{cfg.owner_id}", callback_data="contact_admin")]
+        ])
 
 # ============================================================
 # 🎭 HANDLERS — PLATINUM INTERACTIONS
 # ============================================================
+async def check_auth(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> bool:
+    """بررسی مجاز بودن کاربر — اگه مجاز نباشه، پیام کد دعوت میده"""
+    user_id = update.effective_user.id
+    
+    if InviteSystem.is_authorized(user_id):
+        return True
+    
+    # کاربر مجاز نیست
+    if update.callback_query:
+        await update.callback_query.edit_message_text(
+            f"🔐 *دسترسی محدود* 🔐\n\n"
+            f"سلام دوست عزیز! 👋\n"
+            f"برای استفاده از VIP پلاتینیوم نیاز به کد دعوت داری 💎\n\n"
+            f"برای دریافت کد دعوت با ادمین در ارتباط باش 📞\n"
+            f"یا اگه کد داری، دکمه زیر رو بزن 👇",
+            parse_mode="Markdown",
+            reply_markup=Menu.invite_prompt()
+        )
+    elif update.message:
+        await update.message.reply_text(
+            f"🔐 *دسترسی محدود* 🔐\n\n"
+            f"سلام دوست عزیز! 👋\n"
+            f"برای استفاده از VIP پلاتینیوم نیاز به کد دعوت داری 💎\n\n"
+            f"برای دریافت کد دعوت با ادمین در ارتباط باش 📞\n"
+            f"یا اگه کد داری، دکمه زیر رو بزن 👇",
+            parse_mode="Markdown",
+            reply_markup=Menu.invite_prompt()
+        )
+    
+    return False
+
 async def cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-    welcome_msg = f"""
+    """شروع ربات — بررسی کد دعوت"""
+    user_id = update.effective_user.id
+    
+    # مالک همیشه مجازه
+    if user_id == cfg.owner_id:
+        await update.message.reply_text(
+            f"""
 ╔══════════════════════════════════════╗
-║   💎 VIP PLATINUM v32.0 ║
+║   💎 VIP PLATINUM v33.0 ║
+║   💎 وی آی پی پلاتینیوم 💎 ║
+╚══════════════════════════════════════╝
+
+{pdt.platinum_greeting()} ادمین عزیز! 🌟✨
+
+{pdt.full()}
+
+🧠 هوش مصنوعی Groq (کاملاً فارسی)
+📊 ۸۰+ اندیکاتور تکنیکال
+🧲 اسمارت مانی (SMC)
+🎨 ساخت تصویر حرفه‌ای با AI
+📚 دوره ۱,۰۰۰,۰۰۰+ ساعته (هر ۳۰ دقیقه)
+📡 سیگنال هر ۲ ساعت (نمودار + AI)
+📰 اخبار بروز هر ۴ ساعت
+📊 تحلیل نمودار ارسالی شما
+🟢 معامله در CoinEx
+🔐 سیستم کد دعوت فعال
+
+✨ دقت پلاتینیومی 💎✨
+
+👇 یکی از دکمه‌ها را انتخاب کن:""",
+            parse_mode="Markdown",
+            reply_markup=Menu.main()
+        )
+        return
+    
+    # بررسی کد دعوت
+    if not InviteSystem.is_authorized(user_id):
+        # بررسی وجود کد در پیام
+        if update.message.text and len(update.message.text.split()) > 1:
+            code = update.message.text.split()[1].strip().upper()
+            if InviteSystem.authorize_user(user_id, code):
+                await update.message.reply_text(
+                    f"✅ *کد دعوت معتبره!* 💎\n\n"
+                    f"به VIP پلاتینیوم خوش اومدی! 🎉\n"
+                    f"حالا می‌تونی از همه امکانات استفاده کنی 🚀\n\n"
+                    f"برای شروع دوباره /start رو بزن ✨",
+                    parse_mode="Markdown"
+                )
+                return
+            else:
+                await update.message.reply_text(
+                    f"❌ *کد دعوت نامعتبره!* 🌌\n\n"
+                    f"لطفاً کد صحیح رو وارد کن یا با ادمین تماس بگیر 📞",
+                    parse_mode="Markdown",
+                    reply_markup=Menu.invite_prompt()
+                )
+                return
+        
+        # کاربر مجاز نیست و کدی وارد نکرده
+        await update.message.reply_text(
+            f"🔐 *دسترسی محدود* 🔐\n\n"
+            f"سلام دوست عزیز! 👋\n"
+            f"برای استفاده از VIP پلاتینیوم نیاز به کد دعوت داری 💎\n\n"
+            f"📝 *روش استفاده:*\n"
+            f"۱. کد دعوت رو از ادمین بگیر\n"
+            f"۲. دستور /start کد_دعوت رو بزن\n"
+            f"   مثال: /start VIP1404\n\n"
+            f"یا دکمه زیر رو بزن 👇",
+            parse_mode="Markdown",
+            reply_markup=Menu.invite_prompt()
+        )
+        return
+    
+    # کاربر مجازه
+    await update.message.reply_text(
+        f"""
+╔══════════════════════════════════════╗
+║   💎 VIP PLATINUM v33.0 ║
 ║   💎 وی آی پی پلاتینیوم 💎 ║
 ╚══════════════════════════════════════╝
 
@@ -1086,9 +1280,10 @@ async def cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
 ✨ دقت پلاتینیومی 💎✨
 
-👇 یکی از دکمه‌ها را انتخاب کن:"""
-    
-    await update.message.reply_text(welcome_msg, parse_mode="Markdown", reply_markup=Menu.main())
+👇 یکی از دکمه‌ها را انتخاب کن:""",
+        parse_mode="Markdown",
+        reply_markup=Menu.main()
+    )
 
 async def send_signal_with_images(bot, chat_id, symbol, ticker, df, ind, candles, mtf, smc_data, groq_t, smc_t, pred_t):
     """ارسال سیگنال با نمودار و تصویر AI (بدون تکرار)"""
@@ -1118,8 +1313,34 @@ async def send_signal_with_images(bot, chat_id, symbol, ticker, df, ind, candles
     await safe_send(bot, chat_id, msg)
 
 async def button_router(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    """مسیریابی دکمه‌ها"""
     q = update.callback_query
     d = q.data
+    
+    # بررسی کد دعوت
+    if d == "enter_invite_code":
+        await q.answer()
+        await q.edit_message_text(
+            "🔑 *وارد کردن کد دعوت*\n\n"
+            "لطفاً کد دعوت خودت رو وارد کن:\n"
+            "مثال: VIP1404 یا PLATINUM2026",
+            parse_mode="Markdown"
+        )
+        ctx.user_data['awaiting_invite_code'] = True
+        return
+    
+    # برای بقیه دکمه‌ها، بررسی مجاز بودن
+    if not InviteSystem.is_authorized(q.from_user.id):
+        await q.answer("⛔ دسترسی محدود! لطفاً کد دعوت وارد کن")
+        await q.edit_message_text(
+            f"🔐 *دسترسی محدود* 🔐\n\n"
+            f"برای استفاده از VIP پلاتینیوم نیاز به کد دعوت داری 💎\n"
+            f"با ادمین تماس بگیر یا کد دعوت رو وارد کن 👇",
+            parse_mode="Markdown",
+            reply_markup=Menu.invite_prompt()
+        )
+        return
+    
     try:
         if d == "back": 
             await q.edit_message_text("💎 منوی اصلی VIP پلاتینیوم 💎", reply_markup=Menu.main())
@@ -1317,7 +1538,7 @@ async def button_router(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             await q.edit_message_text(
                 "📚 *دانشگاه VIP پلاتینیوم* 🎓\n\n"
                 "موضوع آموزشی مورد نظرت رو وارد کن:\n"
-                "مثال: \"کندل چکش\" یا \"فیبوناچی\" یا \"اسمارت مانی\"",
+                "مثال: \"کندل چکش\" یا \"فیبوناچی\"",
                 parse_mode="Markdown",
                 reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="back")]])
             )
@@ -1381,23 +1602,55 @@ async def button_router(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         except: pass
 
 async def handle_message(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    """پردازش پیام‌های متنی و عکس"""
     user_data = ctx.user_data
+    user_id = update.effective_user.id
     
-    # 📊 تحلیل عکس نمودار ارسالی کاربر
+    # بررسی کد دعوت
+    if user_data.get('awaiting_invite_code'):
+        code = update.message.text.strip().upper()
+        if InviteSystem.authorize_user(user_id, code):
+            await update.message.reply_text(
+                f"✅ *کد دعوت معتبره!* 💎\n\n"
+                f"به VIP پلاتینیوم خوش اومدی! 🎉\n"
+                f"حالا می‌تونی از همه امکانات استفاده کنی 🚀\n\n"
+                f"برای شروع /start رو بزن ✨",
+                parse_mode="Markdown"
+            )
+        else:
+            await update.message.reply_text(
+                f"❌ *کد دعوت نامعتبره!* 🌌\n\n"
+                f"کدهای معتبر: VIP1404, PLATINUM2026, CRYPTOVIP, GOLDEN1404\n"
+                f"لطفاً دوباره تلاش کن یا با ادمین تماس بگیر 📞",
+                parse_mode="Markdown",
+                reply_markup=Menu.invite_prompt()
+            )
+        user_data['awaiting_invite_code'] = False
+        return
+    
+    # بررسی مجاز بودن کاربر
+    if not InviteSystem.is_authorized(user_id):
+        await update.message.reply_text(
+            f"🔐 *دسترسی محدود* 🔐\n\n"
+            f"برای استفاده از VIP پلاتینیوم نیاز به کد دعوت داری 💎\n"
+            f"با ادمین تماس بگیر یا کد دعوت رو وارد کن 👇",
+            parse_mode="Markdown",
+            reply_markup=Menu.invite_prompt()
+        )
+        return
+    
+    # 📊 تحلیل عکس نمودار
     if update.message.photo:
         await update.message.reply_text("📊 *تحلیل نمودار ارسالی* 💎\n\nدر حال تحلیل عکس نمودار شما... لطفاً صبر کن ✨", parse_mode="Markdown")
         
-        # دریافت فایل عکس
         photo_file = await update.message.photo[-1].get_file()
         photo_bytes = await photo_file.download_as_bytearray()
         
-        # ذخیره موقت عکس
-        img_path = f"chart_{update.message.from_user.id}.png"
+        img_path = f"chart_{user_id}.png"
         with open(img_path, 'wb') as f:
             f.write(photo_bytes)
         
         try:
-            # استفاده از PIL برای تحلیل اولیه تصویر
             img = Image.open(img_path)
             img_info = {
                 "اندازه": f"{img.size[0]}x{img.size[1]}",
@@ -1405,7 +1658,6 @@ async def handle_message(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
                 "فرمت": img.format
             }
             
-            # تحلیل رنگ‌های غالب
             img_small = img.resize((100, 100))
             pixels = list(img_small.getdata())
             red_avg = sum(p[0] for p in pixels if len(p) >= 3) / max(1, len(pixels))
@@ -1413,7 +1665,6 @@ async def handle_message(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             
             color_analysis = "صعودی 🟢" if green_avg > red_avg else "نزولی 🔴" if red_avg > green_avg else "خنثی ⚪"
             
-            # ارسال تحلیل به AI
             description = f"""تصویر نمودار با مشخصات:
 - اندازه: {img_info['اندازه']}
 - تحلیل رنگ: {color_analysis}
@@ -1437,11 +1688,11 @@ async def handle_message(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             logger.error(f"Chart analysis error: {e}")
             await update.message.reply_text("❌ خطا در پردازش تصویر. لطفاً دوباره تلاش کن 🌌")
         finally:
-            # پاکسازی فایل موقت
             if os.path.exists(img_path):
                 os.remove(img_path)
         return
     
+    # پردازش پیام‌های متنی
     if user_data.get('awaiting_image_prompt'):
         prompt = update.message.text
         await update.message.reply_text("🎨 در حال ساخت تصویر پلاتینیومی... لطفاً صبر کن ✨")
@@ -1544,10 +1795,11 @@ async def auto_signals(app: Application):
                 except Exception as e: 
                     logger.error(f"Signal {sym}: {e}")
         except Exception as e: 
-            logger.error(f"Loop: {e}")
+            logger.error(f"Signal loop: {e}")
         await asyncio.sleep(cfg.signal_interval)
 
 async def auto_course(app: Application):
+    """📚 آموزش خودکار — بهینه‌شده با retry و skip خطاها"""
     await asyncio.sleep(90)
     lesson_num = 0
     topics = [
@@ -1557,21 +1809,30 @@ async def auto_course(app: Application):
         "روانشناسی ترید 🧠", "استراتژی روزانه 📅", "تحلیل فاندامنتال 🌍",
         "نهنگ‌ها 🐋", "DeFi 🔗", "NFT 🎨", "آلت‌سیزن 🚀",
         "پرایس اکشن 💫", "الگوهای هارمونیک 🎵", "وایکوف 📚",
-        "مارکت پروفایل 📊", "فوت پرینت 👣", "دلتا ولووم 📈",
-        "اسپرد تریدینگ 💹", "آربیتراژ ⚖️", "اسکالپینگ ⚡",
-        "سوئینگ تریدینگ 🌊", "پوزیشن تریدینگ 🏔️", "گرید تریدینگ 🔲"
-    ] * 50000  # برای ۱,۰۰۰,۰۰۰ ساعت
+        "مارکت پروفایل 📊", "اسکالپینگ ⚡", "سوئینگ تریدینگ 🌊"
+    ] * 50000
     
     while True:
         try:
             if cfg.channel_id and groq_ai.enabled:
                 topic = topics[lesson_num % len(topics)]
-                lesson = await groq_ai.course_lesson(lesson_num + 1, 1000000, topic)
-                if lesson:
-                    await safe_send(app.bot, cfg.channel_id, fmt.course(lesson))
+                
+                try:
+                    lesson = await groq_ai.course_lesson(lesson_num + 1, 1000000, topic)
+                    if lesson:
+                        await safe_send(app.bot, cfg.channel_id, fmt.course(lesson))
+                        lesson_num += 1
+                        logger.info(f"📚 درس {lesson_num} ارسال شد: {topic}")
+                    else:
+                        logger.warning(f"⚠️ درس {topic} خالی برگشت - رد شدن")
+                        lesson_num += 1
+                except Exception as lesson_error:
+                    logger.error(f"❌ خطای درس {topic}: {lesson_error} - رد شدن")
                     lesson_num += 1
+                    
         except Exception as e: 
-            logger.error(f"Course: {e}")
+            logger.error(f"Course loop error: {e}")
+        
         await asyncio.sleep(cfg.education_interval)
 
 async def auto_news(app: Application):
@@ -1669,12 +1930,23 @@ async def main():
         ProcessLock.release()
         return
     
-    logger.info(f"{Fore.MAGENTA}💎 VIP PLATINUM v32.0 | {pdt.full()}{Style.RESET_ALL}")
-    logger.info(f"{Fore.CYAN}💎 CoinEx API: {'✅ فعال' if cfg.coinex_api_key else '❌ فقط خواندن'}{Style.RESET_ALL}")
-    logger.info(f"{Fore.GREEN}🎨 تصاویر: کاملاً یونیک و بدون تکرار{Style.RESET_ALL}")
-    logger.info(f"{Fore.GREEN}🧠 AI: Groq فعال | فارسی و دوستانه{Style.RESET_ALL}")
-    logger.info(f"{Fore.GREEN}📊 تحلیل نمودار: فعال (OCR + AI){Style.RESET_ALL}")
-    logger.info(f"{Fore.GREEN}📚 آموزش: ۱,۰۰۰,۰۰۰+ ساعت{Style.RESET_ALL}")
+    # پاکسازی وب‌هوک قبلی
+    try:
+        async with httpx.AsyncClient() as client:
+            await client.get(f"https://api.telegram.org/bot{cfg.token}/deleteWebhook", params={"drop_pending_updates": True})
+        logger.info("🧹 وب‌هوک قبلی حذف شد")
+    except: pass
+    
+    # بارگذاری کاربران مجاز
+    InviteSystem.load_users()
+    
+    logger.info(f"💎 VIP PLATINUM v33.0 | {pdt.full()}")
+    logger.info(f"💎 CoinEx API: {'✅ فعال' if cfg.coinex_api_key else '❌ فقط خواندن'}")
+    logger.info(f"🎨 تصاویر: کاملاً یونیک و بدون تکرار")
+    logger.info(f"🧠 AI: Groq فعال | فارسی و دوستانه")
+    logger.info(f"📊 تحلیل نمودار: فعال")
+    logger.info(f"📚 آموزش: ۱,۰۰۰,۰۰۰+ ساعت (بهینه‌شده)")
+    logger.info(f"🔐 سیستم کد دعوت: فعال | {len(InviteSystem.VALID_CODES)} کد معتبر")
     
     exchange_mgr.connect()
     request = create_request()
@@ -1683,8 +1955,8 @@ async def main():
     
     app.add_handler(CommandHandler("start", cmd_start))
     app.add_handler(CallbackQueryHandler(button_router))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     app.add_handler(MessageHandler(filters.PHOTO, handle_message))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     
     asyncio.create_task(cleanup_memory())
     asyncio.create_task(auto_signals(app))
@@ -1694,15 +1966,15 @@ async def main():
     asyncio.create_task(auto_whale(app))
     asyncio.create_task(auto_daily_summary(app))
     
-    logger.info(f"{Fore.GREEN}💎 VIP پلاتینیوم آماده — همه چیز فارسی و دوستانه ✨{Style.RESET_ALL}")
+    logger.info("💎 VIP پلاتینیوم آماده — با سیستم کد دعوت — همه چیز فارسی و دوستانه ✨")
     
     try:
         await app.initialize()
         await app.start()
-        await app.updater.start_polling(drop_pending_updates=True)
+        await app.updater.start_polling(drop_pending_updates=True, allowed_updates=Update.ALL_TYPES)
         await asyncio.Event().wait()
     except Exception as e: 
-        logger.critical(f"{Fore.RED}❌ {e}{Style.RESET_ALL}")
+        logger.critical(f"❌ {e}")
     finally:
         try: 
             await app.updater.stop()
@@ -1714,5 +1986,7 @@ async def main():
 if __name__ == "__main__":
     try: 
         asyncio.run(main())
+    except KeyboardInterrupt: 
+        ProcessLock.release()
     except: 
         ProcessLock.release()
