@@ -584,7 +584,8 @@ async def cmd_deactivate(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
 async def cmd_users(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     if not user_mgr.is_owner(update.effective_user.id): return
-    users = user_mgr.users    msg = "📋 *لیست کاربران:*\n\n"
+    users = user_mgr.users
+    msg = "📋 *لیست کاربران:*\n\n"
     for uid, u in list(users.items())[:20]:
         status = "✅" if u.get("active") else "❌"
         msg += f"{status} `{uid}` — {u.get('level','رایگان')} ({u.get('unlock_method','')})\n"
@@ -596,7 +597,6 @@ async def cmd_users(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 async def cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     
-    # پردازش دعوت
     if len(ctx.args) > 0:
         try:
             ref_id = int(ctx.args[0])
@@ -604,7 +604,7 @@ async def cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
                 user_mgr.add_referral(user_id, ref_id)
         except: pass
     
-    # ⭐ مالک
+    # Owner
     if user_mgr.is_owner(user_id):
         await update.message.reply_text(f"""
 🔥🔥🔥 کریپتو پالس نسخه ۳۰ 🔥🔥🔥
@@ -622,7 +622,7 @@ async def cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 👇 انتخاب کن:""", reply_markup=Menu.main())
         return
     
-    # کاربر فعال
+    # Active user
     if user_mgr.is_active(user_id):
         user = user_mgr.get_user(user_id)
         level = user.get("level", SubscriptionLevel.FREE)
@@ -637,7 +637,7 @@ async def cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 👇 انتخاب کن:""", reply_markup=Menu.main())
         return
     
-    # کاربر غیرفعال — ۳ گزینه
+    # Locked user
     is_member = await check_channel_membership(user_id, ctx.bot)
     user = user_mgr.get_user(user_id)
     refs = user.get("referrals", 0)
@@ -674,7 +674,7 @@ async def button_router(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query; d = q.data
     user_id = update.effective_user.id
     
-    # دکمه‌های کاربر قفل‌شده
+    # Locked user buttons
     if not user_mgr.is_active(user_id) and not user_mgr.is_owner(user_id):
         if d == "join_channel":
             is_member = await check_channel_membership(user_id, ctx.bot)
@@ -682,7 +682,7 @@ async def button_router(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
                 user_mgr.set_channel_joined(user_id)
                 await q.edit_message_text("🎉 تبریک! با عضویت در کانال، ربات برات فعال شد!\n\n/start رو بزن")
             else:
-                await q.edit_message_text("❌ هنوز عضو کانال نشدی!\n\nلطفاً اول عضو شو:\n@CryptoPulse606\n\nبعد دکمه زیر رو بزن:", reply_markup=InlineKeyboardMarkup([
+                await q.edit_message_text("❌ هنوز عضو کانال نشدی!\n\n@CryptoPulse606\n\nبعد دکمه زیر رو بزن:", reply_markup=InlineKeyboardMarkup([
                     [InlineKeyboardButton("🔄 بررسی مجدد", callback_data="join_channel")],
                     [InlineKeyboardButton("📢 رفتن به کانال", url=f"https://t.me/{cfg.channel_username.replace('@','')}")]
                 ]))
@@ -703,11 +703,9 @@ async def button_router(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 `{link}`
 
 👥 دعوت شده: {refs} از {cfg.required_invites}
-📌 {cfg.required_invites - refs} نفر دیگه لازم داری
-
-📢 دوستات باید با لینک تو ربات رو استارت بزنن""", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([
+📌 {cfg.required_invites - refs} نفر دیگه لازم داری""", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([
                     [InlineKeyboardButton("🔄 بررسی", callback_data="invite_friends")],
-                    [InlineKeyboardButton("🔙 بازگشت", callback_data="back_to_lock")]
+                    [InlineKeyboardButton("🔙", callback_data="back_to_lock")]
                 ]))
             return
         
@@ -721,38 +719,15 @@ async def button_router(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
 📅 {cfg.subscription_days} روز
 
-💳 *شماره کارت:*
-`{cfg.card_number}`
-بانک تجارت
-
-📲 پس از پرداخت، رسید رو به @CryptoPulse606 بفرست""", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton("🔙 بازگشت", callback_data="back_to_lock")]
-            ]))
+💳 `{cfg.card_number}`
+📲 @CryptoPulse606""", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back_to_lock")]]))
             return
         
-        elif d == "check_status":
-            is_member = await check_channel_membership(user_id, ctx.bot)
-            user = user_mgr.get_user(user_id)
-            refs = user.get("referrals", 0)
-            
-            if is_member:
-                user_mgr.set_channel_joined(user_id)
-                await q.edit_message_text("🎉 عضو کانال بودی! ربات فعال شد!\n\n/start")
-                return
-            
-            if refs >= cfg.required_invites:
-                user_mgr.activate_user(user_id, "invite", SubscriptionLevel.SILVER)
-                await q.edit_message_text("🎉 به اندازه کافی دعوت کردی! ربات فعال شد!\n\n/start")
-                return
-            
-            await q.edit_message_text(f"🔒 هنوز فعال نشدی\n\n📢 عضو کانال: {'✅' if is_member else '❌'}\n👥 دعوت: {refs}/{cfg.required_invites}", reply_markup=Menu.locked())
-            return
-        
-        elif d == "back_to_lock":
+        elif d in ["check_status", "back_to_lock"]:
             await q.edit_message_text("یکی از راه‌ها رو انتخاب کن:", reply_markup=Menu.locked())
             return
     
-    # کاربر فعال یا مالک
+    # Active/owner handlers
     try:
         if d == "back": await q.edit_message_text(f"🟢 منو\n\n{pdt.full()}", parse_mode="Markdown", reply_markup=Menu.main())
         elif d == "p":
@@ -840,7 +815,7 @@ async def auto_signals(app: Application):
                         pred_t = await groq_ai.prediction(sym, t['last'], ind) if groq_ai.enabled else None
                         await send_signal(app.bot, cfg.channel_id, sym, t, df, ind, candles, smc_data, groq_t, smc_t, pred_t)
                         await asyncio.sleep(120)
-                except Exception as e: logger.error(f"Signal {sym}: {e}")
+                except: pass
         except: pass
         await asyncio.sleep(cfg.signal_interval)
 
