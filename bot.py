@@ -48,6 +48,14 @@ from telegram.ext import Application, CommandHandler, CallbackQueryHandler, Mess
 from telegram.request import HTTPXRequest
 from PIL import Image, ImageDraw, ImageFont, ImageFilter, ImageEnhance
 import warnings
+# ====== اینو بذار اول فایل، درست بعد از import ها ======
+import logging
+# کاملاً غیرفعال کردن لاگ کتابخونه های مزاحم
+for noisy_lib in ['httpx', 'httpcore', 'telegram', 'telegram.ext', 
+                    'telegram.request', 'apscheduler', 'ccxt', 
+                    'urllib3', 'asyncio', 'matplotlib', 'PIL']:
+    logging.getLogger(noisy_lib).setLevel(logging.CRITICAL + 1)
+    logging.getLogger(noisy_lib).propagate = False  # جلوگیری از انتشار به لاگر اصلی
 warnings.filterwarnings('ignore')
 
 # ============================================================
