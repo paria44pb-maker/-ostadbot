@@ -25,3 +25,11 @@ aiohttp>=3.9
 requests>=2.31
 schedule>=1.2
 pytz>=2023.3
+fastapi==0.104.1
+uvicorn==0.24.0
+diffusers==0.24.0
+torch==2.1.0
+transformers==4.35.0
+accelerate==0.24.1
+safetensors==0.4.1
+pillow==10.1.0
