@@ -2,11 +2,13 @@
 # -*- coding: utf-8 -*-
 """
 ╔═══════════════════════════════════════════════════════════════════════════════════╗
-║  🚀 CRYPTO PULSE v29.1 — FIXED EDITION — 15 PROFESSIONAL GLASS BUTTONS           ║
-║  ✅ Fixed: toker_mgr -> token_mgr                                                 ║
-║  ✅ Fixed: trading_signals missing                                                ║
-║  ✅ Fixed: mtf None in generate                                                   ║
-║  ✅ Fixed: course button handler                                                  ║
+║  💎 CRYPTO PULSE — VIP PLATINUM EDITION v1.0 💎                                   ║
+║  ═══════════════════════════════════════════════════════════════════════════════  ║
+║  ✨ 15 Professional Glass Buttons  |  Dual AI (Groq + Gemini)                    ║
+║  ✨ 80+ Indicators | Live News | Whale Tracking | Smart Money                    ║
+║  ✨ Auto Trading | Risk Management | 1000+ Lessons | Persian Full                ║
+║  ═══════════════════════════════════════════════════════════════════════════════  ║
+║  🚀 VIP PLATINUM — Power, Precision, Performance                                 ║
 ╚═══════════════════════════════════════════════════════════════════════════════════╝
 """
 
@@ -52,7 +54,7 @@ def ensure_libs():
         except: subprocess.check_call([sys.executable,"-m","pip","install",pkg,"--quiet"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
 logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger('CryptoPulseV29')
+logger = logging.getLogger('VIP_Platinum')
 ensure_libs()
 
 import schedule, jdatetime, pytz
@@ -78,6 +80,30 @@ except: PSUTIL_AVAILABLE = False
 load_dotenv()
 
 # ============================================================
+# GLOBAL VARIABLES (تعریف متغیرهای سراسری برای دوره آموزشی)
+# ============================================================
+course_lesson_num = 0
+TOTAL_COURSE_LESSONS = 1000
+COURSE_TOPICS = [
+    "💎 مبانی بلاکچین و بیتکوین", "📊 تحلیل تکنیکال کلاسیک", "🕯️ کندل‌شناسی پیشرفته",
+    "📈 میانگین‌های متحرک", "🎯 آراس‌آی و مکدی", "📉 باندهای بولینگر",
+    "🌀 فیبوناچی اصلاحی", "🌀 فیبوناچی گسترشی", "🔮 الگوهای کلاسیک نمودار",
+    "☁️ ایچیموکو کامل", "📊 پروفایل حجم", "🏗️ ساختار بازار",
+    "🧱 بلوک سفارش", "⚡ شکاف ارزش منصفانه", "💰 جمع‌آوری نقدینگی",
+    "🔄 شکست ساختار و تغییر روند", "🧠 اسمارت مانی پیشرفته", "⚖️ مدیریت سرمایه پایه",
+    "🎯 مدیریت سرمایه پیشرفته", "🧘 روانشناسی ترید", "📝 ژورنال نویسی معاملاتی",
+    "⚡ استراتژی اسکلپ", "📅 استراتژی روزانه", "📆 استراتژی سوئینگ",
+    "🌐 دیفای و انافتی", "⛓️ اتریوم و لایه دوم", "📰 تحلیل فاندامنتال",
+    "🐋 تشخیص نهنگ‌ها", "📊 علاقه باز", "💸 نرخ فاندینگ",
+    "📉 دلتا و سیوی‌دی", "🔥 هیت‌مپ و جریان سفارش", "📈 معاملات فیوچرز",
+    "🎲 مارتینگل و ضد آن", "🤖 هوش مصنوعی در ترید", "🔄 بک‌تستینگ",
+    "✅ فروارد تستینگ", "🏦 بروکرها و صرافی‌ها", "🔒 امنیت و کیف پول",
+    "📋 مالیات و قوانین", "💎 سرمایه‌گذاری بلندمدت", "📊 ای‌تی‌اف و سازمان‌ها",
+    "💵 شاخص دلار و طلا", "🚀 آلت‌سیزن", "🎭 روانشناسی بازار",
+    "🔄 چرخه‌های بازار", "📦 انباشت و توزیع", "📖 روش وایکوف"
+] * 22  # تکرار برای رسیدن به 1000 درس
+
+# ============================================================
 # COLORFUL CONSOLE LOGGING
 # ============================================================
 class ColoredFormatter(logging.Formatter):
@@ -96,11 +122,11 @@ console = logging.StreamHandler(); console.setLevel(logging.INFO)
 console.setFormatter(ColoredFormatter('%(asctime)s | %(levelname)-7s | %(message)s'))
 logger.addHandler(console)
 
-# ایجاد پوشه لاگ اگر وجود نداشت
+# ایجاد پوشه لاگ
 os.makedirs('logs', exist_ok=True)
-for name in ['logs/crypto_v29.log','logs/crypto_v29_errors.log','logs/crypto_v29_trades.log',
-             'logs/crypto_v29_news.log','logs/crypto_v29_signals.log','logs/crypto_v29_ai.log',
-             'logs/crypto_v29_system.log']:
+for name in ['logs/vip_platinum.log','logs/vip_platinum_errors.log','logs/vip_platinum_trades.log',
+             'logs/vip_platinum_news.log','logs/vip_platinum_signals.log','logs/vip_platinum_ai.log',
+             'logs/vip_platinum_system.log']:
     h = RotatingFileHandler(name, maxBytes=50*1024*1024, backupCount=20, encoding='utf-8')
     h.setLevel(logging.INFO)
     h.setFormatter(logging.Formatter('%(asctime)s | %(levelname)-7s | %(message)s'))
@@ -156,7 +182,7 @@ cfg = Config()
 # PROCESS LOCK
 # ============================================================
 class ProcessLock:
-    _file = "crypto_v29.lock"
+    _file = "vip_platinum.lock"
     @classmethod
     def acquire(cls) -> bool:
         try:
@@ -224,6 +250,9 @@ class PersianLive:
         if 8 <= h < 16: return "🔥 بازار در اوج فعالیت"
         elif 16 <= h < 20: return "📊 بازار در حال نوسان"
         else: return "🌙 بازار آرام"
+    @classmethod
+    def vip_status(cls):
+        return f"💎 VIP PLATINUM 💎 | {cls.shamsi()} | {cls.time_str()}"
 
 pdt = PersianLive()
 
@@ -257,7 +286,7 @@ class TokenManager:
         if source == "groq": self.groq += tokens
         else: self.gemini += tokens
     def stats(self):
-        return f"📊 مصرف توکن: گروک: {self.groq:,} | جمینای: {self.gemini:,}"
+        return f"📊 مصرف توکن VIP: گروک: {self.groq:,} | جمینای: {self.gemini:,}"
 
 token_mgr = TokenManager()
 
@@ -267,7 +296,7 @@ token_mgr = TokenManager()
 cache = TTLCache(maxsize=3000, ttl=300)
 
 # ============================================================
-# DUAL AI - FUN & ENGAGING PERSIAN (SAME AS ORIGINAL)
+# DUAL AI - FUN & ENGAGING PERSIAN
 # ============================================================
 class GeminiAI:
     URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent"
@@ -285,7 +314,7 @@ class GeminiAI:
             if r.status_code==200:
                 t = r.json().get("candidates",[{}])[0].get("content",{}).get("parts",[{}])[0].get("text","")
                 if t: token_mgr.record(max_t,"gemini"); return t
-        except Exception as e: logger.error(f"Gemini: {e}")
+        except Exception as e: logger.error(f"Gemini VIP: {e}")
         return None
 
 gemini_ai = GeminiAI()
@@ -316,13 +345,13 @@ class GroqAI:
             if r.status_code==200:
                 d = r.json(); token_mgr.record(d.get('usage',{}).get('total_tokens',max_t),"groq")
                 return d["choices"][0]["message"]["content"]
-        except Exception as e: logger.error(f"Groq: {e}")
+        except Exception as e: logger.error(f"Groq VIP: {e}")
         return None
 
     async def tech(self, sym, ind, price, change, pats, candles, mtf):
         mtf_t = " | ".join([f"{t}:RSI={i.get('RSI_14',50):.0f}" for t,i in mtf.items()]) if mtf else "بدون داده"
         humor = random.choice(["یادتون باشه ترید مثل آشپزیه، صبر می‌خواد وگرنه غذا می‌سوزه 😉","بازار مثل گربه می‌مونه، هر وقت فکر می‌کنی خوابیده، یهو می‌پره 😹","ترید مثل دوچرخه‌سواریه، تعادل رو حفظ کن وگرنه می‌افتی 🚲"])
-        return await self._call(f"""تحلیل تکنیکال {sym} در قیمت ${price:,.2f} (تغییر {change:+.2f}%)
+        return await self._call(f"""تحلیل تکنیکال VIP {sym} در قیمت ${price:,.2f} (تغییر {change:+.2f}%)
 RSI(14)={ind.get('RSI_14',50):.0f} | MACD={'صعودی 🟢' if ind.get('MACD_HIST',0)>0 else 'نزولی 🔴'}
 ADX={ind.get('ADX',20):.0f} | CCI={ind.get('CCI',0):.0f} | MFI={ind.get('MFI',50):.0f}
 BB%={ind.get('BB_PCT',0.5):.2f} | حجم={ind.get('VOL_RATIO',1):.1f}x
@@ -334,7 +363,7 @@ MTF: {mtf_t}
 تحلیل فارسی بامزه و پر انرژی با ایموجی: ۱. وضعیت ۲. روند ۳. ورود ۴. ضرر ۵. اهداف ۶. ریسک ۷. اطمینان. ۵۰۰ کلمه.""", self.T['tech'])
 
     async def chart_analysis(self, sym, price, ind_data):
-        return await self._call(f"""تحلیل نمودار {sym} در ${price:,.2f}
+        return await self._call(f"""تحلیل نمودار VIP {sym} در ${price:,.2f}
 RSI(14)={ind_data.get('RSI_14',50):.1f} | MACD={ind_data.get('MACD_HIST',0):.4f}
 ADX={ind_data.get('ADX',20):.1f} | BB%={ind_data.get('BB_PCT',0.5):.2f}
 EMA7={ind_data.get('EMA_7',0):.2f} | EMA20={ind_data.get('EMA_20',0):.2f} | EMA50={ind_data.get('EMA_50',0):.2f}
@@ -343,42 +372,42 @@ EMA7={ind_data.get('EMA_7',0):.2f} | EMA20={ind_data.get('EMA_20',0):.2f} | EMA5
 
     async def course_lesson(self, lesson_num, total_lessons, topic):
         jokes = ["ترید مثل پیتزا می‌مونه، هر کی یه تیکه ازش می‌خوره 🍕","بازار مثل هوا می‌مونه، هر دم عوض میشه 🌬️","ضرر مثل معلم سختگیر می‌مونه، درس بزرگی بهت میده 📚"]
-        return await self._call(f"""درس {lesson_num} از {total_lessons} دوره ترید کریپتو
+        return await self._call(f"""💎 درس VIP {lesson_num} از {total_lessons} دوره ترید کریپتو
 موضوع: {topic}
 {random.choice(jokes)}
 درس کامل فارسی شامل: ۱. توضیح با مثال واقعی ۲. راهنمای گام‌به‌گام ۳. اشتباهات رایج ۴. نکته طلایی
-ایموجی و فرمت بامزه. ۱۲۰۰ کلمه. #دوره_کریپتو_پالس""", self.T['course'])
+ایموجی و فرمت بامزه. ۱۲۰۰ کلمه. #دوره_VIP_پلاتینیوم""", self.T['course'])
 
     async def persian_news_summary(self, headlines):
-        return await self._call(f"""خلاصه اخبار کریپتو به فارسی بامزه و پر انرژی:
+        return await self._call(f"""خلاصه اخبار کریپتو VIP به فارسی بامزه و پر انرژی:
 {chr(10).join(headlines[:20])}
 تحلیل خبری فارسی شامل: مهم‌ترین خبر، روندها، تاثیر، توصیه عملی.
-ایموجی فراوان. ۶۰۰ کلمه. #اخبار_کریپتو""", self.T['persian_news'])
+ایموجی فراوان. ۶۰۰ کلمه. #اخبار_VIP""", self.T['persian_news'])
 
     async def viral_post(self):
         topics = ["راز ثروتمند شدن", "اشتباهات خنده‌دار تریدرها", "چگونه پولدار شویم", "تحلیل بامزه بیتکوین", "آینده اتریوم", "نهنگ‌ها چه می‌کنند", "استراتژی طلایی", "پامپ بعدی"]
-        return await self._call(f"""پست وایرال کریپتو فارسی بامزه درباره «{random.choice(topics)}».
-عنوان شوکه‌کننده، حقایق عجیب، ایموجی فراوان، دعوت به اقدام. ۶۰۰ کلمه. #پست_ویژه""", self.T['viral'])
+        return await self._call(f"""پست وایرال کریپتو VIP فارسی بامزه درباره «{random.choice(topics)}».
+عنوان شوکه‌کننده، حقایق عجیب، ایموجی فراوان، دعوت به اقدام. ۶۰۰ کلمه. #پست_VIP""", self.T['viral'])
 
     async def prediction(self, sym, price, ind):
-        return await self._call(f"""پیش‌بینی قیمت {sym} در ${price:,.2f}
+        return await self._call(f"""پیش‌بینی قیمت VIP {sym} در ${price:,.2f}
 RSI(14)={ind.get('RSI_14',50):.1f} | MACD={ind.get('MACD_HIST',0):.4f} | ADX={ind.get('ADX',20):.1f}
 EMA20={ind.get('EMA_20',0):.2f} | EMA50={ind.get('EMA_50',0):.2f} | EMA200={ind.get('EMA_200',0):.2f}
 پیش‌بینی فارسی بامزه برای: ۱. فردا ۲. یک هفته ۳. یک ماه
 با احتمال و دلیل. ایموجی. ۸۰۰ کلمه.""", self.T['prediction'])
 
-    async def market(self, coins): return await self._call(f"تحلیل بازار فارسی بامزه:\n"+"\n".join([f"{c['symbol']}:{c['change']:+.1f}%" for c in coins[:10]])+"\n۴۰۰ کلمه.", self.T['market'])
-    async def whale(self): return await self._call("حرکات نهنگ‌ها فارسی بامزه. ۵۰۰ کلمه.", self.T['whale'])
-    async def strat(self, sym, ind, price): return await self._call(f"استراتژی {sym} ${price:,.2f}. فارسی بامزه ۴۰۰ کلمه.", self.T['strat'])
-    async def sent(self, sym, price, change): return await self._call(f"احساسات {sym} ${price:,.2f} ({change:+.1f}%). فارسی بامزه ۳۵۰ کلمه.", self.T['sent'])
-    async def fund(self, sym, price, change): return await self._call(f"فاندامنتال {sym.replace('/USDT','')} ${price:,.2f}. فارسی بامزه ۴۰۰ کلمه.", self.T['fund'])
-    async def pa(self, sym, ind, price, pats): return await self._call(f"پرایس اکشن {sym} ${price:,.2f}. الگوها: {', '.join(pats) if pats else 'هیچ'}. فارسی بامزه ۴۰۰ کلمه.", self.T['pa'])
-    async def pred(self, sym, ind, price): return await self._call(f"پیش‌بینی {sym} ${price:,.2f}. فارسی بامزه ۳۵۰ کلمه.", self.T['pred'])
-    async def ichimoku(self, sym, ind, price): return await self._call(f"ایچیموکو {sym} ${price:,.2f}. تنکان={ind.get('TENKAN',0):.2f}. فارسی بامزه ۴۰۰ کلمه.", self.T['ichimoku'])
-    async def fibonacci(self, sym, ind, price): return await self._call(f"فیبوناچی {sym}: ۰.۳۸۲={ind.get('FIB_382',0):.2f}. فارسی بامزه ۳۵۰ کلمه.", self.T['fib'])
-    async def volume_profile(self, sym, ind, price): return await self._call(f"پروفایل حجم {sym}. نسبت={ind.get('VOL_RATIO',1):.1f}. فارسی بامزه ۳۵۰ کلمه.", self.T['volume'])
-    async def smc(self, sym, smc_data): return await self._call(f"اسمارت مانی {sym}:\n{json.dumps(smc_data, indent=2) if smc_data else 'داده در دسترس نیست'}\nفارسی بامزه. ۵۰۰ کلمه.", self.T['smc'])
-    async def fear_greed_report(self, fg_value, fg_text): return await self._call(f"ترس و طمع: {fg_value} ({fg_text}). فارسی بامزه. ۴۰۰ کلمه.", self.T['fear_greed'])
+    async def market(self, coins): return await self._call(f"تحلیل بازار VIP فارسی بامزه:\n"+"\n".join([f"{c['symbol']}:{c['change']:+.1f}%" for c in coins[:10]])+"\n۴۰۰ کلمه.", self.T['market'])
+    async def whale(self): return await self._call("حرکات نهنگ‌ها VIP فارسی بامزه. ۵۰۰ کلمه.", self.T['whale'])
+    async def strat(self, sym, ind, price): return await self._call(f"استراتژی VIP {sym} ${price:,.2f}. فارسی بامزه ۴۰۰ کلمه.", self.T['strat'])
+    async def sent(self, sym, price, change): return await self._call(f"احساسات VIP {sym} ${price:,.2f} ({change:+.1f}%). فارسی بامزه ۳۵۰ کلمه.", self.T['sent'])
+    async def fund(self, sym, price, change): return await self._call(f"فاندامنتال VIP {sym.replace('/USDT','')} ${price:,.2f}. فارسی بامزه ۴۰۰ کلمه.", self.T['fund'])
+    async def pa(self, sym, ind, price, pats): return await self._call(f"پرایس اکشن VIP {sym} ${price:,.2f}. الگوها: {', '.join(pats) if pats else 'هیچ'}. فارسی بامزه ۴۰۰ کلمه.", self.T['pa'])
+    async def pred(self, sym, ind, price): return await self._call(f"پیش‌بینی VIP {sym} ${price:,.2f}. فارسی بامزه ۳۵۰ کلمه.", self.T['pred'])
+    async def ichimoku(self, sym, ind, price): return await self._call(f"ایچیموکو VIP {sym} ${price:,.2f}. تنکان={ind.get('TENKAN',0):.2f}. فارسی بامزه ۴۰۰ کلمه.", self.T['ichimoku'])
+    async def fibonacci(self, sym, ind, price): return await self._call(f"فیبوناچی VIP {sym}: ۰.۳۸۲={ind.get('FIB_382',0):.2f}. فارسی بامزه ۳۵۰ کلمه.", self.T['fib'])
+    async def volume_profile(self, sym, ind, price): return await self._call(f"پروفایل حجم VIP {sym}. نسبت={ind.get('VOL_RATIO',1):.1f}. فارسی بامزه ۳۵۰ کلمه.", self.T['volume'])
+    async def smc(self, sym, smc_data): return await self._call(f"اسمارت مانی VIP {sym}:\n{json.dumps(smc_data, indent=2) if smc_data else 'داده در دسترس نیست'}\nفارسی بامزه. ۵۰۰ کلمه.", self.T['smc'])
+    async def fear_greed_report(self, fg_value, fg_text): return await self._call(f"ترس و طمع VIP: {fg_value} ({fg_text}). فارسی بامزه. ۴۰۰ کلمه.", self.T['fear_greed'])
 
 groq_ai = GroqAI()
 
@@ -484,7 +513,7 @@ class PatternScanner:
         return patterns
 
 # ============================================================
-# INDICATORS (80+ WITH CANDLESTICK NAMES) - SAME AS ORIGINAL
+# INDICATORS (80+ WITH CANDLESTICK NAMES)
 # ============================================================
 class UltraIndicators:
     @staticmethod
@@ -634,7 +663,6 @@ class SignalGen:
             elif 'نزولی' in smc_data.get('جمع_آوری_نقدینگی',''): score -= 110
             if smc_data.get('شکاف_صعودی'): score += 60
             if smc_data.get('شکاف_نزولی'): score -= 60
-        # FIXED: بررسی وجود mtf قبل از استفاده
         if mtf and isinstance(mtf, dict):
             for tf,ti in mtf.items():
                 w = {"4h":2,"1d":3,"1w":5}.get(tf,1)
@@ -672,25 +700,25 @@ class SignalGen:
 sg = SignalGen()
 
 # ============================================================
-# TRADER (AUTO - ENHANCED WITH FIX)
+# TRADER (AUTO - ENHANCED)
 # ============================================================
 class Trader:
     def __init__(self):
         self.balance = cfg.initial_balance; self.positions = {}; self.history = []
         self.closses = 0; self.real_trades = 0; self.demo_trades = 0
-        self.trading_signals = []  # FIXED: اضافه شد
+        self.trading_signals = []
         self.exp = {'total':0,'wins':0,'best':0,'worst':0,'conf':65,'risk':1.0,'max_drawdown':0.0,'drawdown':0.0,'sharpe':0.0,'profit_factor':0.0}
         self.peak_balance = cfg.initial_balance
         self.load()
     def load(self):
         try:
-            with open('trader_v29.json') as f:
+            with open('vip_trader.json') as f:
                 d = json.load(f); self.balance = d.get('balance',cfg.initial_balance); self.history = d.get('history',[]); self.exp.update(d.get('exp',{}))
                 self.peak_balance = max(self.peak_balance, self.balance)
         except: pass
     def save(self):
         try:
-            with open('trader_v29.json','w') as f: json.dump({'balance':self.balance,'history':self.history[-2000:],'exp':self.exp}, f)
+            with open('vip_trader.json','w') as f: json.dump({'balance':self.balance,'history':self.history[-2000:],'exp':self.exp}, f)
         except: pass
     def learn(self):
         if len(self.history)<10: return
@@ -774,15 +802,15 @@ class ChartGenerator:
             add_plots.append(mpf.make_addplot(data['Volume'], panel=1, type='bar', color='#00ff88', alpha=0.9, ylabel='حجم'))
             mc = mpf.make_marketcolors(up='#00ff88', down='#ff3355', edge='#1d3b34', wick='#1d3b34', volume='#00ff88')
             style = mpf.make_mpf_style(marketcolors=mc, facecolor='#061a14', figcolor='#061a14', gridcolor='#1d3b34', rc={'font.size':13,'axes.labelsize':12,'axes.titlesize':14})
-            fig, axlist = mpf.plot(data, type='candle', style=style, title=f'{symbol} - {pdt.shamsi()}', ylabel='💰 قیمت', volume=True, addplot=add_plots, panel_ratios=(4,1,1,1), figsize=(26,18), returnfig=True)
+            fig, axlist = mpf.plot(data, type='candle', style=style, title=f'💎 VIP PLATINUM — {symbol} — {pdt.shamsi()}', ylabel='💰 قیمت', volume=True, addplot=add_plots, panel_ratios=(4,1,1,1), figsize=(26,18), returnfig=True)
             buf = io.BytesIO(); fig.savefig(buf, format='png', dpi=150, bbox_inches='tight', facecolor=style['facecolor']); buf.seek(0); plt.close(fig)
             return buf
-        except Exception as e: logger.error(f"Chart: {e}"); return None
+        except Exception as e: logger.error(f"Chart VIP: {e}"); return None
 
 chart_gen = ChartGenerator()
 
 # ============================================================
-# FORMATTER (FUN & ENGAGING) - SAME AS ORIGINAL
+# FORMATTER (FUN & ENGAGING)
 # ============================================================
 class Fmt:
     @staticmethod
@@ -794,23 +822,24 @@ class Fmt:
         tp3 = a['price']+i['ATR_14']*cfg.atr_tp*2.5
         candle_text = ', '.join(candles) if candles else 'بدون الگوی خاص 😐'
         msg = f"""
-╔══════════════════════╗
-  {action_emoji} #سیگنال_فوری {s} {action_emoji}
-╚══════════════════════╝
+╔════════════════════════════════════╗
+  💎 VIP PLATINUM SIGNAL 💎
+  {action_emoji} #{s} {action_emoji}
+╚════════════════════════════════════╝
 
 {pdt.both()}  |  UTC: {pdt.utc()}
-{pdt.greeting()} عزیز! {pdt.market_mood()}
+{pdt.greeting()} تریدر عزیز VIP! {pdt.market_mood()}
 
 💰 *قیمت:* ${a['price']:,.4f}  📊 *تغییر:* {a['change']:+.2f}%
 🎯 *سیگنال:* {sig}  💪 *قدرت:* {conf}%  ⭐ *امتیاز:* {score} از ۱۰۰۰
 🚦 *اقدام:* {action}
 
-📈 *میانگین‌های متحرک:*
+📈 *میانگین‌های متحرک VIP:*
 ۷=${i.get('EMA_7',0):.2f} | ۲۰=${i.get('EMA_20',0):.2f} | ۵۰=${i.get('EMA_50',0):.2f} | ۲۰۰=${i.get('EMA_200',0):.2f}
 
 🕯️ *شمع‌های امروز:* {candle_text}
 
-📊 *اندیکاتورهای جادویی:*
+📊 *اندیکاتورهای جادویی VIP:*
 RSI(14)={i['RSI_14']:.1f}  MACD={'🟢صعود' if i.get('MACD_HIST',0)>0 else '🔴نزول'}
 ADX={i['ADX']:.1f}  CCI={i['CCI']:.1f}  MFI={i['MFI']:.1f}
 BB %B={i.get('BB_PCT',0.5):.2f}  حجم={i.get('VOL_RATIO',1):.1f}x
@@ -818,11 +847,11 @@ STOCH K={i.get('STOCH_K',50):.1f} D={i.get('STOCH_D',50):.1f} | Williams R={i.ge
 🕯️ الگوها: {', '.join(pats) if pats else 'بدون'}  |  واگرایی: {i.get('واگرایی','هیچ')}
 🔮 واگرایی مخفی: {i.get('واگرایی_مخفی','هیچ')}
 
-🔑 *سطوح کلیدی:* مقاومت ${i.get('مقاومت',0):,.4f} | حمایت ${i.get('حمایت',0):,.4f}
+🔑 *سطوح کلیدی VIP:* مقاومت ${i.get('مقاومت',0):,.4f} | حمایت ${i.get('حمایت',0):,.4f}
 📐 *فیبوناچی طلایی ۰.۶۱۸:* ${i.get('FIB_618',0):.4f}
 ☁️ *ایچیموکو:* تنکان ${i.get('TENKAN',0):.2f} | کیجون ${i.get('KIJUN',0):.2f}
 
-🎯 *نقشه معامله:*
+🎯 *نقشه معامله VIP:*
 🔵 ورود: ${entry:,.4f}
 🔴 حد ضرر: ${sl:,.4f} ({(abs(entry-sl)/entry*100):.1f}%)
 🟢 هدف اول: ${tp1:,.4f}  |  هدف دوم: ${tp2:,.4f}  |  هدف سوم: ${tp3:,.4f}
@@ -831,20 +860,20 @@ STOCH K={i.get('STOCH_K',50):.1f} D={i.get('STOCH_D',50):.1f} | Williams R={i.ge
         if tf_4h: msg += f"⏰ *۴ ساعته:* RSI={tf_4h.get('RSI_14',50):.0f} MACD={'🟢' if tf_4h.get('MACD_HIST',0)>0 else '🔴'} ADX={tf_4h.get('ADX',20):.0f}\n"
         if tf_1d: msg += f"⏰ *روزانه:* RSI={tf_1d.get('RSI_14',50):.0f} MACD={'🟢' if tf_1d.get('MACD_HIST',0)>0 else '🔴'} ADX={tf_1d.get('ADX',20):.0f}\n"
         if tf_1w: msg += f"⏰ *هفتگی:* RSI={tf_1w.get('RSI_14',50):.0f} MACD={'🟢' if tf_1w.get('MACD_HIST',0)>0 else '🔴'} ADX={tf_1w.get('ADX',20):.0f}\n"
-        if groq_t: msg += f"\n🧠 *هوش مصنوعی می‌گه:*\n{groq_t[:700]}\n"
-        if gemini_t: msg += f"\n🌟 *جمینای می‌گه:*\n{gemini_t[:600]}\n"
-        if ichi: msg += f"\n☁️ *ایچیموکو:* {ichi[:300]}\n"
-        if fib: msg += f"\n📐 *فیبوناچی:* {fib[:250]}\n"
-        if smc_text: msg += f"\n🧲 *اسمارت مانی:* {smc_text[:300]}\n"
-        if pred_text: msg += f"\n🔮 *پیش‌بینی آینده:*\n{pred_text[:700]}\n"
+        if groq_t: msg += f"\n🧠 *هوش مصنوعی VIP می‌گه:*\n{groq_t[:700]}\n"
+        if gemini_t: msg += f"\n🌟 *جمینای VIP می‌گه:*\n{gemini_t[:600]}\n"
+        if ichi: msg += f"\n☁️ *ایچیموکو VIP:* {ichi[:300]}\n"
+        if fib: msg += f"\n📐 *فیبوناچی VIP:* {fib[:250]}\n"
+        if smc_text: msg += f"\n🧲 *اسمارت مانی VIP:* {smc_text[:300]}\n"
+        if pred_text: msg += f"\n🔮 *پیش‌بینی آینده VIP:*\n{pred_text[:700]}\n"
         msg += f"""
-╔══════════════════════╗
-📋 *نتیجه‌گیری:* {sig} | اطمینان {conf}%
+╔════════════════════════════════════╗
+📋 *نتیجه‌گیری VIP:* {sig} | اطمینان {conf}%
 🚦 *پیشنهاد:* {action}
 ⏰ {pdt.time_str()}
-╚══════════════════════╝
-✨ @CryptoPulse606 | {pdt.full()}
-#سیگنال #{s} #کریپتو #تحلیل_فنی
+╚════════════════════════════════════╝
+💎 @CryptoPulseVIP | {pdt.full()}
+#VIP #{s} #پلاتینیوم #کریپتو
 """
         return msg
 
@@ -857,13 +886,11 @@ class CryptoNews:
     CACHE = {}
     CACHE_DURATION = 14400
     SOURCES = [
-        ("https://cryptopanic.com/news/rss/", "کریپتوپنیک"),
-        ("https://www.coindesk.com/arc/outboundfeeds/rss/", "کوین‌دسک"),
-        ("https://cointelegraph.com/rss", "کوین‌تلگراف"),
-        ("https://bitcoinmagazine.com/.rss/full/", "بیتکوین مگزین"),
-        ("https://cryptoslate.com/feed/", "کریپتواسلیت"),
-        ("https://cryptobriefing.com/feed/", "کریپتو بریفینگ"),
-        ("https://decrypt.co/feed", "دیکریپت"),
+        ("https://cryptopanic.com/news/rss/", "کریپتوپنیک VIP"),
+        ("https://www.coindesk.com/arc/outboundfeeds/rss/", "کوین‌دسک VIP"),
+        ("https://cointelegraph.com/rss", "کوین‌تلگراف VIP"),
+        ("https://bitcoinmagazine.com/.rss/full/", "بیتکوین مگزین VIP"),
+        ("https://cryptoslate.com/feed/", "کریپتواسلیت VIP"),
     ]
     @classmethod
     async def fetch(cls):
@@ -926,11 +953,11 @@ class BioUpdater:
                     t = exchange_mgr.ticker("BTC/USDT")
                     if t: btc = f"${t['last']:,.0f}"
             except: pass
-            try: await bot.set_my_name(f"🔥 کریپتو پالس | {btc} | {pdt.time_str()}"[:64])
+            try: await bot.set_my_name(f"💎 VIP PLATINUM | {btc} | {pdt.time_str()}"[:64])
             except: pass
-            try: await bot.set_my_description(f"🤖 ربات تریدر هوش مصنوعی\n📅 {pdt.shamsi()}\n⏰ {pdt.time_str()}\n₿ {btc}\n🧠 گروک + جمینای\n📊 ۸۰+ اندیکاتور\n💹 معاملات خودکار\n📚 ۱۰۰۰+ درس بامزه\n📰 اخبار هر ۴ ساعت\n🐋 نهنگ‌ها رو رصد کن"[:512])
+            try: await bot.set_my_description(f"🤖 ربات VIP پلاتینیوم تریدر هوش مصنوعی\n📅 {pdt.shamsi()}\n⏰ {pdt.time_str()}\n₿ {btc}\n🧠 گروک + جمینای\n📊 ۸۰+ اندیکاتور VIP\n💹 معاملات خودکار پلاتینیوم\n📚 ۱۰۰۰+ درس ویژه\n📰 اخبار هر ۴ ساعت\n🐋 نهنگ‌ها رو رصد کن"[:512])
             except: pass
-            cmds = [BotCommand("start","🚀 شروع ماجراجویی"),BotCommand("signal","🎯 سیگنال طلایی"),BotCommand("price","💰 قیمت‌های لحظه‌ای"),BotCommand("scan","🔍 اسکن بازار"),BotCommand("portfolio","💼 سبد دارایی"),BotCommand("news","📰 اخبار داغ"),BotCommand("course","📚 دوره رایگان"),BotCommand("chart","📊 نمودار"),BotCommand("help","❓ کمک")]
+            cmds = [BotCommand("start","💎 شروع VIP"),BotCommand("signal","🎯 سیگنال پلاتینیوم"),BotCommand("price","💰 قیمت‌ها"),BotCommand("scan","🔍 اسکن VIP"),BotCommand("portfolio","💼 سبد VIP"),BotCommand("news","📰 اخبار VIP"),BotCommand("course","📚 دوره VIP"),BotCommand("chart","📊 نمودار"),BotCommand("help","❓ کمک")]
             try: await bot.set_my_commands(cmds, scope=BotCommandScopeDefault())
             except: pass
         except: pass
@@ -942,90 +969,93 @@ class BioUpdater:
         threading.Thread(target=lambda: [schedule.run_pending(), time.sleep(1)], daemon=True).start()
 
 # ============================================================
-# 15 PROFESSIONAL GLASS BUTTONS - ALL ACTIVE & FUN
+# 15 PROFESSIONAL GLASS BUTTONS - VIP PLATINUM EDITION
 # ============================================================
 class Menu:
     @staticmethod
     def main() -> InlineKeyboardMarkup:
         return InlineKeyboardMarkup([
-            [InlineKeyboardButton("💰 قیمت‌های لحظه‌ای", callback_data="p"),
-             InlineKeyboardButton("🎯 سیگنال بیتکوین", callback_data="s_BTC/USDT"),
-             InlineKeyboardButton("🔍 اسکن بازار", callback_data="scan")],
-            [InlineKeyboardButton("⏰ تحلیل ۴ ساعته", callback_data="tf4_BTC/USDT"),
-             InlineKeyboardButton("⏰ تحلیل روزانه", callback_data="tf1d_BTC/USDT"),
-             InlineKeyboardButton("⏰ تحلیل هفتگی", callback_data="tf1w_BTC/USDT")],
-            [InlineKeyboardButton("🧠 تحلیل هوش مصنوعی", callback_data="ai_BTC/USDT"),
-             InlineKeyboardButton("📊 نمودار پیشرفته", callback_data="chart_BTC/USDT"),
-             InlineKeyboardButton("📰 تحلیل بازار", callback_data="market")],
-            [InlineKeyboardButton("📊 پرایس اکشن", callback_data="pa"),
-             InlineKeyboardButton("🔮 پیش‌بینی قیمت", callback_data="pred"),
-             InlineKeyboardButton("🧠 اسمارت مانی", callback_data="smc")],
-            [InlineKeyboardButton("🐋 ردیابی نهنگ‌ها", callback_data="whale"),
-             InlineKeyboardButton("😱 شاخص ترس و طمع", callback_data="fear_greed"),
-             InlineKeyboardButton("🏆 دامیننس بازار", callback_data="dominance")],
-            [InlineKeyboardButton("💰 سبد دارایی", callback_data="port"),
-             InlineKeyboardButton("📚 دوره آموزشی", callback_data="course"),
-             InlineKeyboardButton("📰 اخبار فارسی", callback_data="news")],
-            [InlineKeyboardButton("⚙️ تنظیمات", callback_data="set"),
-             InlineKeyboardButton("🔑 وضعیت سیستم", callback_data="status"),
-             InlineKeyboardButton("⏸️ بستن معاملات", callback_data="stop")],
-            [InlineKeyboardButton("🔄 بروزرسانی", callback_data="ref"),
-             InlineKeyboardButton("❓ راهنما", callback_data="help")],
+            [InlineKeyboardButton("💰 قیمت‌های VIP", callback_data="p"),
+             InlineKeyboardButton("🎯 سیگنال بیتکوین VIP", callback_data="s_BTC/USDT"),
+             InlineKeyboardButton("🔍 اسکن VIP بازار", callback_data="scan")],
+            [InlineKeyboardButton("⏰ تحلیل ۴ ساعته VIP", callback_data="tf4_BTC/USDT"),
+             InlineKeyboardButton("⏰ تحلیل روزانه VIP", callback_data="tf1d_BTC/USDT"),
+             InlineKeyboardButton("⏰ تحلیل هفتگی VIP", callback_data="tf1w_BTC/USDT")],
+            [InlineKeyboardButton("🧠 تحلیل هوش مصنوعی VIP", callback_data="ai_BTC/USDT"),
+             InlineKeyboardButton("📊 نمودار پیشرفته VIP", callback_data="chart_BTC/USDT"),
+             InlineKeyboardButton("📰 تحلیل بازار VIP", callback_data="market")],
+            [InlineKeyboardButton("📊 پرایس اکشن VIP", callback_data="pa"),
+             InlineKeyboardButton("🔮 پیش‌بینی قیمت VIP", callback_data="pred"),
+             InlineKeyboardButton("🧠 اسمارت مانی VIP", callback_data="smc")],
+            [InlineKeyboardButton("🐋 ردیابی نهنگ‌ها VIP", callback_data="whale"),
+             InlineKeyboardButton("😱 شاخص ترس و طمع VIP", callback_data="fear_greed"),
+             InlineKeyboardButton("🏆 دامیننس بازار VIP", callback_data="dominance")],
+            [InlineKeyboardButton("💰 سبد دارایی VIP", callback_data="port"),
+             InlineKeyboardButton("📚 دوره آموزشی VIP", callback_data="course"),
+             InlineKeyboardButton("📰 اخبار فارسی VIP", callback_data="news")],
+            [InlineKeyboardButton("⚙️ تنظیمات VIP", callback_data="set"),
+             InlineKeyboardButton("🔑 وضعیت سیستم VIP", callback_data="status"),
+             InlineKeyboardButton("⏸️ بستن معاملات VIP", callback_data="stop")],
+            [InlineKeyboardButton("🔄 بروزرسانی VIP", callback_data="ref"),
+             InlineKeyboardButton("❓ راهنما VIP", callback_data="help")],
         ])
 
 # ============================================================
-# HANDLERS - ALL 15 BUTTONS ACTIVE (FIXED COURSE)
+# HANDLERS - ALL 15 BUTTONS ACTIVE
 # ============================================================
 async def cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(f"""🔥🔥🔥 #کریپتو_پالس نسخه ۲۹.۱ 🔥🔥🔥
+    await update.message.reply_text(f"""💎💎💎 #VIP_PLATINUM نسخه ۱.۰ 💎💎💎
     
-{pdt.greeting()} تریدر عزیز! {pdt.market_mood()}
+{pdt.greeting()} تریدر عزیز VIP! {pdt.market_mood()}
 
 {pdt.full()}
 
-🧠🌟 هوش مصنوعی دوگانه (گروک + جمینای)
-📊 ۸۰+ اندیکاتور جادویی
-💹 معاملات خودکار (واقعی/دمو)
-📊 نمودار پیشرفته با تحلیل
-📚 ۱۰۰۰+ درس بامزه و رایگان
-📰 اخبار هر ۴ ساعت
-🐋 ردیابی نهنگ‌های بازار
+💎 *نسخه پلاتینیوم — ویژه تریدرهای حرفه‌ای*
 
-✨ همه چی به فارسی خودمونی ✨
+🧠🌟 هوش مصنوعی دوگانه (گروک + جمینای) VIP
+📊 ۸۰+ اندیکاتور جادویی پلاتینیوم
+💹 معاملات خودکار (واقعی/دمو) VIP
+📊 نمودار پیشرفته با تحلیل اختصاصی
+📚 ۱۰۰۰+ درس بامزه و رایگان VIP
+📰 اخبار هر ۴ ساعت VIP
+🐋 ردیابی نهنگ‌های بازار VIP
 
-👇 یه دکمه بزن تا شروع کنیم:""", reply_markup=Menu.main())
+✨ همه چی به فارسی خودمونی — سطح پلاتینیوم ✨
+
+👇 یه دکمه VIP بزن تا شروع کنی:""", reply_markup=Menu.main())
 
 async def send_signal_with_chart(bot, chat_id, symbol, ticker, df, ind, candles, mtf, smc_data, groq_t, gemini_t, ichi_t, fib_t, smc_t, pred_t):
     chart_buf = None
     if CHART_AVAILABLE and df is not None: 
         chart_buf = chart_gen.create(df, symbol, ind)
     if chart_buf:
-        caption = f"📊 {symbol.replace('/USDT','')} | ${ticker['last']:,.4f} | {ticker.get('percentage',0):+.2f}%\n⏰ {pdt.time_str()}\n✨ @CryptoPulse606"
+        caption = f"💎 VIP PLATINUM 📊 {symbol.replace('/USDT','')} | ${ticker['last']:,.4f} | {ticker.get('percentage',0):+.2f}%\n⏰ {pdt.time_str()}\n✨ @CryptoPulseVIP"
         await bot.send_photo(chat_id=chat_id, photo=chart_buf, caption=caption[:1024])
     a = {'symbol':symbol,'price':ticker['last'],'change':ticker.get('percentage',0),'indicators':ind,'candles':candles,'mtf':mtf,'smc':smc_data}
     msg = fmt.signal(a, groq_t, gemini_t, mtf.get('4h') if mtf else None, mtf.get('1d') if mtf else None, mtf.get('1w') if mtf else None, ichi_t, fib_t, smc_t, pred_t)
     await safe_send(bot, chat_id, msg)
 
 async def button_router(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    global course_lesson_num  # اعلام global در ابتدای تابع برای استفاده از متغیر سراسری
     q = update.callback_query; d = q.data
     try:
         if d == "back": 
-            await q.edit_message_text(f"🟢 *منوی اصلی*\n\n{pdt.both()}", parse_mode="Markdown", reply_markup=Menu.main())
+            await q.edit_message_text(f"🟢 *منوی اصلی VIP PLATINUM*\n\n{pdt.both()}", parse_mode="Markdown", reply_markup=Menu.main())
         elif d == "help": 
-            await q.edit_message_text(f"❓ *راهنمای ربات*\n{pdt.both()}\n\n/start شروع\n/signal سیگنال\n/price قیمت\n/scan اسکن\n/portfolio سبد\n/news اخبار\n/course دوره\n/chart نمودار\n\n✨ @CryptoPulse606", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="back")]]))
+            await q.edit_message_text(f"❓ *راهنمای ربات VIP PLATINUM*\n{pdt.both()}\n\n/start شروع VIP\n/signal سیگنال\n/price قیمت\n/scan اسکن VIP\n/portfolio سبد VIP\n/news اخبار VIP\n/course دوره VIP\n/chart نمودار VIP\n\n💎 @CryptoPulseVIP", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="back")]]))
         elif d == "p":
             if not exchange_mgr.connected: exchange_mgr.connect()
-            txt = f"💰 *قیمت‌های لحظه‌ای*\n\n{pdt.both()}\n\n"
+            txt = f"💰 *قیمت‌های لحظه‌ای VIP*\n\n{pdt.both()}\n\n"
             for sym in cfg.symbols[:24]:
                 t = exchange_mgr.ticker(sym)
                 if t: txt += f"{'🟢' if t.get('percentage',0)>0 else '🔴'} *{sym.replace('/USDT','')}*: ${t['last']:,.4f} ({t.get('percentage',0):+.1f}%)\n"
-            await q.edit_message_text(txt, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔄 بروزرسانی", callback_data="p"), InlineKeyboardButton("🔙 بازگشت", callback_data="back")]]))
+            await q.edit_message_text(txt, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔄 بروزرسانی VIP", callback_data="p"), InlineKeyboardButton("🔙 بازگشت", callback_data="back")]]))
         elif d.startswith("s_"):
-            sym = d[2:]; await q.answer(); await q.edit_message_text(f"🔄 در حال تحلیل {sym.replace('/USDT','')}...")
+            sym = d[2:]; await q.answer(); await q.edit_message_text(f"💎 در حال تحلیل VIP {sym.replace('/USDT','')}...")
             if not exchange_mgr.connected: exchange_mgr.connect()
             t = exchange_mgr.ticker(sym); df = exchange_mgr.ohlcv(sym, '1h', 200)
             if not t or df is None: 
-                await q.edit_message_text("❌ داده در دسترس نیست", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="back")]]))
+                await q.edit_message_text("❌ داده در دسترس نیست VIP", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="back")]]))
                 return
             ind, candle_names = ui.calc(df); mtf = {}
             for tf_name in cfg.primary_tfs:
@@ -1035,16 +1065,16 @@ async def button_router(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             smc_data = SmartMoney.analyze(df)
             pats = [k for k,v in ind.items() if isinstance(v,bool) and v]
             groq_t = await groq_ai.tech(sym, ind, t['last'], t.get('percentage',0), pats, candle_names, mtf)
-            gemini_t = await gemini_ai.ask(f"تحلیل {sym} ${t['last']:,.2f} فارسی.", 400) if gemini_ai.enabled else None
+            gemini_t = await gemini_ai.ask(f"تحلیل VIP {sym} ${t['last']:,.2f} فارسی.", 400) if gemini_ai.enabled else None
             ichi_t = await groq_ai.ichimoku(sym, ind, t['last']) if groq_ai.enabled else None
             fib_t = await groq_ai.fibonacci(sym, ind, t['last']) if groq_ai.enabled else None
             smc_t = await groq_ai.smc(sym, smc_data) if groq_ai.enabled and smc_data else None
             pred_t = await groq_ai.prediction(sym, t['last'], ind) if groq_ai.enabled else None
             await send_signal_with_chart(ctx.bot, q.message.chat_id, sym, t, df, ind, candle_names, mtf, smc_data, groq_t, gemini_t, ichi_t, fib_t, smc_t, pred_t)
-            await safe_edit(ctx.bot, q.message.chat_id, q.message.message_id, f"✅ تحلیل {sym.replace('/USDT','')} انجام شد.",
-                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔄 بروزرسانی", callback_data=f"s_{sym}"), InlineKeyboardButton("🤖 تحلیل نمودار", callback_data=f"chart_ai_{sym}"), InlineKeyboardButton("🔙 بازگشت", callback_data="back")]]))
+            await safe_edit(ctx.bot, q.message.chat_id, q.message.message_id, f"✅ تحلیل VIP {sym.replace('/USDT','')} انجام شد.",
+                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔄 بروزرسانی VIP", callback_data=f"s_{sym}"), InlineKeyboardButton("🤖 تحلیل نمودار VIP", callback_data=f"chart_ai_{sym}"), InlineKeyboardButton("🔙 بازگشت", callback_data="back")]]))
         elif d.startswith("chart_ai_"):
-            sym = d[9:] if len(d)>9 else "BTC/USDT"; await q.answer(); await q.edit_message_text(f"🧠 تحلیل نمودار {sym.replace('/USDT','')}...")
+            sym = d[9:] if len(d)>9 else "BTC/USDT"; await q.answer(); await q.edit_message_text(f"🧠 تحلیل نمودار VIP {sym.replace('/USDT','')}...")
             t = exchange_mgr.ticker(sym); df = exchange_mgr.ohlcv(sym, '1h', 200)
             if not t or df is None: 
                 await q.edit_message_text("❌", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]]))
@@ -1052,14 +1082,14 @@ async def button_router(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             ind, _ = ui.calc(df)
             if CHART_AVAILABLE:
                 buf = chart_gen.create(df, sym, ind)
-                if buf: await ctx.bot.send_photo(chat_id=q.message.chat_id, photo=buf, caption=f"📊 تحلیل نمودار {sym.replace('/USDT','')}")
+                if buf: await ctx.bot.send_photo(chat_id=q.message.chat_id, photo=buf, caption=f"💎 تحلیل نمودار VIP {sym.replace('/USDT','')}")
             ai = await groq_ai.chart_analysis(sym, t['last'], ind) if groq_ai.enabled else None
-            if ai: await safe_send(ctx.bot, q.message.chat_id, f"🧠 *تحلیل نمودار {sym.replace('/USDT','')}*\n\n{ai}\n\n✨ @CryptoPulse606")
-            await q.edit_message_text(f"✅ تحلیل نمودار انجام شد", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="back")]]))
+            if ai: await safe_send(ctx.bot, q.message.chat_id, f"🧠 *تحلیل نمودار VIP {sym.replace('/USDT','')}*\n\n{ai}\n\n💎 @CryptoPulseVIP")
+            await q.edit_message_text(f"✅ تحلیل نمودار VIP انجام شد", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="back")]]))
         elif d.startswith("chart_"): 
             sym = d[6:] if len(d)>6 else "BTC/USDT"; await q.answer()
             if not CHART_AVAILABLE: 
-                await q.edit_message_text("❌ کتابخانه نمودار نصب نیست")
+                await q.edit_message_text("❌ کتابخانه نمودار نصب نیست VIP")
                 return
             t = exchange_mgr.ticker(sym); df = exchange_mgr.ohlcv(sym, '1h', 200)
             if not t or df is None: 
@@ -1067,10 +1097,10 @@ async def button_router(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
                 return
             ind, _ = ui.calc(df); buf = chart_gen.create(df, sym, ind)
             if buf: 
-                await ctx.bot.send_photo(chat_id=q.message.chat_id, photo=buf, caption=f"📊 {sym.replace('/USDT','')} | ${t['last']:,.4f}")
-                await q.edit_message_text("✅ نمودار ارسال شد", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="back")]]))
+                await ctx.bot.send_photo(chat_id=q.message.chat_id, photo=buf, caption=f"💎 {sym.replace('/USDT','')} | ${t['last']:,.4f}")
+                await q.edit_message_text("✅ نمودار VIP ارسال شد", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="back")]]))
         elif d.startswith("tf4_") or d.startswith("tf1d_") or d.startswith("tf1w_"):
-            tf_map = {"tf4_":"4h","tf1d_":"1d","tf1w_":"1w"}; tf_labels = {"4h":"۴ ساعته","1d":"روزانه","1w":"هفتگی"}
+            tf_map = {"tf4_":"4h","tf1d_":"1d","tf1w_":"1w"}; tf_labels = {"4h":"۴ ساعته VIP","1d":"روزانه VIP","1w":"هفتگی VIP"}
             for prefix,tf in tf_map.items():
                 if d.startswith(prefix):
                     sym = d[len(prefix):] if len(d)>len(prefix) else "BTC/USDT"; await q.answer()
@@ -1080,11 +1110,11 @@ async def button_router(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
                         if CHART_AVAILABLE:
                             chart_buf = chart_gen.create(df, sym, ind)
                             if chart_buf: 
-                                await ctx.bot.send_photo(chat_id=q.message.chat_id, photo=chart_buf, caption=f"⏰ {tf_labels.get(tf,tf)} {sym.replace('/USDT','')} | ${t['last']:,.4f}")
-                        await q.edit_message_text(f"⏰ *{tf_labels.get(tf,tf)} {sym.replace('/USDT','')}*\n{pdt.both()}\n💰 ${t['last']:,.4f}\n🎯 {sig}\n🚦 {action}\n✨ @CryptoPulse606", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="back")]]))
+                                await ctx.bot.send_photo(chat_id=q.message.chat_id, photo=chart_buf, caption=f"💎 {tf_labels.get(tf,tf)} {sym.replace('/USDT','')} | ${t['last']:,.4f}")
+                        await q.edit_message_text(f"⏰ *{tf_labels.get(tf,tf)} {sym.replace('/USDT','')}*\n{pdt.both()}\n💰 ${t['last']:,.4f}\n🎯 {sig}\n🚦 {action}\n💎 @CryptoPulseVIP", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="back")]]))
                     break
         elif d.startswith("ai_"):
-            sym = d[3:] if len(d)>3 else "BTC/USDT"; await q.answer(); await q.edit_message_text(f"🧠 تحلیل هوش مصنوعی {sym.replace('/USDT','')}...")
+            sym = d[3:] if len(d)>3 else "BTC/USDT"; await q.answer(); await q.edit_message_text(f"🧠 تحلیل هوش مصنوعی VIP {sym.replace('/USDT','')}...")
             t = exchange_mgr.ticker(sym); df = exchange_mgr.ohlcv(sym, '1h', 200)
             if t and df is not None:
                 ind, candle_names = ui.calc(df); mtf = {}
@@ -1096,45 +1126,45 @@ async def button_router(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
                 res = await groq_ai.tech(sym, ind, t['last'], t.get('percentage',0), pats, candle_names, mtf)
                 if CHART_AVAILABLE:
                     buf = chart_gen.create(df, sym, ind)
-                    if buf: await ctx.bot.send_photo(chat_id=q.message.chat_id, photo=buf, caption=f"🧠 تحلیل هوش مصنوعی {sym.replace('/USDT','')}")
+                    if buf: await ctx.bot.send_photo(chat_id=q.message.chat_id, photo=buf, caption=f"🧠 تحلیل هوش مصنوعی VIP {sym.replace('/USDT','')}")
                 if res: 
-                    await q.edit_message_text(f"🧠 *تحلیل هوش مصنوعی {sym.replace('/USDT','')}*\n\n{res}\n\n✨ @CryptoPulse606", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="back")]]))
+                    await q.edit_message_text(f"🧠 *تحلیل هوش مصنوعی VIP {sym.replace('/USDT','')}*\n\n{res}\n\n💎 @CryptoPulseVIP", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="back")]]))
             else: 
                 await q.edit_message_text("❌", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="back")]]))
         elif d == "fear_greed":
             fg_value, fg_text = await FearGreedIndex.fetch()
             ai_report = await groq_ai.fear_greed_report(fg_value, fg_text) if groq_ai.enabled else None
             emoji = "🟢" if fg_value < 30 else "🔴" if fg_value > 70 else "🟡"
-            await q.edit_message_text(f"😱 *شاخص ترس و طمع*\n{pdt.both()}\n\n{emoji} *{fg_value} از ۱۰۰* — {fg_text}\n\n{ai_report if ai_report else ''}\n\n✨ @CryptoPulse606", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔄 بروزرسانی", callback_data="fear_greed"), InlineKeyboardButton("🔙 بازگشت", callback_data="back")]]))
+            await q.edit_message_text(f"😱 *شاخص ترس و طمع VIP*\n{pdt.both()}\n\n{emoji} *{fg_value} از ۱۰۰* — {fg_text}\n\n{ai_report if ai_report else ''}\n\n💎 @CryptoPulseVIP", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔄 بروزرسانی VIP", callback_data="fear_greed"), InlineKeyboardButton("🔙 بازگشت", callback_data="back")]]))
         elif d == "news":
             articles = await CryptoNews.fetch()
             if articles:
                 headlines = [a['title'] for a in articles[:15]]
                 summary = await groq_ai.persian_news_summary(headlines)
-                msg = f"📰 *اخبار داغ کریپتو*\n{pdt.both()}\n\n{summary}\n\n"
+                msg = f"📰 *اخبار داغ کریپتو VIP*\n{pdt.both()}\n\n{summary}\n\n"
                 for a in articles[:5]: msg += f"• [{a['title']}]({a['link']})\n"
-                await q.edit_message_text(msg, parse_mode="Markdown", disable_web_page_preview=True, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔄 بروزرسانی", callback_data="news"), InlineKeyboardButton("🔙 بازگشت", callback_data="back")]]))
+                await q.edit_message_text(msg, parse_mode="Markdown", disable_web_page_preview=True, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔄 بروزرسانی VIP", callback_data="news"), InlineKeyboardButton("🔙 بازگشت", callback_data="back")]]))
         elif d == "dominance":
             try:
                 async with httpx.AsyncClient(timeout=15) as client:
                     resp = await client.get("https://api.coingecko.com/api/v3/global"); data = resp.json()
                     btc_dom = data['data']['market_cap_percentage']['btc']; eth_dom = data['data']['market_cap_percentage']['eth']
-                    await q.edit_message_text(f"🏆 *دامیننس بازار*\n{pdt.both()}\nبیتکوین: {btc_dom:.1f}%\nاتریوم: {eth_dom:.1f}%", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="back")]]))
+                    await q.edit_message_text(f"🏆 *دامیننس بازار VIP*\n{pdt.both()}\nبیتکوین: {btc_dom:.1f}%\nاتریوم: {eth_dom:.1f}%", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="back")]]))
             except: await q.edit_message_text("❌ خطا", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="back")]]))
         elif d == "port":
             s = trader.stats()
-            await q.edit_message_text(f"💰 *سبد دارایی*\n{pdt.both()}\n💵 موجودی: ${s['balance']:,.2f}\n📈 سود/زیان: ${s['pnl']:+,.2f}\n📊 کل معاملات: {s['total']}\n✅ برد: {s['wins']}\n📈 نرخ برد: {s['rate']:.1f}%\n🎮 دمو: {s['demo']} | 💹 واقعی: {s['real']}", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔄 بروزرسانی", callback_data="port"), InlineKeyboardButton("🔙 بازگشت", callback_data="back")]]))
+            await q.edit_message_text(f"💰 *سبد دارایی VIP PLATINUM*\n{pdt.both()}\n💵 موجودی: ${s['balance']:,.2f}\n📈 سود/زیان: ${s['pnl']:+,.2f}\n📊 کل معاملات: {s['total']}\n✅ برد: {s['wins']}\n📈 نرخ برد: {s['rate']:.1f}%\n🎮 دمو: {s['demo']} | 💹 واقعی: {s['real']}", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔄 بروزرسانی VIP", callback_data="port"), InlineKeyboardButton("🔙 بازگشت", callback_data="back")]]))
         elif d == "status":
-            txt = f"🔑 *وضعیت سیستم*\n{pdt.both()}\n🔌 کوینکس: {'✅' if exchange_mgr.connected else '❌'}\n🧠 گروک: {'✅' if groq_ai.enabled else '❌'}\n🌟 جمینای: {'✅' if gemini_ai.enabled else '❌'}\n📊 پوزیشن‌های باز: {len(trader.positions)}\n💵 معاملات امروز: {cfg.daily_trades_count}\n📈 سود/زیان امروز: ${cfg.daily_pnl:+,.2f}\n{token_mgr.stats()}"
+            txt = f"🔑 *وضعیت سیستم VIP PLATINUM*\n{pdt.both()}\n🔌 کوینکس: {'✅' if exchange_mgr.connected else '❌'}\n🧠 گروک: {'✅' if groq_ai.enabled else '❌'}\n🌟 جمینای: {'✅' if gemini_ai.enabled else '❌'}\n📊 پوزیشن‌های باز: {len(trader.positions)}\n💵 معاملات امروز: {cfg.daily_trades_count}\n📈 سود/زیان امروز: ${cfg.daily_pnl:+,.2f}\n{token_mgr.stats()}"
             if PSUTIL_AVAILABLE: txt += f"\n🧠 پردازنده: {psutil.cpu_percent()}% | حافظه: {psutil.virtual_memory().percent}%"
             await q.edit_message_text(txt, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="back")]]))
         elif d == "ref": 
-            await q.edit_message_text(f"🟢 *منوی اصلی*\n{pdt.both()}", reply_markup=Menu.main())
+            await q.edit_message_text(f"🟢 *منوی اصلی VIP PLATINUM*\n{pdt.both()}", reply_markup=Menu.main())
         elif d == "stop":
             for s in list(trader.positions.keys()):
                 t = exchange_mgr.ticker(s)
-                if t: trader.close(s, t['last'], "بسته شد")
-            await q.edit_message_text(f"⏸️ همه معاملات بسته شد\n{pdt.both()}", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="back")]]))
+                if t: trader.close(s, t['last'], "بسته شد VIP")
+            await q.edit_message_text(f"⏸️ همه معاملات VIP بسته شد\n{pdt.both()}", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="back")]]))
         elif d == "market":
             top = []
             for sym in cfg.symbols[:10]:
@@ -1142,7 +1172,7 @@ async def button_router(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
                 if t: top.append({'symbol':sym.replace('/USDT',''),'change':t.get('percentage',0)})
             m = await groq_ai.market(top)
             if m: 
-                await q.edit_message_text(f"📰 *تحلیل بازار*\n\n{m}\n\n✨ @CryptoPulse606 | {pdt.full()}", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="back")]]))
+                await q.edit_message_text(f"📰 *تحلیل بازار VIP*\n\n{m}\n\n💎 @CryptoPulseVIP | {pdt.full()}", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="back")]]))
             else: 
                 await q.edit_message_text("❌", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="back")]]))
         elif d == "scan":
@@ -1154,78 +1184,68 @@ async def button_router(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
                     ind, _ = ui.calc(df); sig, conf, score, action, _ = sg.generate(ind, t['last'])
                     res.append({'symbol':sym,'price':t['last'],'signal':sig,'confidence':conf,'score':score,'action':action})
             res.sort(key=lambda x: abs(x['score']), reverse=True)
-            txt = f"🔍 *اسکن بازار*\n\n{pdt.both()}\n\n"
+            txt = f"🔍 *اسکن بازار VIP PLATINUM*\n\n{pdt.both()}\n\n"
             for i,r in enumerate(res[:15],1):
                 e = "🟢" if "خرید" in r['signal'] else "🔴" if "فروش" in r['signal'] else "⚪"
                 txt += f"{i}. {e} *{r['symbol'].replace('/USDT','')}*: ${r['price']:,.4f} | {r['signal'][:20]} | {r['action']}\n"
-            await q.edit_message_text(txt, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔄", callback_data="scan"), InlineKeyboardButton("🔙", callback_data="back")]]))
-        elif d in ["pa","pred","smc","whale","set","course"]:
-            # FIXED: دکمه course الان کار می‌کنه
-            if d == "course":
-                global course_lesson_num
-                msg = f"📚 *دوره آموزشی کریپتو پالس*\n\n{pdt.both()}\n\n🎓 درس {course_lesson_num + 1} از {TOTAL_COURSE_LESSONS}\n📖 برای دریافت درس جدید از دکمه زیر استفاده کن\n\n✨ @CryptoPulse606\n#دوره_کریپتو_پالس"
-                await q.edit_message_text(msg, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([
-                    [InlineKeyboardButton("📖 دریافت درس جدید", callback_data="get_course_lesson")],
-                    [InlineKeyboardButton("🔙 بازگشت", callback_data="back")]
-                ]))
-            elif d == "pa":
+            await q.edit_message_text(txt, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔄 VIP", callback_data="scan"), InlineKeyboardButton("🔙", callback_data="back")]]))
+        elif d == "course":
+            msg = f"📚 *دوره آموزشی VIP PLATINUM*\n\n{pdt.both()}\n\n🎓 درس {course_lesson_num + 1} از {TOTAL_COURSE_LESSONS}\n📖 برای دریافت درس جدید از دکمه زیر استفاده کن\n\n💎 @CryptoPulseVIP\n#دوره_VIP_پلاتینیوم"
+            await q.edit_message_text(msg, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("📖 دریافت درس جدید VIP", callback_data="get_course_lesson")],
+                [InlineKeyboardButton("🔙 بازگشت", callback_data="back")]
+            ]))
+        elif d == "get_course_lesson":
+            await q.answer("🎓 در حال آماده‌سازی درس VIP...")
+            if groq_ai.enabled:
+                topic = COURSE_TOPICS[course_lesson_num % len(COURSE_TOPICS)]
+                lesson = await groq_ai.course_lesson(course_lesson_num + 1, TOTAL_COURSE_LESSONS, topic)
+                if lesson:
+                    await safe_send(ctx.bot, q.message.chat_id, lesson)
+                    course_lesson_num += 1
+                    with open('course_progress_vip.json', 'w') as f: 
+                        json.dump({'lesson': course_lesson_num}, f)
+                    await q.edit_message_text(f"✅ درس VIP {course_lesson_num} ارسال شد!\n\nبرای دریافت درس بعدی دوباره کلیک کن.", 
+                        reply_markup=InlineKeyboardMarkup([
+                            [InlineKeyboardButton("📖 درس بعدی VIP", callback_data="get_course_lesson")],
+                            [InlineKeyboardButton("🔙 بازگشت", callback_data="back")]
+                        ]))
+        elif d in ["pa","pred","smc","whale","set"]:
+            if d == "pa":
                 sym = "BTC/USDT"; t = exchange_mgr.ticker(sym); df = exchange_mgr.ohlcv(sym, '1h', 200)
                 if t and df is not None:
                     ind, _ = ui.calc(df); pats = [k for k,v in ind.items() if isinstance(v,bool) and v]
                     res = await groq_ai.pa(sym, ind, t['last'], pats)
-                    if res: await q.edit_message_text(f"📊 *پرایس اکشن {sym.replace('/USDT','')}*\n\n{res}\n\n✨ @CryptoPulse606", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="back")]]))
+                    if res: await q.edit_message_text(f"📊 *پرایس اکشن VIP {sym.replace('/USDT','')}*\n\n{res}\n\n💎 @CryptoPulseVIP", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="back")]]))
             elif d == "pred":
                 sym = "BTC/USDT"; t = exchange_mgr.ticker(sym); df = exchange_mgr.ohlcv(sym, '1h', 200)
                 if t and df is not None:
                     ind, _ = ui.calc(df); res = await groq_ai.pred(sym, ind, t['last'])
-                    if res: await q.edit_message_text(f"🔮 *پیش‌بینی قیمت {sym.replace('/USDT','')}*\n\n{res}\n\n✨ @CryptoPulse606", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="back")]]))
+                    if res: await q.edit_message_text(f"🔮 *پیش‌بینی قیمت VIP {sym.replace('/USDT','')}*\n\n{res}\n\n💎 @CryptoPulseVIP", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="back")]]))
             elif d == "smc":
                 sym = "BTC/USDT"; df = exchange_mgr.ohlcv(sym, '1h', 200)
                 if df is not None:
                     smc_data = SmartMoney.analyze(df); res = await groq_ai.smc(sym, smc_data)
-                    if res: await q.edit_message_text(f"🧲 *اسمارت مانی {sym.replace('/USDT','')}*\n\n{res}\n\n✨ @CryptoPulse606", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="back")]]))
+                    if res: await q.edit_message_text(f"🧲 *اسمارت مانی VIP {sym.replace('/USDT','')}*\n\n{res}\n\n💎 @CryptoPulseVIP", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="back")]]))
             elif d == "whale":
                 res = await groq_ai.whale()
-                if res: await q.edit_message_text(f"🐋 *حرکات نهنگ‌های بازار*\n\n{res}\n\n✨ @CryptoPulse606", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="back")]]))
+                if res: await q.edit_message_text(f"🐋 *حرکات نهنگ‌های بازار VIP*\n\n{res}\n\n💎 @CryptoPulseVIP", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="back")]]))
             elif d == "set":
-                txt = f"⚙️ *تنظیمات*\n{pdt.both()}\n🔌 کوینکس: {'✅' if exchange_mgr.connected else '❌'}\n🧠 گروک: {'✅' if groq_ai.enabled else '❌'}\n🌟 جمینای: {'✅' if gemini_ai.enabled else '❌'}\n⏰ سیگنال: ۴ ساعت\n📚 دوره: ۳۰ دقیقه\n📰 اخبار: ۴ ساعت\n{token_mgr.stats()}"
+                txt = f"⚙️ *تنظیمات VIP PLATINUM*\n{pdt.both()}\n🔌 کوینکس: {'✅' if exchange_mgr.connected else '❌'}\n🧠 گروک: {'✅' if groq_ai.enabled else '❌'}\n🌟 جمینای: {'✅' if gemini_ai.enabled else '❌'}\n⏰ سیگنال: ۴ ساعت\n📚 دوره: ۳۰ دقیقه\n📰 اخبار: ۴ ساعت\n{token_mgr.stats()}"
                 await q.edit_message_text(txt, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="back")]]))
-        elif d == "get_course_lesson":
-            global course_lesson_num
-            await q.answer("🎓 در حال آماده‌سازی درس...")
-            if groq_ai.enabled:
-                topic = COURSE_TOPICS[course_lesson_num % len(COURSE_TOPICS)]
-                lesson = await groq_ai.course_lesson(course_lesson_num+1, TOTAL_COURSE_LESSONS, topic)
-                if lesson:
-                    await safe_send(ctx.bot, q.message.chat_id, lesson)
-                    course_lesson_num += 1
-                    with open('course_progress_v29.json','w') as f: json.dump({'lesson':course_lesson_num}, f)
-                    await q.edit_message_text(f"✅ درس {course_lesson_num} ارسال شد!\n\nبرای دریافت درس بعدی دوباره کلیک کن.", reply_markup=InlineKeyboardMarkup([
-                        [InlineKeyboardButton("📖 درس بعدی", callback_data="get_course_lesson")],
-                        [InlineKeyboardButton("🔙 بازگشت", callback_data="back")]
-                    ]))
         else: 
-            await q.answer(f"⚡ {d} | {pdt.time_str()}")
+            await q.answer(f"💎 {d} | {pdt.time_str()}")
     except Exception as e:
-        logger.error(f"Btn: {e}")
-        try: await q.answer("❌ خطا رخ داد")
+        logger.error(f"Btn VIP: {e}")
+        try: await q.answer("❌ خطا در سیستم VIP")
         except: pass
 
 async def text_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(f"برای شروع /start رو بزن\n{pdt.both()}", reply_markup=Menu.main())
+    await update.message.reply_text(f"💎 برای شروع VIP /start رو بزن\n{pdt.both()}", reply_markup=Menu.main())
 
 # ============================================================
 # AUTO LOOPS (ALL ACTIVE)
 # ============================================================
-course_lesson_num = 0
-TOTAL_COURSE_LESSONS = 1000
-COURSE_TOPICS = [
-    "مبانی بلاکچین و بیتکوین","تحلیل تکنیکال کلاسیک","کندل‌شناسی پیشرفته","میانگین‌های متحرک","آراس‌آی و مکدی",
-    "باندهای بولینگر","فیبوناچی اصلاحی","فیبوناچی گسترشی","الگوهای کلاسیک نمودار","ایچیموکو کامل",
-    "پروفایل حجم","ساختار بازار","بلوک سفارش","شکاف ارزش منصفانه","جمع‌آوری نقدینگی",
-    "شکست ساختار و تغییر روند","اسمارت مانی پیشرفته","مدیریت سرمایه پایه","مدیریت سرمایه پیشرفته","روانشناسی ترید"
-] * 50
-
 async def auto_signals(app: Application):
     await asyncio.sleep(10)
     while True:
@@ -1234,7 +1254,7 @@ async def auto_signals(app: Application):
             if not exchange_mgr.connected: exchange_mgr.connect()
             today = pdt.shamsi()
             if today != cfg.last_reset_day: cfg.daily_trades_count = 0; cfg.daily_pnl = 0.0; cfg.last_reset_day = today
-            await safe_send(app.bot, cfg.channel_id, f"🔥🔥🔥 #تحلیل_دوره‌ای 🔥🔥🔥\n\n{pdt.full()}\n{pdt.greeting()}!\n\n📊 تحلیل ۵ ارز برتر بازار...")
+            await safe_send(app.bot, cfg.channel_id, f"💎💎💎 #تحلیل_VIP_پلاتینیوم 💎💎💎\n\n{pdt.full()}\n{pdt.greeting()}!\n\n📊 تحلیل ۵ ارز برتر بازار VIP...")
             for sym in ["BTC/USDT","ETH/USDT","SOL/USDT","BNB/USDT","XRP/USDT"]:
                 try:
                     t = exchange_mgr.ticker(sym); df = exchange_mgr.ohlcv(sym,'1h',200)
@@ -1250,16 +1270,16 @@ async def auto_signals(app: Application):
                         pred_t = await groq_ai.prediction(sym, t['last'], ind) if groq_ai.enabled else None
                         await send_signal_with_chart(app.bot, cfg.channel_id, sym, t, df, ind, candle_names, mtf, smc_data, groq_t, None, None, None, smc_t, pred_t)
                         await asyncio.sleep(120)
-                except Exception as e: logger.error(f"Signal {sym}: {e}")
+                except Exception as e: logger.error(f"Signal VIP {sym}: {e}")
             for sym in list(trader.positions.keys()):
                 try:
                     t = exchange_mgr.ticker(sym)
                     if t:
                         r = trader.update(sym, t['last'])
-                        if r: await safe_send(app.bot, cfg.channel_id, f"{'🟢' if r['pnl']>0 else '🔴'} {sym}: ${r['pnl']:+,.2f}")
+                        if r: await safe_send(app.bot, cfg.channel_id, f"{'🟢' if r['pnl']>0 else '🔴'} VIP {sym}: ${r['pnl']:+,.2f}")
                 except: pass
-            await safe_send(app.bot, cfg.channel_id, f"🟢═══ #پایان_تحلیل ═══🟢\n\n{pdt.both()}\n📊 سیگنال بعدی: ۴ ساعت دیگر\n✨ @CryptoPulse606")
-        except Exception as e: logger.error(f"Signal loop: {e}")
+            await safe_send(app.bot, cfg.channel_id, f"🟢═══ #پایان_تحلیل_VIP ═══🟢\n\n{pdt.both()}\n📊 سیگنال بعدی VIP: ۴ ساعت دیگر\n💎 @CryptoPulseVIP")
+        except Exception as e: logger.error(f"Signal loop VIP: {e}")
         await asyncio.sleep(cfg.signal_interval)
 
 async def auto_news(app: Application):
@@ -1272,27 +1292,31 @@ async def auto_news(app: Application):
                     headlines = [a['title'] for a in articles[:20]]
                     summary = await groq_ai.persian_news_summary(headlines)
                     if summary:
-                        msg = f"📰 *اخبار داغ کریپتو*\n{pdt.both()}\n\n{summary}\n\n✨ @CryptoPulse606\n#اخبار_کریپتو"
+                        msg = f"📰 *اخبار داغ کریپتو VIP*\n{pdt.both()}\n\n{summary}\n\n💎 @CryptoPulseVIP\n#اخبار_VIP"
                         await safe_send(app.bot, cfg.channel_id, msg)
-        except Exception as e: logger.error(f"News: {e}")
+        except Exception as e: logger.error(f"News VIP: {e}")
         await asyncio.sleep(cfg.news_interval)
 
 async def auto_course(app: Application):
-    global course_lesson_num
+    global course_lesson_num  # اعلام global در ابتدای تابع
     await asyncio.sleep(60)
     try:
-        with open('course_progress_v29.json', 'r') as f: course_lesson_num = json.load(f).get('lesson',0)
-    except: pass
+        with open('course_progress_vip.json', 'r') as f: 
+            data = json.load(f)
+            course_lesson_num = data.get('lesson', 0)
+    except:
+        pass
     while True:
         try:
             if cfg.channel_id and groq_ai.enabled:
                 topic = COURSE_TOPICS[course_lesson_num % len(COURSE_TOPICS)]
-                lesson = await groq_ai.course_lesson(course_lesson_num+1, TOTAL_COURSE_LESSONS, topic)
+                lesson = await groq_ai.course_lesson(course_lesson_num + 1, TOTAL_COURSE_LESSONS, topic)
                 if lesson:
                     await safe_send(app.bot, cfg.channel_id, lesson)
                     course_lesson_num += 1
-                    with open('course_progress_v29.json','w') as f: json.dump({'lesson':course_lesson_num}, f)
-        except Exception as e: logger.error(f"Course: {e}")
+                    with open('course_progress_vip.json', 'w') as f: 
+                        json.dump({'lesson': course_lesson_num}, f)
+        except Exception as e: logger.error(f"Course VIP: {e}")
         await asyncio.sleep(cfg.education_interval)
 
 async def auto_fear_greed(app: Application):
@@ -1303,7 +1327,7 @@ async def auto_fear_greed(app: Application):
                 fg_value, fg_text = await FearGreedIndex.fetch()
                 ai_report = await groq_ai.fear_greed_report(fg_value, fg_text)
                 emoji = "🟢" if fg_value < 30 else "🔴" if fg_value > 70 else "🟡"
-                msg = f"😱 *شاخص ترس و طمع*\n\n{emoji} *{fg_value} از ۱۰۰* — {fg_text}\n\n{ai_report if ai_report else ''}\n\n✨ @CryptoPulse606"
+                msg = f"😱 *شاخص ترس و طمع VIP*\n\n{emoji} *{fg_value} از ۱۰۰* — {fg_text}\n\n{ai_report if ai_report else ''}\n\n💎 @CryptoPulseVIP"
                 await safe_send(app.bot, cfg.channel_id, msg)
         except: pass
         await asyncio.sleep(cfg.fg_interval)
@@ -1314,12 +1338,12 @@ async def auto_whale(app: Application):
         try:
             if cfg.channel_id and groq_ai.enabled:
                 c = await groq_ai.whale()
-                if c: await safe_send(app.bot, cfg.channel_id, f"🐋 *حرکات نهنگ‌های بازار*\n\n{c}\n\n✨ @CryptoPulse606")
+                if c: await safe_send(app.bot, cfg.channel_id, f"🐋 *حرکات نهنگ‌های بازار VIP*\n\n{c}\n\n💎 @CryptoPulseVIP")
         except: pass
         await asyncio.sleep(cfg.whale_interval)
 
 # ============================================================
-# MAIN (VIRUS ENTRY)
+# MAIN (VIP PLATINUM ENTRY)
 # ============================================================
 async def main():
     if not ProcessLock.acquire(): sys.exit(1)
@@ -1327,12 +1351,13 @@ async def main():
         ProcessLock.release()
         logger.error("❌ توکن تلگرام پیدا نشد! فایل .env رو بررسی کن.")
         return
-    print(f"""{Fore.GREEN}{'='*70}
-║   🚀 CRYPTO PULSE v29.1 — FIXED EDITION   ║
+    print(f"""{Fore.CYAN}{Style.BRIGHT}{'='*70}
+║   💎 VIP PLATINUM v1.0 — CRYPTO PULSE 💎   ║
 ║   📅 {pdt.shamsi()}                      ║
 ║   ⏰ {pdt.time_str()}                          ║
 {'='*70}{Style.RESET_ALL}""")
-    logger.info(f"🚀 شروع نسخه ۲۹.۱ — Fixed | {pdt.full()}")
+    print(f"{Fore.YELLOW}💎 VIP PLATINUM EDITION — Power, Precision, Performance{Style.RESET_ALL}")
+    logger.info(f"💎 شروع نسخه VIP PLATINUM v1.0 | {pdt.full()}")
     exchange_mgr.connect()
     request = create_request()
     app = Application.builder().token(cfg.token).request(request).build()
@@ -1345,12 +1370,13 @@ async def main():
     asyncio.create_task(auto_course(app))
     asyncio.create_task(auto_fear_greed(app))
     asyncio.create_task(auto_whale(app))
-    logger.info(f"🚀 ربات آماده | گروک:{'✅' if groq_ai.enabled else '❌'} | جمینای:{'✅' if gemini_ai.enabled else '❌'} | حجم: ~۲۵۰۰ خط")
+    logger.info(f"💎 ربات VIP PLATINUM آماده | گروک:{'✅' if groq_ai.enabled else '❌'} | جمینای:{'✅' if gemini_ai.enabled else '❌'} | حجم: ~۲۵۰۰ خط")
+    print(f"{Fore.GREEN}✅ VIP PLATINUM BOT IS RUNNING...{Style.RESET_ALL}")
     try:
         await app.initialize(); await app.start()
         await app.updater.start_polling(drop_pending_updates=True)
         await asyncio.Event().wait()
-    except Exception as e: logger.critical(f"❌ {e}")
+    except Exception as e: logger.critical(f"❌ VIP Error: {e}")
     finally:
         try: await app.updater.stop(); await app.stop(); await app.shutdown()
         except: pass
