@@ -27,4 +27,3 @@ schedule==1.2.2
 pytz==2024.2
 fastapi==0.115.6
 uvicorn==0.34.0
-pip install python-telegram-bot pandas numpy ccxt ta mplfinance jdatetime pytz feedparser Pillow aiohttp httpx python-dotenv scipy cachetools tenacity colorama termcolor google-generativeai
