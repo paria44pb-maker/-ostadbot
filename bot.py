@@ -2,10 +2,13 @@
 # -*- coding: utf-8 -*-
 """
 ╔══════════════════════════════════════════════════════════════════╗
-║ 🚀 CRYPTO PULSE v30.0 — OWNER PANEL — MANUAL ACTIVATION         ║
-║ ✅ Owner: Free Platinum — No Lock                                ║
-║ ✅ Users: Locked — Admin Activates After Payment                 ║
-║ ✅ Admin Panel: /panel — View & Activate Users                   ║
+║ 🚀 CRYPTO PULSE v30.0 — ULTIMATE LOCK SYSTEM                    ║
+║ ✅ Owner: Always Open — No Lock                                  ║
+║ ✅ Users: 3 Options to Unlock                                    ║
+║    1️⃣ Join Channel                                               ║
+║    2️⃣ Invite 5 People                                            ║
+║    3️⃣ Buy Subscription                                           ║
+║ ✅ Admin Panel: /panel — Manual Activation                        ║
 ╚══════════════════════════════════════════════════════════════════╝
 """
 
@@ -87,9 +90,11 @@ def create_request():
 class Config:
     token: str = os.getenv("TELEGRAM_BOT_TOKEN", "")
     channel_id: str = os.getenv("CHANNEL_ID", "")
+    channel_username: str = os.getenv("CHANNEL_USERNAME", "@CryptoPulse606")
     owner_id: int = 7225279768
     groq_api_key: str = os.getenv("GROQ_API_KEY", "")
     card_number: str = "5859831200715448"
+    required_invites: int = 5
     subscription_days: int = 30
     symbols: List[str] = field(default_factory=lambda: [
         "BTC/USDT","ETH/USDT","BNB/USDT","SOL/USDT","XRP/USDT","ADA/USDT",
@@ -188,7 +193,11 @@ class UserManager:
                 "joined": datetime.now().isoformat(),
                 "signals_used": 0,
                 "last_signal": "",
-                "active": False
+                "active": False,
+                "referrals": 0,
+                "referred_by": "",
+                "joined_channel": False,
+                "unlock_method": ""
             }
             self.save()
         return self.users[uid]
@@ -200,10 +209,11 @@ class UserManager:
         if self.is_owner(uid): return True
         return self.get(uid).get("active", False)
     
-    def activate_user(self, uid, level=SubscriptionLevel.SILVER):
+    def activate_user(self, uid, method="manual", level=SubscriptionLevel.SILVER):
         user = self.get(uid)
         user["active"] = True
         user["level"] = level
+        user["unlock_method"] = method
         user["expiry"] = (datetime.now() + timedelta(days=cfg.subscription_days)).isoformat()
         self.save()
     
@@ -211,6 +221,25 @@ class UserManager:
         user = self.get(uid)
         user["active"] = False
         user["level"] = SubscriptionLevel.FREE
+        self.save()
+    
+    def add_referral(self, uid, ref_id):
+        if uid == ref_id: return False
+        self.get(uid); self.get(ref_id)
+        uid, rid = str(uid), str(ref_id)
+        if self.users[uid].get("referred_by"): return False
+        self.users[uid]["referred_by"] = rid
+        self.users[rid]["referrals"] = self.users[rid].get("referrals", 0) + 1
+        if self.users[rid]["referrals"] >= cfg.required_invites:
+            self.activate_user(rid, "invite", SubscriptionLevel.SILVER)
+        self.save()
+        return True
+    
+    def set_channel_joined(self, uid):
+        user = self.get(uid)
+        user["joined_channel"] = True
+        if not user.get("active"):
+            self.activate_user(uid, "channel", SubscriptionLevel.SILVER)
         self.save()
     
     def check_limit(self, uid):
@@ -230,11 +259,15 @@ class UserManager:
         user["last_signal"] = now.isoformat()
         self.save()
         return True, ""
-    
-    def all_users(self):
-        return self.users
 
 user_mgr = UserManager()
+
+async def check_channel_membership(user_id, bot) -> bool:
+    if not cfg.channel_username: return True
+    try:
+        member = await bot.get_chat_member(chat_id=cfg.channel_username, user_id=user_id)
+        return member.status in ['member', 'administrator', 'creator']
+    except: return False
 
 class GroqAI:
     URL = "https://api.groq.com/openai/v1/chat/completions"; MODEL = "llama-3.3-70b-versatile"
@@ -364,7 +397,8 @@ class SignalGen:
         if score<0: c = c.replace("🟢","🔴")
         action = "💰 بخر" if score>=350 else ("💸 بفروش" if score<=-350 else ("🤔 می‌تونی بخری" if score>=180 else ("😬 می‌تونی بفروشی" if score<=-180 else "⏳ صبر کن")))
         conf = 99 if abs(score)>=750 else (94 if abs(score)>=550 else (85 if abs(score)>=350 else (72 if abs(score)>=180 else 55)))
-        return f"{'خرید فوق‌العاده' if score>=750 else 'خرید قوی' if score>=550 else 'خرید' if score>=350 else 'خرید ضعیف' if score>=180 else 'فروش فوق‌العاده' if score<=-750 else 'فروش قوی' if score<=-550 else 'فروش' if score<=-350 else 'فروش ضعیف' if score<=-180 else 'خنثی'} {c}", conf, score, action
+        sig = f"خرید فوق‌العاده" if score>=750 else (f"خرید قوی" if score>=550 else (f"خرید" if score>=350 else (f"خرید ضعیف" if score>=180 else (f"فروش فوق‌العاده" if score<=-750 else (f"فروش قوی" if score<=-550 else (f"فروش" if score<=-350 else (f"فروش ضعیف" if score<=-180 else f"خنثی")))))))
+        return f"{sig} {c}", conf, score, action
 
 sg = SignalGen()
 
@@ -403,7 +437,6 @@ class Fmt:
 
 📈 میانگین‌ها: ۷={i.get('EMA_7',0):.2f} | ۲۰={i.get('EMA_20',0):.2f} | ۵۰={i.get('EMA_50',0):.2f}
 🕯️ شمع‌ها: {', '.join(candles) if candles else 'بدون الگو'}
-
 📊 اندیکاتورها: RSI={i['RSI_14']:.1f} | MACD={'صعود' if i.get('MACD_HIST',0)>0 else 'نزول'} | ADX={i['ADX']:.1f}
 🔑 مقاومت: {i.get('مقاومت',0):,.4f} | حمایت: {i.get('حمایت',0):,.4f}
 🎯 معامله: ورود: {entry:,.4f} | ضرر: {sl:,.4f} | هدف: {tp1:,.4f}
@@ -476,15 +509,17 @@ class Menu:
              InlineKeyboardButton("🏆 دامیننس بازار", callback_data="dominance"),
              InlineKeyboardButton("📰 اخبار فارسی", callback_data="news")],
             [InlineKeyboardButton("💰 سبد دارایی", callback_data="port"),
-             InlineKeyboardButton("💎 خرید اشتراک", callback_data="vip"),
+             InlineKeyboardButton("👥 دعوت دوستان", callback_data="referral"),
              InlineKeyboardButton("🔄 بروزرسانی", callback_data="ref")],
         ])
     
     @staticmethod
     def locked() -> InlineKeyboardMarkup:
         return InlineKeyboardMarkup([
+            [InlineKeyboardButton("📢 عضویت در کانال", callback_data="join_channel")],
+            [InlineKeyboardButton("👥 دعوت ۵ نفر", callback_data="invite_friends")],
             [InlineKeyboardButton("💎 خرید اشتراک", callback_data="vip")],
-            [InlineKeyboardButton("📲 پشتیبانی", url="https://t.me/CryptoPulse606")],
+            [InlineKeyboardButton("🔄 بررسی وضعیت", callback_data="check_status")],
         ])
 
 # ============================================================
@@ -496,31 +531,38 @@ async def cmd_panel(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("⛔ دسترسی غیرمجاز")
         return
     
-    users = user_mgr.all_users()
+    users = user_mgr.users
     active = sum(1 for u in users.values() if u.get("active"))
     total = len(users)
+    by_method = {"channel": 0, "invite": 0, "manual": 0, "payment": 0}
+    for u in users.values():
+        m = u.get("unlock_method", "")
+        if m in by_method: by_method[m] += 1
     
     msg = f"""🔧 *پنل مدیریت*
 
 👥 کل کاربران: {total}
-✅ فعال: {active}
-❌ غیرفعال: {total - active}
+✅ فعال: {active} | ❌ غیرفعال: {total - active}
+
+📊 روش فعال‌سازی:
+• کانال: {by_method['channel']}
+• دعوت: {by_method['invite']}
+• دستی: {by_method['manual']}
+• پرداخت: {by_method['payment']}
 
 📋 *دستورات:*
 `/activate <id> <level>` — فعال‌سازی
 `/deactivate <id>` — غیرفعال‌سازی
-`/users` — لیست کاربران
-"""
+`/users` — لیست کاربران"""
     await update.message.reply_text(msg, parse_mode="Markdown")
 
 async def cmd_activate(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
-    if not user_mgr.is_owner(user_id):
-        return
+    if not user_mgr.is_owner(user_id): return
     
     args = ctx.args
     if len(args) < 1:
-        await update.message.reply_text("❌ استفاده: `/activate <id> <level>`\nlevel: silver, gold, platinum")
+        await update.message.reply_text("❌ `/activate <id> <level>`\nlevel: silver, gold, platinum")
         return
     
     target_id = int(args[0])
@@ -530,33 +572,22 @@ async def cmd_activate(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         if lvl == "gold": level = SubscriptionLevel.GOLD
         elif lvl == "platinum": level = SubscriptionLevel.PLATINUM
     
-    user_mgr.activate_user(target_id, level)
+    user_mgr.activate_user(target_id, "manual", level)
     await update.message.reply_text(f"✅ کاربر `{target_id}` با سطح {level} فعال شد")
 
 async def cmd_deactivate(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    if not user_mgr.is_owner(user_id):
-        return
-    
+    if not user_mgr.is_owner(update.effective_user.id): return
     args = ctx.args
-    if len(args) < 1:
-        await update.message.reply_text("❌ استفاده: `/deactivate <id>`")
-        return
-    
-    target_id = int(args[0])
-    user_mgr.deactivate_user(target_id)
-    await update.message.reply_text(f"❌ کاربر `{target_id}` غیرفعال شد")
+    if len(args) < 1: await update.message.reply_text("❌ `/deactivate <id>`"); return
+    user_mgr.deactivate_user(int(args[0]))
+    await update.message.reply_text(f"❌ کاربر `{args[0]}` غیرفعال شد")
 
 async def cmd_users(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    if not user_mgr.is_owner(user_id):
-        return
-    
-    users = user_mgr.all_users()
-    msg = "📋 *لیست کاربران:*\n\n"
+    if not user_mgr.is_owner(update.effective_user.id): return
+    users = user_mgr.users    msg = "📋 *لیست کاربران:*\n\n"
     for uid, u in list(users.items())[:20]:
         status = "✅" if u.get("active") else "❌"
-        msg += f"{status} `{uid}` — {u.get('level','رایگان')}\n"
+        msg += f"{status} `{uid}` — {u.get('level','رایگان')} ({u.get('unlock_method','')})\n"
     await update.message.reply_text(msg, parse_mode="Markdown")
 
 # ============================================================
@@ -564,6 +595,14 @@ async def cmd_users(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 # ============================================================
 async def cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
+    
+    # پردازش دعوت
+    if len(ctx.args) > 0:
+        try:
+            ref_id = int(ctx.args[0])
+            if ref_id != user_id:
+                user_mgr.add_referral(user_id, ref_id)
+        except: pass
     
     # ⭐ مالک
     if user_mgr.is_owner(user_id):
@@ -576,12 +615,14 @@ async def cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 📊 دسترسی: نامحدود
 🧲 اسمارت مانی: فعال
 
+🔧 پنل مدیریت: /panel
+
 ✨ ربات کاملاً فعال ✨
 
 👇 انتخاب کن:""", reply_markup=Menu.main())
         return
     
-    # کاربر عادی
+    # کاربر فعال
     if user_mgr.is_active(user_id):
         user = user_mgr.get_user(user_id)
         level = user.get("level", SubscriptionLevel.FREE)
@@ -594,26 +635,33 @@ async def cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 📊 سیگنال: {SubscriptionLevel.LIMITS[level]['signals']} در ساعت
 
 👇 انتخاب کن:""", reply_markup=Menu.main())
-    else:
-        await update.message.reply_text(f"""
-🔒 *حساب شما غیرفعال است*
+        return
+    
+    # کاربر غیرفعال — ۳ گزینه
+    is_member = await check_channel_membership(user_id, ctx.bot)
+    user = user_mgr.get_user(user_id)
+    refs = user.get("referrals", 0)
+    
+    msg = f"""🔒 *سلام! برای استفاده از ربات، یکی از راه‌های زیر رو انتخاب کن:*
 
 {pdt.greeting()}!
 
-برای استفاده از ربات، باید اشتراک تهیه کنید:
+📊 *۳ راه برای فعال‌سازی:*
 
-💎 *پلن‌ها:*
-🥈 نقره‌ای: {SubscriptionLevel.LIMITS['نقره‌ای']['price']:,} تومان
-🥇 طلایی: {SubscriptionLevel.LIMITS['طلایی']['price']:,} تومان
-💎 پلاتینیوم: {SubscriptionLevel.LIMITS['پلاتینیوم']['price']:,} تومان
+1️⃣ *عضویت در کانال*
+📢 @CryptoPulse606
+وضعیت: {'✅ عضو هستی' if is_member else '❌ عضو نیستی'}
 
-📅 مدت: {cfg.subscription_days} روز
+2️⃣ *دعوت ۵ نفر*
+👥 {refs} از ۵ نفر رو دعوت کردی
+لینک دعوت: `https://t.me/{ctx.bot.username}?start={user_id}`
 
-💳 *شماره کارت:*
-`{cfg.card_number}`
-بانک تجارت
+3️⃣ *خرید اشتراک*
+💎 از ۱.۴ میلیون تومان
 
-📲 پس از پرداخت، رسید رو به @CryptoPulse606 بفرستید تا حسابتون فعال بشه.""", parse_mode="Markdown", reply_markup=Menu.locked())
+👇 یکی از گزینه‌ها رو انتخاب کن:"""
+    
+    await update.message.reply_text(msg, parse_mode="Markdown", reply_markup=Menu.locked())
 
 async def send_signal(bot, chat_id, symbol, ticker, df, ind, candles, smc_data, groq_t, smc_t, pred_t):
     if CHART_AVAILABLE:
@@ -626,24 +674,85 @@ async def button_router(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query; d = q.data
     user_id = update.effective_user.id
     
-    # کاربر غیرفعال فقط می‌تونه vip رو ببینه
+    # دکمه‌های کاربر قفل‌شده
     if not user_mgr.is_active(user_id) and not user_mgr.is_owner(user_id):
-        if d == "vip":
-            await q.edit_message_text(f"""
-💎 *خرید اشتراک*
+        if d == "join_channel":
+            is_member = await check_channel_membership(user_id, ctx.bot)
+            if is_member:
+                user_mgr.set_channel_joined(user_id)
+                await q.edit_message_text("🎉 تبریک! با عضویت در کانال، ربات برات فعال شد!\n\n/start رو بزن")
+            else:
+                await q.edit_message_text("❌ هنوز عضو کانال نشدی!\n\nلطفاً اول عضو شو:\n@CryptoPulse606\n\nبعد دکمه زیر رو بزن:", reply_markup=InlineKeyboardMarkup([
+                    [InlineKeyboardButton("🔄 بررسی مجدد", callback_data="join_channel")],
+                    [InlineKeyboardButton("📢 رفتن به کانال", url=f"https://t.me/{cfg.channel_username.replace('@','')}")]
+                ]))
+            return
+        
+        elif d == "invite_friends":
+            user = user_mgr.get_user(user_id)
+            refs = user.get("referrals", 0)
+            link = f"https://t.me/{ctx.bot.username}?start={user_id}"
+            
+            if refs >= cfg.required_invites:
+                user_mgr.activate_user(user_id, "invite", SubscriptionLevel.SILVER)
+                await q.edit_message_text("🎉 تبریک! با دعوت ۵ نفر، ربات برات فعال شد!\n\n/start رو بزن")
+            else:
+                await q.edit_message_text(f"""👥 *دعوت دوستان*
 
-🥈 نقره‌ای: {SubscriptionLevel.LIMITS['نقره‌ای']['price']:,} تومان
-🥇 طلایی: {SubscriptionLevel.LIMITS['طلایی']['price']:,} تومان
-💎 پلاتینیوم: {SubscriptionLevel.LIMITS['پلاتینیوم']['price']:,} تومان
+🔗 لینک شما:
+`{link}`
+
+👥 دعوت شده: {refs} از {cfg.required_invites}
+📌 {cfg.required_invites - refs} نفر دیگه لازم داری
+
+📢 دوستات باید با لینک تو ربات رو استارت بزنن""", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([
+                    [InlineKeyboardButton("🔄 بررسی", callback_data="invite_friends")],
+                    [InlineKeyboardButton("🔙 بازگشت", callback_data="back_to_lock")]
+                ]))
+            return
+        
+        elif d == "vip":
+            prices = {k: SubscriptionLevel.LIMITS[k]["price"] for k in [SubscriptionLevel.SILVER, SubscriptionLevel.GOLD, SubscriptionLevel.PLATINUM]}
+            await q.edit_message_text(f"""💎 *خرید اشتراک*
+
+🥈 نقره‌ای: {prices['نقره‌ای']:,} تومان
+🥇 طلایی: {prices['طلایی']:,} تومان
+💎 پلاتینیوم: {prices['پلاتینیوم']:,} تومان
 
 📅 {cfg.subscription_days} روز
 
-💳 `{cfg.card_number}`
-📲 @CryptoPulse606""", parse_mode="Markdown", reply_markup=Menu.locked())
-        else:
-            await q.answer("🔒 حساب شما غیرفعال است", show_alert=True)
-        return
+💳 *شماره کارت:*
+`{cfg.card_number}`
+بانک تجارت
+
+📲 پس از پرداخت، رسید رو به @CryptoPulse606 بفرست""", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("🔙 بازگشت", callback_data="back_to_lock")]
+            ]))
+            return
+        
+        elif d == "check_status":
+            is_member = await check_channel_membership(user_id, ctx.bot)
+            user = user_mgr.get_user(user_id)
+            refs = user.get("referrals", 0)
+            
+            if is_member:
+                user_mgr.set_channel_joined(user_id)
+                await q.edit_message_text("🎉 عضو کانال بودی! ربات فعال شد!\n\n/start")
+                return
+            
+            if refs >= cfg.required_invites:
+                user_mgr.activate_user(user_id, "invite", SubscriptionLevel.SILVER)
+                await q.edit_message_text("🎉 به اندازه کافی دعوت کردی! ربات فعال شد!\n\n/start")
+                return
+            
+            await q.edit_message_text(f"🔒 هنوز فعال نشدی\n\n📢 عضو کانال: {'✅' if is_member else '❌'}\n👥 دعوت: {refs}/{cfg.required_invites}", reply_markup=Menu.locked())
+            return
+        
+        elif d == "back_to_lock":
+            await q.edit_message_text("یکی از راه‌ها رو انتخاب کن:", reply_markup=Menu.locked())
+            return
     
+    # کاربر فعال یا مالک
     try:
         if d == "back": await q.edit_message_text(f"🟢 منو\n\n{pdt.full()}", parse_mode="Markdown", reply_markup=Menu.main())
         elif d == "p":
@@ -697,18 +806,10 @@ async def button_router(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
                     resp = await client.get("https://api.coingecko.com/api/v3/global"); data = resp.json()
                     await q.edit_message_text(f"🏆 دامیننس\n{pdt.full()}\nبیتکوین: {data['data']['market_cap_percentage']['btc']:.1f}%\nاتریوم: {data['data']['market_cap_percentage']['eth']:.1f}%", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]]))
             except: await q.edit_message_text("❌", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]]))
-        elif d == "vip":
-            await q.edit_message_text(f"""
-💎 *خرید اشتراک*
-
-🥈 نقره‌ای: {SubscriptionLevel.LIMITS['نقره‌ای']['price']:,} تومان
-🥇 طلایی: {SubscriptionLevel.LIMITS['طلایی']['price']:,} تومان
-💎 پلاتینیوم: {SubscriptionLevel.LIMITS['پلاتینیوم']['price']:,} تومان
-
-📅 {cfg.subscription_days} روز
-
-💳 `{cfg.card_number}`
-📲 @CryptoPulse606""", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]]))
+        elif d == "referral":
+            user = user_mgr.get_user(user_id)
+            link = f"https://t.me/{ctx.bot.username}?start={user_id}"
+            await q.edit_message_text(f"👥 دعوت\n\n🔗 `{link}`\n👥 {user['referrals']}/{cfg.required_invites}", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]]))
         elif d in ["scan","market","ai_BTC/USDT","chart_BTC/USDT","pred","whale","port","ref"]:
             await q.edit_message_text(f"⚡ {d}\n{pdt.full()}\n\nدر حال بروزرسانی...\n✨ @CryptoPulse606", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]]))
         else: await q.answer(f"⚡ {pdt.time_str()}")
@@ -718,10 +819,6 @@ async def button_router(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         except: pass
 
 async def text_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    if not user_mgr.is_active(user_id) and not user_mgr.is_owner(user_id):
-        await update.message.reply_text("🔒 حساب شما غیرفعال است. لطفاً اشتراک تهیه کنید.", reply_markup=Menu.locked())
-        return
     await update.message.reply_text(f"/start\n{pdt.full()}", reply_markup=Menu.main())
 
 # ============================================================
@@ -801,7 +898,7 @@ async def main():
     asyncio.create_task(auto_news(app))
     asyncio.create_task(auto_fear_greed(app))
     asyncio.create_task(auto_whale(app))
-    logger.info("🚀 ربات آماده | مالک: ۷۲۲۵۲۷۹۷۶۸ | پنل مدیریت: /panel")
+    logger.info("🚀 ربات آماده | مالک: ۷۲۲۵۲۷۹۷۶۸")
     try:
         await app.initialize(); await app.start()
         await app.updater.start_polling(drop_pending_updates=True)
