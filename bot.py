@@ -3,7 +3,7 @@
 """
 ╔══════════════════════════════════════════════════════════════════╗
 ║ 🚀 CRYPTO PULSE v30.0 — OWNER PLATINUM — LOCKED FOR USERS      ║
-║ ✅ Owner: Free Permanent Platinum                                ║
+║ ✅ Owner: 7225279768 — Free Permanent Platinum                   ║
 ║ ✅ New Users: Locked (Invite 3 or Pay)                           ║
 ║ ✅ Subscriptions: 30 Days                                       ║
 ║ ✅ 20% Discount  ✅ All Buttons Active                           ║
@@ -108,12 +108,12 @@ class Config:
     token: str = os.getenv("TELEGRAM_BOT_TOKEN", "")
     channel_id: str = os.getenv("CHANNEL_ID", "")
     channel_username: str = os.getenv("CHANNEL_USERNAME", "@CryptoPulse606")
-    owner_id: int = int(os.getenv("OWNER_ID", "1234567890"))  # 👈 آیدی عددی خودت
+    owner_id: int = 7225279768  # 👈 آیدی عددی شما
     groq_api_key: str = os.getenv("GROQ_API_KEY", "")
     gemini_api_key: str = os.getenv("GEMINI_API_KEY", "")
     card_number: str = "5859831200715448"
     required_invites: int = 3
-    subscription_days: int = 30  # 👈 اشتراک یک‌ماهه
+    subscription_days: int = 30
     symbols: List[str] = field(default_factory=lambda: [
         "BTC/USDT","ETH/USDT","BNB/USDT","SOL/USDT","XRP/USDT","ADA/USDT",
         "DOGE/USDT","DOT/USDT","AVAX/USDT","LINK/USDT","UNI/USDT","ATOM/USDT",
@@ -689,12 +689,12 @@ async def button_router(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     # Locked user buttons
     if d in ["unlock_invite", "check_status", "vip"] and not user_mgr.can_use(user_id) and not user_mgr.is_owner(user_id):
         if d == "unlock_invite":
-            user = user_mgr.get_user(user_id); refs = user["referrals"]
+            user = user_mgr.get(user_id); refs = user["referrals"]
             link = f"https://t.me/{ctx.bot.username}?start={user_id}"
             await q.edit_message_text(f"👥 دعوت\n\nلینک: `{link}`\n👥 {refs}/{cfg.required_invites}\n📢 @CryptoPulse606", parse_mode="Markdown", reply_markup=Menu.locked())
         elif d == "check_status":
             is_member = await check_channel(user_id, ctx.bot)
-            user = user_mgr.get_user(user_id); refs = user["referrals"]
+            user = user_mgr.get(user_id); refs = user["referrals"]
             if is_member and refs >= cfg.required_invites:
                 user_mgr.get(user_id)["unlocked"] = True
                 user_mgr.get(user_id)["level"] = SubscriptionLevel.SILVER
@@ -863,7 +863,7 @@ async def main():
     asyncio.create_task(auto_news(app))
     asyncio.create_task(auto_fear_greed(app))
     asyncio.create_task(auto_whale(app))
-    logger.info("🚀 ربات آماده | مالک: پلاتینیوم دائمی | کاربران: قفل")
+    logger.info("🚀 ربات آماده | مالک: 7225279768 | کاربران: قفل")
     try:
         await app.initialize(); await app.start()
         await app.updater.start_polling(drop_pending_updates=True)
