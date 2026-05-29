@@ -23,6 +23,22 @@ import time
 import re
 import threading
 import math
+import logging
+logging.basicConfig(level=logging.DEBUG)
+
+# تست اتصال قبل از اجرای ربات
+try:
+    import requests
+    response = requests.get("https://api.telegram.org/bot" + TOKEN + "/getMe", timeout=10)
+    if response.status_code == 200:
+        print("✅ توکن معتبر است!")
+        print(f"🤖 نام ربات: {response.json()['result']['username']}")
+    else:
+        print("❌ توکن نامعتبر است!")
+        sys.exit(1)
+except Exception as e:
+    print(f"❌ خطای اتصال: {e}")
+    sys.exit(1)
 from datetime import datetime, timedelta
 from typing import Optional, Dict, List, Any, Tuple
 from dataclasses import dataclass, field
