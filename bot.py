@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """
 ╔══════════════════════════════════════════════════════════════════════════════╗
-║  🦅 CRYPTO EAGLE EYE v29.0 — چشــــم عـقـاب — ULTIMATE FREE AI TRADER      ║
+║       🟡 PULSE GOLDEN v30.0 — پالس طلایی — ULTIMATE FREE AI TRADER        ║
 ║  ✅ 100% Free — No Invites — No Subscriptions                               ║
 ║  ✅ Owner ID: 7225279768 — Unlimited Access                                 ║
 ║  ✅ AI Image Generator (Pollinations.ai + Internal)                          ║
@@ -13,7 +13,7 @@
 ║  ✅ Daily Market Summary (23:00 Tehran)                                      ║
 ║  ✅ 80+ Indicators  ✅ Fear & Greed  ✅ Dominance                             ║
 ║  ✅ 20 Professional Glass Buttons — All Active                               ║
-║  ✅ Ultra-Precise Persian Analysis — Eagle Eye Precision                      ║
+║  ✅ Ultra-Precise Persian Analysis — Pulse Golden Precision                  ║
 ╚══════════════════════════════════════════════════════════════════════════════╝
 """
 
@@ -59,7 +59,7 @@ def ensure_libs():
         except: subprocess.check_call([sys.executable,"-m","pip","install",pkg,"--quiet"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
 logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger('EagleEyeV29')
+logger = logging.getLogger('PulseGoldenV30')
 ensure_libs()
 
 import schedule
@@ -96,7 +96,7 @@ logger.setLevel(logging.INFO)
 console = logging.StreamHandler(); console.setLevel(logging.INFO)
 console.setFormatter(logging.Formatter('%(asctime)s | %(levelname)s | %(message)s'))
 logger.addHandler(console)
-for name in ['eagle_v29.log','eagle_v29_errors.log']:
+for name in ['pulse_golden.log','pulse_golden_errors.log']:
     h = RotatingFileHandler(name, maxBytes=50*1024*1024, backupCount=5, encoding='utf-8')
     h.setFormatter(logging.Formatter('%(asctime)s | %(levelname)s | %(message)s'))
     logger.addHandler(h)
@@ -130,8 +130,8 @@ class Config:
     signal_interval: int = 7200        # هر ۲ ساعت
     education_interval: int = 1800     # هر ۳۰ دقیقه
     news_interval: int = 14400         # هر ۴ ساعت
-    fg_interval: int = 3600
-    whale_interval: int = 5400
+    fg_interval: int = 3600            # هر ۱ ساعت
+    whale_interval: int = 5400         # هر ۱.۵ ساعت
     daily_summary_time: str = "23:00"  # خلاصه روزانه
 
 cfg = Config()
@@ -140,7 +140,7 @@ cfg = Config()
 # PROCESS LOCK
 # ============================================================
 class ProcessLock:
-    _file = "eagle_v29.lock"
+    _file = "pulse_golden.lock"
     @classmethod
     def acquire(cls) -> bool:
         try:
@@ -163,7 +163,7 @@ for sig in [signal.SIGINT, signal.SIGTERM]:
     signal.signal(sig, lambda s,f: (ProcessLock.release(), sys.exit(0)))
 
 # ============================================================
-# PERSIAN DATE
+# PERSIAN DATE & GREETING
 # ============================================================
 class PersianLive:
     DAYS = ['دوشنبه','سه‌شنبه','چهارشنبه','پنج‌شنبه','جمعه','شنبه','یکشنبه']
@@ -181,30 +181,30 @@ class PersianLive:
     @classmethod
     def full(cls): return f"{cls.day_str()} {cls.shamsi()} ساعت {cls.time_str()}"
     @classmethod
-    def greeting(cls):
+    def golden_greeting(cls):
         h = cls.now().hour
-        if 5 <= h < 12: return "صبح بخیر"
-        elif 12 <= h < 17: return "ظهر بخیر"
-        elif 17 <= h < 22: return "عصر بخیر"
-        else: return "شب بخیر"
+        if 5 <= h < 9: return "صبح بخیر 🌄"
+        elif 12 <= h < 14: return "ظهر بخیر ☀️"
+        elif 16 <= h < 18: return "عصر بخیر 🌇"
+        elif 20 <= h <= 23 or 1 <= h < 3: return "شب خوش 🌙"
+        else: return "وقت بخیر ⏰"
 
 pdt = PersianLive()
 
 # ============================================================
-# AI IMAGE GENERATOR — چشــــم عـقـاب
+# AI IMAGE GENERATOR — پالس طلایی
 # ============================================================
 class AIImageGenerator:
     POLLINATIONS_API = "https://image.pollinations.ai/prompt/"
     
     STYLES = {
-        "chart": "professional trading chart, candlestick pattern, green and red candles, technical indicators, dark background, 4K",
-        "bull": "raging golden bull made of fire and neon green energy, charging through blockchain network, epic, 8K",
-        "bear": "massive ice bear made of dark metal and red lava, roaring on crypto market, dramatic, 4K",
-        "whale": "giant transparent whale swimming in ocean of crypto coins, magical, epic, 8K",
-        "eagle": "giant cyberpunk eagle with glowing green eyes, scanning crypto charts, golden wings, epic, 8K",
-        "news": "breaking news hologram, crypto headlines, futuristic newsroom, 4K, cyberpunk",
-        "moon": "bitcoin rocket flying to the moon, golden BTC logo, green candles, space, epic, 4K",
-        "abstract": "abstract crypto art, blockchain network, futuristic geometry, neon gradients, 4K"
+        "golden_chart": "luxurious golden trading chart, green and gold candles, elegant financial theme, dark background, 4K, golden particles",
+        "bull": "golden bull statue made of pure gold and green energy, charging through cryptocurrency market, epic, 8K",
+        "bear": "giant dark bear with golden eyes, standing on falling gold bars, dramatic, 4K",
+        "whale": "massive golden whale swimming in ocean of gold coins, magical, epic, 8K",
+        "news": "breaking news hologram with golden headlines, futuristic newsroom, 4K, gold and green accents",
+        "moon": "rocket with golden Bitcoin logo flying to the moon, golden stars, green trail, epic, 4K",
+        "abstract": "abstract golden crypto art, blockchain network, futuristic geometry, green and gold gradients, 4K"
     }
     
     def __init__(self):
@@ -224,7 +224,7 @@ class AIImageGenerator:
         return None
     
     def _build_prompt(self, prompt: str, style: str = None) -> str:
-        base = "cryptocurrency, digital art, high quality, 4K, detailed, masterpiece"
+        base = "cryptocurrency, digital art, high quality, 4K, detailed, masterpiece, golden theme, green accents"
         style_kw = self.STYLES.get(style, base)
         full = f"{prompt}, {style_kw}, {base}"
         return full[:900]
@@ -245,7 +245,7 @@ class GroqAI:
         try:
             r = await self._client.post(self.URL, headers={"Authorization":f"Bearer {cfg.groq_api_key}","Content-Type":"application/json"},
                 json={"model":self.MODEL,"messages":[
-                    {"role":"system","content":"تو چشم عقاب هستی—دقیق‌ترین تحلیلگر کریپتو با دید میلیمتری. فقط فارسی خودمونی و دوستانه حرف بزن. از ایموجی زیاد استفاده کن. تحلیل‌هات باید کاملاً عملی و همراه با عدد و رقم باشه."},
+                    {"role":"system","content":"تو پالس طلایی هستی—دقیق‌ترین تحلیلگر کریپتو با دید طلایی. فقط فارسی خودمونی و دوستانه حرف بزن. از ایموجی زیاد استفاده کن. تحلیل‌هات باید کاملاً عملی و همراه با عدد و رقم باشه. تم طلایی و سبز."},
                     {"role":"user","content":prompt}
                 ],"max_tokens":max_t})
             if r.status_code==200: return r.json()["choices"][0]["message"]["content"]
@@ -271,9 +271,11 @@ MTF: {mtf}
     async def fear_greed(self, v, t): return await self.ask(f"ترس و طمع: {v} ({t}). فارسی ۲۰۰ کلمه.")
     async def course_lesson(self, num, total, topic):
         return await self.ask(f"""درس {num} از {total}: {topic}
-یه درس جذاب و کاربردی به فارسی بنویس. مثال واقعی بزن. ۱۰۰۰ کلمه. #دوره_چشم_عقاب""")
+یه درس جذاب و کاربردی به فارسی بنویس. مثال واقعی بزن. ۱۰۰۰ کلمه. #دوره_پالس_طلایی""")
     async def daily_summary(self, data):
         return await self.ask(f"خلاصه بازار امروز:\n{json.dumps(data, ensure_ascii=False)}\nتحلیل فارسی با ایموجی. ۴۰۰ کلمه.")
+    async def custom_ai_response(self, question):
+        return await self.ask(f"سوال کاربر: {question}\nپاسخ کامل و دقیق به فارسی بده. ۱۰۰۰ کلمه.")
 
 groq_ai = GroqAI()
 
@@ -297,6 +299,15 @@ class ExchangeManager:
             d = self._ex.fetch_ohlcv(s,tf,limit=limit)
             return pd.DataFrame(d,columns=['timestamp','open','high','low','close','volume']) if d and len(d)>30 else None
         except: return None
+    def top_movers(self, n=5):
+        movers = []
+        if not self.connected: return movers
+        for sym in cfg.symbols:
+            t = self.ticker(sym)
+            if t:
+                movers.append({'symbol':sym.replace('/USDT',''),'change':t.get('percentage',0)})
+        movers.sort(key=lambda x: x['change'], reverse=True)
+        return {'gainers': movers[:n], 'losers': movers[-n:]}
 
 exchange_mgr = ExchangeManager()
 
@@ -353,6 +364,8 @@ class UltraIndicators:
             ichi = IchimokuIndicator(high,low,9,26,52)
             ind['TENKAN'] = float(ichi.ichimoku_conversion_line().iloc[-1])
             ind['KIJUN'] = float(ichi.ichimoku_base_line().iloc[-1])
+            # For simplicity, SENKOU_A/B not fully implemented; use placeholder.
+            ind['SENKOU_A'] = (ind['TENKAN'] + ind['KIJUN']) / 2
         except: pass
         h50 = high.rolling(50).max().iloc[-1] if len(high)>=50 else high.max()
         l50 = low.rolling(50).min().iloc[-1] if len(low)>=50 else low.min()
@@ -381,43 +394,74 @@ class UltraIndicators:
 ui = UltraIndicators()
 
 # ============================================================
-# SIGNAL GENERATOR
+# SIGNAL GENERATOR — PULSE GOLDEN
 # ============================================================
-class SignalGen:
+class GoldenPulseSignal:
     @staticmethod
     def generate(ind, price, smc_data=None, mtf=None):
         score = 0
-        if ind.get('EMA_7',0)>ind.get('EMA_20',0)>ind.get('EMA_50',0): score+=200
-        elif ind.get('EMA_7',0)<ind.get('EMA_20',0)<ind.get('EMA_50',0): score-=200
-        rsi = ind.get('RSI_14',50)
-        if rsi<20: score+=180
-        elif rsi>80: score-=180
-        if ind.get('MACD_HIST',0)>0: score+=100
-        else: score-=100
-        if ind.get('BB_PCT',0.5)<0.05: score+=150
-        elif ind.get('BB_PCT',0.5)>0.95: score-=150
-        if ind.get('VOL_RATIO',1)>2.5: score+=80 if score>0 else -80
+        # EMAs
+        if ind.get('EMA_7',0) > ind.get('EMA_20',0) > ind.get('EMA_50',0):
+            score += 200
+        elif ind.get('EMA_7',0) < ind.get('EMA_20',0) < ind.get('EMA_50',0):
+            score -= 200
+        # RSI
+        rsi = ind.get('RSI_14', 50)
+        if rsi < 30: score += 180
+        elif rsi > 70: score -= 180
+        # MACD
+        if ind.get('MACD_HIST', 0) > 0: score += 100
+        else: score -= 100
+        # Bollinger Bands
+        bb_pct = ind.get('BB_PCT', 0.5)
+        if bb_pct < 0.05: score += 150
+        elif bb_pct > 0.95: score -= 150
+        # Volume
+        if ind.get('VOL_RATIO', 1) > 2.5:
+            score += (80 if score > 0 else -80)
+        # Candlestick patterns
         for bull in ['پوشای_صعودی','چکش','سه_سرباز']:
-            if ind.get(bull): score+=110
+            if ind.get(bull): score += 110
         for bear in ['پوشای_نزولی','ستاره_پرتابی','سه_کلاغ']:
-            if ind.get(bear): score-=110
-        if ind.get('TENKAN',0)>ind.get('KIJUN',0) and price>ind.get('SENKOU_A',0): score+=70
+            if ind.get(bear): score -= 110
+        # Ichimoku
+        if ind.get('TENKAN',0) > ind.get('KIJUN',0) and price > ind.get('SENKOU_A',0):
+            score += 70
+        # Smart Money
         if smc_data:
             if 'صعودی' in smc_data.get('تغییر_روند',''): score += 120
             elif 'نزولی' in smc_data.get('تغییر_روند',''): score -= 120
+        # Multi-timeframe
         if mtf:
-            for tf,ti in mtf.items():
-                w = {"4h":2,"1d":3,"1w":5}.get(tf,1)
-                if ti.get('RSI_14',50)>55: score+=int(35*w)
-                elif ti.get('RSI_14',50)<45: score-=int(35*w)
-        score = max(-1000,min(1000,score))
-        circles = "🟢🟢🟢🟢🟢" if abs(score)>=800 else ("🟢🟢🟢🟢" if abs(score)>=600 else ("🟢🟢🟢" if abs(score)>=400 else ("🟢🟢" if abs(score)>=200 else "⚪⚪")))
-        if score<0: circles = circles.replace("🟢","🔴")
-        action = "💰 خرید قوی" if score>=400 else ("💸 فروش قوی" if score<=-400 else ("🤔 می‌تونی بخری" if score>=200 else ("😬 می‌تونی بفروشی" if score<=-200 else "⏳ صبر کن")))
-        conf = 99 if abs(score)>=800 else (94 if abs(score)>=600 else (85 if abs(score)>=400 else (72 if abs(score)>=200 else 55)))
-        return f"{'🔥 خرید فوق‌العاده' if score>=800 else '🟢 خرید' if score>=400 else '⚪ خنثی' if abs(score)<200 else '🔴 فروش' if score<=-400 else '💀 فروش فوق‌العاده'} {circles}", conf, score, action
+            for tf, ti in mtf.items():
+                w = {"4h":2, "1d":3, "1w":5}.get(tf, 1)
+                if ti.get('RSI_14',50) > 55: score += int(35 * w)
+                elif ti.get('RSI_14',50) < 45: score -= int(35 * w)
+        # Final action
+        score = max(-1000, min(1000, score))
+        if score >= 400:
+            action = "💰 خرید قوی"
+            conf = 95 if score >= 800 else 85
+            signal_text = "🟢 خرید"
+        elif score <= -400:
+            action = "💸 فروش قوی"
+            conf = 95 if score <= -800 else 85
+            signal_text = "🔴 فروش"
+        elif score >= 200:
+            action = "🤔 می‌تونی بخری"
+            conf = 70
+            signal_text = "🟡 خرید محتاط"
+        elif score <= -200:
+            action = "😬 می‌تونی بفروشی"
+            conf = 70
+            signal_text = "🟠 فروش محتاط"
+        else:
+            action = "⏳ صبر کن"
+            conf = 55
+            signal_text = "⚪ خنثی"
+        return signal_text, conf, score, action
 
-sg = SignalGen()
+gsig = GoldenPulseSignal()
 
 # ============================================================
 # CHART GENERATOR
@@ -430,18 +474,22 @@ class ChartGenerator:
             data = df.copy(); data['timestamp'] = pd.to_datetime(data['timestamp'], unit='ms'); data = data.set_index('timestamp')
             data = data.rename(columns={'open':'Open','high':'High','low':'Low','close':'Close','volume':'Volume'})[['Open','High','Low','Close','Volume']].iloc[-60:]
             add_plots = []
+            # EMAs
             for p, color in [(7,'#FFD700'),(20,'#00ff88'),(50,'#FF8C00'),(200,'#FFFFFF')]:
                 ema = data['Close'].ewm(span=p, adjust=False).mean()
                 add_plots.append(mpf.make_addplot(ema, color=color, width=1.2))
+            # RSI
             from ta.momentum import RSIIndicator
             rsi = RSIIndicator(data['Close'],14).rsi()
             add_plots.append(mpf.make_addplot(rsi, panel=2, color='#9B59B6', ylabel='RSI'))
             add_plots.append(mpf.make_addplot(pd.Series([70]*len(data), index=data.index), panel=2, color='#ff3333', linestyle='--'))
             add_plots.append(mpf.make_addplot(pd.Series([30]*len(data), index=data.index), panel=2, color='#00ff88', linestyle='--'))
+            # MACD histogram
             macd_hist = (data['Close'].ewm(span=12).mean() - data['Close'].ewm(span=26).mean()) - (data['Close'].ewm(span=12).mean() - data['Close'].ewm(span=26).mean()).ewm(span=9).mean()
             add_plots.append(mpf.make_addplot(macd_hist, type='bar', panel=3, color='#00ff88', ylabel='MACD'))
+            # Golden style
             mc = mpf.make_marketcolors(up='#00ff88', down='#ff3355', edge='inherit', wick='inherit', volume='inherit')
-            style = mpf.make_mpf_style(marketcolors=mc, facecolor='#061a14', figcolor='#061a14', gridcolor='#1d3b34')
+            style = mpf.make_mpf_style(marketcolors=mc, facecolor='#0a1a1a', figcolor='#0a1a1a', gridcolor='#2d4a3a')
             fig, _ = mpf.plot(data, type='candle', style=style, title=f'{symbol} - {pdt.shamsi()}', volume=True, addplot=add_plots, panel_ratios=(3,1,1,1), figsize=(20,14), returnfig=True)
             buf = io.BytesIO(); fig.savefig(buf, format='png', dpi=120, bbox_inches='tight'); buf.seek(0); plt.close(fig)
             return buf
@@ -456,15 +504,17 @@ class Fmt:
     @staticmethod
     def signal(a, groq_t=None, smc_t=None, pred_t=None):
         s = a['symbol'].replace('/USDT',''); i = a['indicators']; candles = a.get('candles',[])
-        sig, conf, score, action = sg.generate(i, a['price'], a.get('smc'), a.get('mtf'))
-        entry, sl = a['price'], a['price']-i['ATR_14']*2; tp1, tp2 = a['price']+i['ATR_14']*3, a['price']+i['ATR_14']*5
+        sig_text, conf, score, action = gsig.generate(i, a['price'], a.get('smc'), a.get('mtf'))
+        entry, sl = a['price'], a['price']-i['ATR_14']*2
+        tp1, tp2 = a['price']+i['ATR_14']*3, a['price']+i['ATR_14']*5
         msg = f"""
-🦅═══ سیگنال چشــــم عـقـاب: {s} ═══🦅
-
-{pdt.greeting()} تریدر عزیز! {pdt.full()}
+╔══════════════════════════════════════╗
+║     🟡 پالس طلایی | سیگنال {s} ║
+╠══════════════════════════════════════╣
+{pdt.golden_greeting()} تریدر طلایی! {pdt.full()}
 
 💰 *قیمت:* ${a['price']:,.4f} | 📊 *تغییر:* {a['change']:+.2f}%
-🎯 *سیگنال:* {sig} | 💪 *قدرت:* {conf}% | ⭐ *امتیاز:* {score}/۱۰۰۰
+🎯 *سیگنال:* {sig_text} | 💪 *قدرت:* {conf}% | ⭐ *امتیاز:* {score}/۱۰۰۰
 🚦 *اقدام:* {action}
 
 📈 *میانگین‌ها:* EMA7={i.get('EMA_7',0):.2f} | EMA20={i.get('EMA_20',0):.2f} | EMA50={i.get('EMA_50',0):.2f} | EMA200={i.get('EMA_200',0):.2f}
@@ -485,16 +535,17 @@ STOCH K={i.get('STOCH_K',50):.1f} D={i.get('STOCH_D',50):.1f}
 🔴 حد ضرر: ${sl:,.4f} ({(abs(entry-sl)/entry*100):.1f}%)
 🟢 هدف ۱: ${tp1:,.4f} | هدف ۲: ${tp2:,.4f}
 📊 نسبت ریسک به ریوارد: ۱:{3/2:.1f}
+╚══════════════════════════════════════╝
 """
-        if groq_t: msg += f"\n🧠 *تحلیل عقاب:*\n{groq_t[:700]}\n"
+        if groq_t: msg += f"\n🧠 *تحلیل پالس طلایی:*\n{groq_t[:700]}\n"
         if smc_t: msg += f"\n🧲 *اسمارت مانی:*\n{smc_t[:400]}\n"
         if pred_t: msg += f"\n🔮 *پیش‌بینی:*\n{pred_t[:500]}\n"
-        msg += f"🦅═══ @CryptoPulse606 | {pdt.full()} ═══🦅\n#سیگنال #کریپتو #تحلیل #چشم_عقاب"
+        msg += f"\n🟡 @CryptoPulse606 | {pdt.full()}\n#پالس_طلایی #سیگنال_کریپتو #تحلیل_فارسی"
         return msg
 
     @staticmethod
     def course(lesson_text):
-        return f"📚 *دوره تخصصی چشم عقاب*\n{pdt.full()}\n\n{lesson_text}\n\n🦅 @CryptoPulse606\n#آموزش #کریپتو #ترید #چشم_عقاب"
+        return f"📚 *دوره تخصصی پالس طلایی*\n{pdt.full()}\n\n{lesson_text}\n\n🟡 @CryptoPulse606\n#آموزش #کریپتو #پالس_طلایی"
 
 fmt = Fmt()
 
@@ -546,20 +597,20 @@ async def safe_edit(bot, chat_id, msg_id, text, reply_markup=None):
     except: return None
 
 # ============================================================
-# 20 PROFESSIONAL GLASS BUTTONS
+# 20+ PROFESSIONAL GLASS BUTTONS
 # ============================================================
 class Menu:
     @staticmethod
     def main() -> InlineKeyboardMarkup:
         return InlineKeyboardMarkup([
             [InlineKeyboardButton("💰 قیمت‌ها", callback_data="p"),
-             InlineKeyboardButton("🎯 سیگنال بیتکوین", callback_data="s_BTC/USDT"),
+             InlineKeyboardButton("🎯 سیگنال طلایی بیتکوین", callback_data="golden_signal_BTC/USDT"),
              InlineKeyboardButton("🔍 اسکن بازار", callback_data="scan")],
             [InlineKeyboardButton("⏰ ۴ساعته", callback_data="tf4_BTC/USDT"),
              InlineKeyboardButton("⏰ روزانه", callback_data="tf1d_BTC/USDT"),
              InlineKeyboardButton("⏰ هفتگی", callback_data="tf1w_BTC/USDT")],
-            [InlineKeyboardButton("🧠 تحلیل هوش مصنوعی", callback_data="ai_BTC/USDT"),
-             InlineKeyboardButton("📊 نمودار پیشرفته", callback_data="chart_BTC/USDT"),
+            [InlineKeyboardButton("🤖 هوش مصنوعی (بپرس)", callback_data="ai_ask"),
+             InlineKeyboardButton("📈 نمودار (اسم ارز)", callback_data="chart_request"),
              InlineKeyboardButton("📰 تحلیل بازار", callback_data="market")],
             [InlineKeyboardButton("🧲 اسمارت مانی", callback_data="smc"),
              InlineKeyboardButton("🔮 پیش‌بینی قیمت", callback_data="pred"),
@@ -568,10 +619,12 @@ class Menu:
              InlineKeyboardButton("🏆 دامیننس بازار", callback_data="dominance"),
              InlineKeyboardButton("📰 اخبار فارسی", callback_data="news")],
             [InlineKeyboardButton("🎨 ساخت تصویر با AI", callback_data="ai_image"),
-             InlineKeyboardButton("🦅 چشم عقاب", callback_data="eagle_eye"),
-             InlineKeyboardButton("📚 دوره آموزشی", callback_data="course_info")],
+             InlineKeyboardButton("🕰 تاریخ و ساعت", callback_data="datetime_info"),
+             InlineKeyboardButton("📚 آموزش تخصصی", callback_data="ask_course")],
             [InlineKeyboardButton("🔄 بروزرسانی", callback_data="ref"),
              InlineKeyboardButton("❓ راهنما", callback_data="help")],
+            [InlineKeyboardButton("🟢 معامله واقعی", url="https://bingx.com/", callback_data="real_trade"),
+             InlineKeyboardButton("🔵 معامله دمو", url="https://bingx.com/en/demo/", callback_data="demo_trade")],
         ])
 
 # ============================================================
@@ -579,9 +632,11 @@ class Menu:
 # ============================================================
 async def cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(f"""
-🦅🦅🦅 *چشــــم عـقـاب — Eagle Eye v29* 🦅🦅🦅
+╔══════════════════════════════════════╗
+║   🟡 پالس طلایی v30.0 — PULSE GOLDEN ║
+╚══════════════════════════════════════╝
 
-{pdt.greeting()} تریدر عزیز!
+{pdt.golden_greeting()} تریدر طلایی!
 
 {pdt.full()}
 
@@ -590,11 +645,11 @@ async def cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 🧲 اسمارت مانی (SMC)
 🎨 ساخت تصویر با هوش مصنوعی
 📚 دوره ۱۰۰۰+ ساعته (هر ۳۰ دقیقه)
-📡 سیگنال هر ۲ ساعت (نمودار + AI)
+📡 سیگنال طلایی هر ۲ ساعت (نمودار + AI)
 📰 اخبار هر ۴ ساعت (تصویری)
 📊 خلاصه بازار هر شب
 
-✨ دقت میلیمتری چشــــم عـقـاب ✨
+✨ دقت طلایی پالس طلایی ✨
 
 👇 یکی از دکمه‌ها را انتخاب کنید:""", parse_mode="Markdown", reply_markup=Menu.main())
 
@@ -603,13 +658,13 @@ async def send_signal_with_images(bot, chat_id, symbol, ticker, df, ind, candles
     if CHART_AVAILABLE:
         chart_buf = chart_gen.create(df, symbol)
         if chart_buf:
-            await bot.send_photo(chat_id=chat_id, photo=chart_buf, caption=f"📊 نمودار {symbol.replace('/USDT','')} | ${ticker['last']:,.4f}")
+            await bot.send_photo(chat_id=chat_id, photo=chart_buf, caption=f"📊 نمودار طلایی {symbol.replace('/USDT','')} | ${ticker['last']:,.4f}")
     
-    # تصویر هوش مصنوعی
+    # تصویر هوش مصنوعی با تم طلایی
     trend = "صعودی" if ticker.get('percentage',0) > 0 else "نزولی"
-    ai_img = await ai_image_gen.generate(f"{symbol} {trend} market analysis", "eagle")
+    ai_img = await ai_image_gen.generate(f"{symbol} golden {trend} market analysis", "golden_chart")
     if ai_img:
-        await bot.send_photo(chat_id=chat_id, photo=ai_img, caption="🦅 تصویر تحلیلی چشم عقاب")
+        await bot.send_photo(chat_id=chat_id, photo=ai_img, caption="🟡 تصویر تحلیلی پالس طلایی")
     
     # متن تحلیل
     a = {'symbol':symbol,'price':ticker['last'],'change':ticker.get('percentage',0),'indicators':ind,'candles':candles,'mtf':mtf,'smc':smc_data}
@@ -619,7 +674,7 @@ async def send_signal_with_images(bot, chat_id, symbol, ticker, df, ind, candles
 async def button_router(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query; d = q.data
     try:
-        if d == "back": await q.edit_message_text("🦅 منوی اصلی", reply_markup=Menu.main())
+        if d == "back": await q.edit_message_text("🟡 منوی اصلی پالس طلایی", reply_markup=Menu.main())
         elif d == "p":
             if not exchange_mgr.connected: exchange_mgr.connect()
             txt = f"💰 *قیمت‌های لحظه‌ای*\n{pdt.full()}\n\n"
@@ -627,12 +682,13 @@ async def button_router(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
                 t = exchange_mgr.ticker(sym)
                 if t: txt += f"{'🟢' if t.get('percentage',0)>0 else '🔴'} {sym.replace('/USDT','')}: ${t['last']:,.4f} ({t.get('percentage',0):+.1f}%)\n"
             await q.edit_message_text(txt, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔄", callback_data="p"), InlineKeyboardButton("🔙", callback_data="back")]]))
-        elif d.startswith("s_"):
-            sym = d[2:]; await q.answer(); await q.edit_message_text(f"🦅 تحلیل {sym.replace('/USDT','')}...")
+        elif d.startswith("golden_signal_"):
+            sym = d.replace("golden_signal_", "")
+            await q.answer("🟡 در حال دریافت سیگنال طلایی...")
             if not exchange_mgr.connected: exchange_mgr.connect()
             t = exchange_mgr.ticker(sym); df = exchange_mgr.ohlcv(sym, '1h', 150)
             if not t or df is None:
-                await q.edit_message_text("❌", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]])); return
+                await q.edit_message_text("❌ داده‌ای موجود نیست", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]])); return
             ind, candles = ui.calc(df); mtf = {}
             for tf in cfg.primary_tfs:
                 dft = exchange_mgr.ohlcv(sym, tf, 100)
@@ -643,8 +699,8 @@ async def button_router(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             smc_t = await groq_ai.smc(sym, smc_data) if groq_ai.enabled else None
             pred_t = await groq_ai.prediction(sym, t['last'], ind) if groq_ai.enabled else None
             await send_signal_with_images(ctx.bot, q.message.chat_id, sym, t, df, ind, candles, mtf, smc_data, groq_t, smc_t, pred_t)
-            await safe_edit(ctx.bot, q.message.chat_id, q.message.message_id, f"✅ تحلیل {sym.replace('/USDT','')} انجام شد",
-                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔄", callback_data=f"s_{sym}"), InlineKeyboardButton("🔙", callback_data="back")]]))
+            await safe_edit(ctx.bot, q.message.chat_id, q.message.message_id, f"✅ سیگنال طلایی {sym.replace('/USDT','')} آماده شد",
+                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔄", callback_data=f"golden_signal_{sym}"), InlineKeyboardButton("🔙", callback_data="back")]]))
         elif d.startswith("tf4_") or d.startswith("tf1d_") or d.startswith("tf1w_"):
             tf_map = {"tf4_":"4h","tf1d_":"1d","tf1w_":"1w"}; labels = {"4h":"۴ساعته","1d":"روزانه","1w":"هفتگی"}
             for prefix,tf in tf_map.items():
@@ -652,61 +708,159 @@ async def button_router(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
                     sym = d[len(prefix):] if len(d)>len(prefix) else "BTC/USDT"; await q.answer()
                     t = exchange_mgr.ticker(sym); df = exchange_mgr.ohlcv(sym, tf, 150)
                     if t and df is not None:
-                        ind, _ = ui.calc(df); sig, conf, _, action = sg.generate(ind, t['last'])
+                        ind, _ = ui.calc(df); sig_text, conf, _, action = gsig.generate(ind, t['last'])
                         if CHART_AVAILABLE:
                             buf = chart_gen.create(df, sym)
                             if buf: await ctx.bot.send_photo(chat_id=q.message.chat_id, photo=buf, caption=f"⏰ {labels[tf]} {sym.replace('/USDT','')} | ${t['last']:,.4f}")
-                        await q.edit_message_text(f"⏰ *{labels[tf]} {sym.replace('/USDT','')}*\n{pdt.full()}\n💰 ${t['last']:,.4f}\n🎯 {sig}\n🚦 {action}\n🦅 @CryptoPulse606", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]]))
+                        await q.edit_message_text(f"⏰ *{labels[tf]} {sym.replace('/USDT','')}*\n{pdt.full()}\n💰 ${t['last']:,.4f}\n🎯 {sig_text}\n🚦 {action}\n🟡 @CryptoPulse606", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]]))
         elif d == "smc":
             df = exchange_mgr.ohlcv("BTC/USDT", '1h', 150)
             if df:
                 smc_data = SmartMoney.analyze(df); ai = await groq_ai.smc("بیتکوین", smc_data) if groq_ai.enabled else None
-                await q.edit_message_text(f"🧲 *اسمارت مانی*\n{pdt.full()}\n\n{ai if ai else 'داده ناکافی'}\n\n🦅 @CryptoPulse606", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]]))
+                await q.edit_message_text(f"🧲 *اسمارت مانی*\n{pdt.full()}\n\n{ai if ai else 'داده ناکافی'}\n\n🟡 @CryptoPulse606", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]]))
         elif d == "fear_greed":
             v, t = await FearGreedIndex.fetch()
             ai = await groq_ai.fear_greed(v, t) if groq_ai.enabled else None
-            await q.edit_message_text(f"😱 *ترس و طمع*\n{pdt.full()}\n\n{'🟢' if v<30 else '🔴' if v>70 else '🟡'} {v}/۱۰۰ — {t}\n\n{ai if ai else ''}\n\n🦅 @CryptoPulse606", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔄", callback_data="fear_greed"), InlineKeyboardButton("🔙", callback_data="back")]]))
+            await q.edit_message_text(f"😱 *ترس و طمع*\n{pdt.full()}\n\n{'🟢' if v<30 else '🔴' if v>70 else '🟡'} {v}/۱۰۰ — {t}\n\n{ai if ai else ''}\n\n🟡 @CryptoPulse606", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔄", callback_data="fear_greed"), InlineKeyboardButton("🔙", callback_data="back")]]))
         elif d == "news":
             articles = await CryptoNews.fetch()
             if articles:
                 summary = await groq_ai.news_summary([a['title'] for a in articles[:10]])
-                img = await ai_image_gen.generate("breaking crypto news today", "news")
-                if img: await ctx.bot.send_photo(chat_id=q.message.chat_id, photo=img, caption="📰 تصویر خبری")
-                await q.edit_message_text(f"📰 *اخبار*\n{pdt.full()}\n\n{summary}\n\n🦅 @CryptoPulse606", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔄", callback_data="news"), InlineKeyboardButton("🔙", callback_data="back")]]))
+                img = await ai_image_gen.generate("breaking crypto news today with golden highlights", "news")
+                if img: await ctx.bot.send_photo(chat_id=q.message.chat_id, photo=img, caption="📰 تصویر خبری طلایی")
+                await q.edit_message_text(f"📰 *اخبار*\n{pdt.full()}\n\n{summary}\n\n🟡 @CryptoPulse606", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔄", callback_data="news"), InlineKeyboardButton("🔙", callback_data="back")]]))
         elif d == "dominance":
             try:
                 async with httpx.AsyncClient(timeout=15) as cl:
                     r = await cl.get("https://api.coingecko.com/api/v3/global")
                     data = r.json(); btc = data['data']['market_cap_percentage']['btc']; eth = data['data']['market_cap_percentage']['eth']
-                    await q.edit_message_text(f"🏆 *دامیننس*\n{pdt.full()}\n₿ بیتکوین: {btc:.1f}%\nΞ اتریوم: {eth:.1f}%\n\n🦅 @CryptoPulse606", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]]))
+                    await q.edit_message_text(f"🏆 *دامیننس*\n{pdt.full()}\n₿ بیتکوین: {btc:.1f}%\nΞ اتریوم: {eth:.1f}%\n\n🟡 @CryptoPulse606", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]]))
             except: await q.edit_message_text("❌", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]]))
         elif d == "ai_image":
-            await q.answer("🎨 در حال ساخت...")
-            img = await ai_image_gen.generate("cyberpunk eagle crypto trader", "eagle")
-            if img:
-                await ctx.bot.send_photo(chat_id=q.message.chat_id, photo=img, caption="🦅 تصویر ساخته شد")
-                await q.edit_message_text("✅ تصویر ارسال شد", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]]))
-            else: await q.edit_message_text("❌ خطا", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]]))
-        elif d == "eagle_eye":
-            t = exchange_mgr.ticker("BTC/USDT")
-            if t:
-                trend = "صعودی" if t.get('percentage',0) > 0 else "نزولی"
-                img = await ai_image_gen.generate_eagle_eye("BTC", trend)
-                if img:
-                    await ctx.bot.send_photo(chat_id=q.message.chat_id, photo=img, caption=f"🦅 چشم عقاب: بیتکوین ${t['last']:,.2f}")
-                await q.answer("🦅 فعال شد")
-        elif d == "course_info":
-            await q.edit_message_text("📚 *دوره ۱۰۰۰+ ساعته چشم عقاب*\nهر ۳۰ دقیقه یک درس تخصصی به کانال ارسال می‌شود.\n\n🦅 @CryptoPulse606", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]]))
-        elif d in ["scan","market","ai_BTC/USDT","chart_BTC/USDT","pred","whale","ref","help"]:
-            await q.edit_message_text(f"⚡ بخش {d}\n{pdt.full()}\n\nدر حال توسعه...\n🦅 @CryptoPulse606", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]]))
-        else: await q.answer(f"⚡ {pdt.time_str()}")
+            await q.answer("🎨 پرامپت تصویر را بنویسید...")
+            await q.edit_message_text("🎨 لطفاً توضیح تصویر مورد نظر را بفرستید:", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]]))
+            # ذخیره state برای کاربر
+            ctx.user_data['awaiting_image_prompt'] = True
+        elif d == "ai_ask":
+            await q.answer("🤖 سوالت رو بپرس...")
+            await q.edit_message_text("🤖 سوال خود را به فارسی بپرسید:", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]]))
+            ctx.user_data['awaiting_ai_question'] = True
+        elif d == "chart_request":
+            await q.answer("📈 نام ارز را بنویسید (مثلاً BTC)")
+            await q.edit_message_text("📈 لطفاً نماد ارز را وارد کنید (مثلاً BTC):", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]]))
+            ctx.user_data['awaiting_chart_symbol'] = True
+        elif d == "ask_course":
+            await q.answer("📚 چه موضوعی آموزش بدم؟")
+            await q.edit_message_text("📚 موضوع آموزشی را وارد کنید (مثلاً کندل چکش):", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]]))
+            ctx.user_data['awaiting_course_topic'] = True
+        elif d == "datetime_info":
+            now = pdt.now()
+            shamsi = pdt.shamsi()
+            miladi = now.strftime('%Y-%m-%d')
+            await q.edit_message_text(f"🕰 *تاریخ و ساعت*\n📅 شمسی: {shamsi}\n📅 میلادی: {miladi}\n⏰ ساعت: {pdt.time_str()} (تهران)\n\n🟡 @CryptoPulse606", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]]))
+        elif d in ["scan","market","pred","whale","ref","help"]:
+            # scan market
+            if d == "scan":
+                if not exchange_mgr.connected: exchange_mgr.connect()
+                movers = exchange_mgr.top_movers()
+                txt = f"🔍 *اسکن بازار*\n{pdt.full()}\n\n📈 *بیشترین رشد:*\n"
+                for m in movers['gainers']:
+                    txt += f"🟢 {m['symbol']}: {m['change']:+.1f}%\n"
+                txt += "\n📉 *بیشترین ریزش:*\n"
+                for m in movers['losers']:
+                    txt += f"🔴 {m['symbol']}: {m['change']:+.1f}%\n"
+                await q.edit_message_text(txt, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]]))
+            elif d == "market":
+                await q.edit_message_text("📊 *تحلیل بازار*\nدر حال تحلیل با هوش مصنوعی...", parse_mode="Markdown")
+                # send AI analysis later
+                asyncio.create_task(do_market_analysis(q.message.chat_id))
+            elif d == "pred":
+                await q.edit_message_text("🔮 *پیش‌بینی قیمت*\nلطفاً منتظر بمانید...")
+                asyncio.create_task(do_prediction("BTC/USDT", q.message.chat_id))
+            elif d == "whale":
+                ai = await groq_ai.whale()
+                await q.edit_message_text(f"🐋 *نهنگ‌ها*\n\n{ai if ai else 'اطلاعات در دسترس نیست'}\n\n🟡 @CryptoPulse606", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]]))
+            else:
+                await q.edit_message_text(f"⚡ بخش {d} در حال توسعه...", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]]))
+        else:
+            await q.answer(f"⚡ {pdt.time_str()}")
     except Exception as e:
         logger.error(f"Btn: {e}")
         try: await q.answer("❌")
         except: pass
 
-async def text_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("از /start استفاده کنید", reply_markup=Menu.main())
+# Handler for text messages from users (for custom prompts)
+async def handle_message(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    user_data = ctx.user_data
+    if user_data.get('awaiting_image_prompt'):
+        prompt = update.message.text
+        await update.message.reply_text("🎨 در حال ساخت تصویر... لطفاً صبر کنید")
+        img = await ai_image_gen.generate(prompt, None)
+        if img:
+            await update.message.reply_photo(photo=img, caption="🟡 تصویر شما آماده شد")
+        else:
+            await update.message.reply_text("❌ خطا در ساخت تصویر")
+        user_data['awaiting_image_prompt'] = False
+    elif user_data.get('awaiting_ai_question'):
+        question = update.message.text
+        await update.message.reply_text("🤖 در حال تحلیل سوال شما...")
+        resp = await groq_ai.custom_ai_response(question)
+        if resp:
+            await update.message.reply_text(f"🧠 *پاسخ هوش مصنوعی:*\n\n{resp}", parse_mode="Markdown")
+        else:
+            await update.message.reply_text("❌ خطا در دریافت پاسخ")
+        user_data['awaiting_ai_question'] = False
+    elif user_data.get('awaiting_chart_symbol'):
+        sym = update.message.text.upper().strip()
+        if not sym.endswith("/USDT"): sym += "/USDT"
+        t = exchange_mgr.ticker(sym)
+        if not t:
+            await update.message.reply_text("❌ ارز پیدا نشد. لطفاً نماد صحیح وارد کنید (مثلاً BTC)")
+            return
+        df = exchange_mgr.ohlcv(sym, '1d', 150)
+        if df is not None and CHART_AVAILABLE:
+            buf = chart_gen.create(df, sym)
+            if buf:
+                await update.message.reply_photo(photo=buf, caption=f"📈 نمودار {sym.replace('/USDT','')}")
+            else:
+                await update.message.reply_text("❌ خطا در ساخت نمودار")
+        else:
+            await update.message.reply_text("❌ داده کافی نیست")
+        user_data['awaiting_chart_symbol'] = False
+    elif user_data.get('awaiting_course_topic'):
+        topic = update.message.text
+        await update.message.reply_text("📚 در حال تهیه درس...")
+        lesson = await groq_ai.course_lesson(1, 1000, topic)
+        if lesson:
+            await update.message.reply_text(f"📚 *آموزش {topic}*\n\n{lesson}", parse_mode="Markdown")
+        else:
+            await update.message.reply_text("❌ خطا در تولید محتوا")
+        user_data['awaiting_course_topic'] = False
+    else:
+        # default fallback
+        await update.message.reply_text("از /start استفاده کنید", reply_markup=Menu.main())
+
+async def do_market_analysis(chat_id):
+    # collect top coins data and send analysis
+    try:
+        coins = []
+        for sym in cfg.symbols[:10]:
+            t = exchange_mgr.ticker(sym)
+            if t: coins.append({'symbol': sym.replace('/USDT',''), 'change': t.get('percentage',0)})
+        analysis = await groq_ai.market(coins)
+        if analysis:
+            await safe_send(app.bot, chat_id, f"📊 *تحلیل بازار*\n{pdt.full()}\n\n{analysis}\n\n🟡 @CryptoPulse606")
+    except: pass
+
+async def do_prediction(sym, chat_id):
+    try:
+        t = exchange_mgr.ticker(sym)
+        if t:
+            ind, _ = ui.calc(exchange_mgr.ohlcv(sym, '1d', 100))
+            pred = await groq_ai.prediction(sym, t['last'], ind)
+            if pred:
+                await safe_send(app.bot, chat_id, f"🔮 *پیش‌بینی {sym}*\n{pdt.full()}\n\n{pred}\n\n🟡 @CryptoPulse606")
+    except: pass
 
 # ============================================================
 # AUTO LOOPS — TIMED TASKS
@@ -739,7 +893,11 @@ async def auto_signals(app: Application):
 async def auto_course(app: Application):
     await asyncio.sleep(60)
     lesson_num = 0
-    topics = ["تحلیل تکنیکال","کندل‌شناسی","میانگین‌های متحرک","RSI و MACD","Bollinger Bands","فیبوناچی","ایچیموکو","اسمارت مانی","مدیریت سرمایه","روانشناسی ترید","استراتژی روزانه","تحلیل فاندامنتال","نهنگ‌ها","DeFi","NFT","آلت‌سیزن"] * 100
+    topics = [
+        "تحلیل تکنیکال","کندل‌شناسی","میانگین‌های متحرک","RSI و MACD","Bollinger Bands",
+        "فیبوناچی","ایچیموکو","اسمارت مانی","مدیریت سرمایه","روانشناسی ترید",
+        "استراتژی روزانه","تحلیل فاندامنتال","نهنگ‌ها","DeFi","NFT","آلت‌سیزن"
+    ] * 100
     while True:
         try:
             if cfg.channel_id and groq_ai.enabled:
@@ -759,9 +917,9 @@ async def auto_news(app: Application):
                 articles = await CryptoNews.fetch()
                 if articles:
                     summary = await groq_ai.news_summary([a['title'] for a in articles[:12]])
-                    img = await ai_image_gen.generate("latest crypto news today", "news")
-                    if img: await app.bot.send_photo(cfg.channel_id, photo=img, caption="📰 تصویر خبری")
-                    await safe_send(app.bot, cfg.channel_id, f"📰 *اخبار روز*\n{pdt.full()}\n\n{summary}\n\n🦅 @CryptoPulse606\n#اخبار #کریپتو #تحلیل #چشم_عقاب")
+                    img = await ai_image_gen.generate("latest crypto news today with golden accent", "news")
+                    if img: await app.bot.send_photo(cfg.channel_id, photo=img, caption="📰 تصویر خبری طلایی")
+                    await safe_send(app.bot, cfg.channel_id, f"📰 *اخبار روز*\n{pdt.full()}\n\n{summary}\n\n🟡 @CryptoPulse606\n#اخبار #کریپتو #پالس_طلایی")
         except: pass
         await asyncio.sleep(cfg.news_interval)
 
@@ -771,7 +929,7 @@ async def auto_fear_greed(app: Application):
         try:
             if cfg.channel_id:
                 v, t = await FearGreedIndex.fetch()
-                await safe_send(app.bot, cfg.channel_id, f"😱 *ترس و طمع*\n{'🟢' if v<30 else '🔴' if v>70 else '🟡'} {v}/۱۰۰ — {t}\n\n🦅 @CryptoPulse606")
+                await safe_send(app.bot, cfg.channel_id, f"😱 *ترس و طمع*\n{'🟢' if v<30 else '🔴' if v>70 else '🟡'} {v}/۱۰۰ — {t}\n\n🟡 @CryptoPulse606")
         except: pass
         await asyncio.sleep(cfg.fg_interval)
 
@@ -781,7 +939,7 @@ async def auto_whale(app: Application):
         try:
             if cfg.channel_id and groq_ai.enabled:
                 c = await groq_ai.whale()
-                if c: await safe_send(app.bot, cfg.channel_id, f"🐋 *نهنگ‌ها*\n\n{c}\n\n🦅 @CryptoPulse606")
+                if c: await safe_send(app.bot, cfg.channel_id, f"🐋 *نهنگ‌ها*\n\n{c}\n\n🟡 @CryptoPulse606")
         except: pass
         await asyncio.sleep(cfg.whale_interval)
 
@@ -802,9 +960,9 @@ async def auto_daily_summary(app: Application):
                         dom = r.json()['data']['market_cap_percentage']
                     data = {"top_movers": top, "btc_dom": dom['btc'], "eth_dom": dom['eth'], "fear_greed": f"{fg_v} ({fg_t})"}
                     summary = await groq_ai.daily_summary(data)
-                    img = await ai_image_gen.generate("daily crypto market summary, eagle eye", "abstract")
+                    img = await ai_image_gen.generate("daily crypto market summary, golden style", "abstract")
                     if img: await app.bot.send_photo(cfg.channel_id, photo=img)
-                    await safe_send(app.bot, cfg.channel_id, f"📊 *خلاصه بازار امروز*\n{pdt.full()}\n\n{summary}\n\n🦅 @CryptoPulse606\n#خلاصه_بازار #کریپتو #تحلیل #چشم_عقاب")
+                    await safe_send(app.bot, cfg.channel_id, f"📊 *خلاصه بازار امروز*\n{pdt.full()}\n\n{summary}\n\n🟡 @CryptoPulse606\n#خلاصه_بازار #پالس_طلایی")
             except Exception as e: logger.error(f"Daily summary: {e}")
         await asyncio.sleep(60)
 
@@ -814,13 +972,13 @@ async def auto_daily_summary(app: Application):
 async def main():
     if not ProcessLock.acquire(): sys.exit(1)
     if not cfg.token: ProcessLock.release(); return
-    logger.info(f"🦅 شروع چشم عقاب نسخه ۲۹ | {pdt.full()}")
+    logger.info(f"🟡 شروع پالس طلایی نسخه ۳۰ | {pdt.full()}")
     exchange_mgr.connect()
     request = create_request()
     app = Application.builder().token(cfg.token).request(request).build()
     app.add_handler(CommandHandler("start", cmd_start))
     app.add_handler(CallbackQueryHandler(button_router))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_handler))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     asyncio.create_task(cleanup_memory())
     asyncio.create_task(auto_signals(app))
     asyncio.create_task(auto_course(app))
@@ -828,7 +986,7 @@ async def main():
     asyncio.create_task(auto_fear_greed(app))
     asyncio.create_task(auto_whale(app))
     asyncio.create_task(auto_daily_summary(app))
-    logger.info("🦅 چشم عقاب آماده — دقت بی‌نهایت — همه چیز رایگان")
+    logger.info("🟡 پالس طلایی آماده — دقت بی‌نهایت — همه چیز رایگان")
     try:
         await app.initialize(); await app.start()
         await app.updater.start_polling(drop_pending_updates=True)
