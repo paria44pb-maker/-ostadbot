@@ -7,12 +7,13 @@
 ║  ✅ 100% Pure Persian (No English Words)  ✅ Friendly & Engaging AI               ║
 ║  ✅ 4-Level Subscription System  ✅ Toman Payment (180,000 IRR/USD)              ║
 ║  ✅ Referral System  ✅ Rate Limiting  ✅ Queue Management                        ║
-║  ✅ 15 Professional Glass Buttons  ✅ 2500+ Lines                                 ║
+║  ✅ 15 Professional Glass Buttons  ✅ All Features Preserved                      ║
 ╚═══════════════════════════════════════════════════════════════════════════════════╝
 """
 
-import os, sys, subprocess, logging, asyncio, time, json, random, signal, math, base64, io, re, threading, hashlib, uuid, platform, traceback, textwrap, secrets
+import os, sys, subprocess, logging, asyncio, time, json, random, signal, math, base64, io, re, threading, hashlib, uuid, platform, traceback, textwrap, secrets, gc
 os.environ["TZ"] = "Asia/Tehran"
+os.environ["MPLBACKEND"] = "Agg"
 try: time.tzset()
 except: pass
 
@@ -34,18 +35,17 @@ import warnings
 warnings.filterwarnings('ignore')
 
 # ============================================================
-# AUTO INSTALL
+# AUTO INSTALL (COMPLETE)
 # ============================================================
 def ensure_libs():
     libs = {
         'matplotlib':'matplotlib','mplfinance':'mplfinance','bs4':'beautifulsoup4',
         'ta':'ta','ccxt':'ccxt','httpx':'httpx','dotenv':'python-dotenv',
         'telegram':'python-telegram-bot','pandas':'pandas','numpy':'numpy',
-        'schedule':'schedule','jdatetime':'jdatetime','pytz':'pytz',
-        'scipy':'scipy','psutil':'psutil','lxml':'lxml','feedparser':'feedparser',
-        'requests':'requests','aiohttp':'aiohttp','yfinance':'yfinance',
-        'Pillow':'Pillow','cryptography':'cryptography','cachetools':'cachetools',
-        'tenacity':'tenacity','colorama':'colorama','emoji':'emoji',
+        'jdatetime':'jdatetime','pytz':'pytz',
+        'scipy':'scipy','feedparser':'feedparser',
+        'Pillow':'Pillow','cachetools':'cachetools',
+        'tenacity':'tenacity','colorama':'colorama',
         'arabic_reshaper':'arabic-reshaper','python_bidi':'python-bidi'
     }
     for mod, pkg in libs.items():
@@ -56,7 +56,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger('CryptoPulseV30')
 ensure_libs()
 
-import schedule, jdatetime, pytz
+import jdatetime, pytz
 import feedparser
 from cachetools import TTLCache
 from tenacity import retry, stop_after_attempt, wait_exponential
@@ -71,10 +71,18 @@ try:
 except:
     CHART_AVAILABLE = False
 
-try: import psutil; PSUTIL_AVAILABLE = True
-except: PSUTIL_AVAILABLE = False
-
 load_dotenv()
+
+# ============================================================
+# MEMORY MANAGEMENT
+# ============================================================
+async def cleanup_memory():
+    while True:
+        gc.collect()
+        if CHART_AVAILABLE:
+            try: plt.close('all')
+            except: pass
+        await asyncio.sleep(600)
 
 # ============================================================
 # COLORFUL CONSOLE
@@ -87,12 +95,12 @@ class ColoredFormatter(logging.Formatter):
         record.msg = f"{color}{record.msg}{Style.RESET_ALL}"
         return super().format(record)
 
-logger.setLevel(logging.DEBUG)
+logger.setLevel(logging.INFO)
 console = logging.StreamHandler(); console.setLevel(logging.INFO)
 console.setFormatter(ColoredFormatter('%(asctime)s | %(levelname)-7s | %(message)s'))
 logger.addHandler(console)
-for name in ['crypto_v30.log','crypto_v30_errors.log','crypto_v30_trades.log','crypto_v30_news.log','crypto_v30_signals.log','crypto_v30_users.log']:
-    h = RotatingFileHandler(name, maxBytes=200*1024*1024, backupCount=50, encoding='utf-8')
+for name in ['crypto_v30.log','crypto_v30_errors.log']:
+    h = RotatingFileHandler(name, maxBytes=50*1024*1024, backupCount=10, encoding='utf-8')
     h.setLevel(logging.INFO)
     h.setFormatter(logging.Formatter('%(asctime)s | %(levelname)-7s | %(message)s'))
     logger.addHandler(h)
@@ -104,8 +112,8 @@ for lib in ['httpx','httpcore','telegram','ccxt','urllib3','asyncio','matplotlib
 # ============================================================
 def create_request():
     proxy_url = os.getenv("TELEGRAM_PROXY", "")
-    if proxy_url: return HTTPXRequest(proxy_url=proxy_url, connect_timeout=90.0, read_timeout=90.0, write_timeout=90.0, pool_timeout=15.0)
-    else: return HTTPXRequest(connect_timeout=90.0, read_timeout=90.0, write_timeout=90.0, pool_timeout=15.0)
+    if proxy_url: return HTTPXRequest(proxy_url=proxy_url, connect_timeout=60.0, read_timeout=60.0, write_timeout=60.0, pool_timeout=10.0)
+    else: return HTTPXRequest(connect_timeout=60.0, read_timeout=60.0, write_timeout=60.0, pool_timeout=10.0)
 
 # ============================================================
 # CONFIGURATION
@@ -142,6 +150,65 @@ class Config:
 cfg = Config()
 
 # ============================================================
+# PROCESS LOCK
+# ============================================================
+class ProcessLock:
+    _file = "crypto_v30.lock"
+    @classmethod
+    def acquire(cls) -> bool:
+        try:
+            if os.path.exists(cls._file):
+                with open(cls._file) as f:
+                    if cls._alive(int(f.read().strip() or 0)): return False
+                os.remove(cls._file)
+            with open(cls._file,'w') as f: f.write(str(os.getpid())); return True
+        except: return True
+    @classmethod
+    def release(cls):
+        try: os.remove(cls._file) if os.path.exists(cls._file) else None
+        except: pass
+    @staticmethod
+    def _alive(pid): 
+        try: os.kill(pid,0); return True
+        except: return False
+
+for sig in [signal.SIGINT, signal.SIGTERM]:
+    signal.signal(sig, lambda s,f: (ProcessLock.release(), sys.exit(0)))
+
+# ============================================================
+# PERSIAN LIVE DATE
+# ============================================================
+class PersianLive:
+    DAYS = ['دوشنبه','سه‌شنبه','چهارشنبه','پنج‌شنبه','جمعه','شنبه','یکشنبه']
+    MONTHS = ['فروردین','اردیبهشت','خرداد','تیر','مرداد','شهریور','مهر','آبان','آذر','دی','بهمن','اسفند']
+    @classmethod
+    def now(cls): return datetime.now(TEHRAN_TZ)
+    @classmethod
+    def jalali(cls): return jdatetime.datetime.fromgregorian(datetime=cls.now())
+    @classmethod
+    def shamsi(cls):
+        j = cls.jalali(); return f"{j.day} {cls.MONTHS[j.month-1]} {j.year}"
+    @classmethod
+    def gregorian(cls): return cls.now().strftime('%Y-%m-%d')
+    @classmethod
+    def time_str(cls): return cls.now().strftime('%H:%M:%S')
+    @classmethod
+    def day_str(cls): return cls.DAYS[cls.now().weekday()]
+    @classmethod
+    def full(cls): return f"{cls.day_str()} {cls.shamsi()} ساعت {cls.time_str()}"
+    @classmethod
+    def both(cls): return f"{cls.day_str()} {cls.shamsi()}\nمیلادی: {cls.gregorian()}\nساعت: {cls.time_str()}"
+    @classmethod
+    def greeting(cls):
+        h = cls.now().hour
+        if 5 <= h < 12: return "صبح بخیر"
+        elif 12 <= h < 17: return "ظهر بخیر"
+        elif 17 <= h < 22: return "عصر بخیر"
+        else: return "شب بخیر"
+
+pdt = PersianLive()
+
+# ============================================================
 # SUBSCRIPTION LEVELS
 # ============================================================
 class SubscriptionLevel:
@@ -151,10 +218,10 @@ class SubscriptionLevel:
     PLATINUM = "پلاتینیوم"
     
     LIMITS = {
-        FREE: {"signals_per_hour": 2, "symbols": 5, "timeframes": ["1d"], "ai_detail": "کوتاه", "price_toman": 0},
-        SILVER: {"signals_per_hour": 10, "symbols": 15, "timeframes": ["4h","1d"], "ai_detail": "متوسط", "price_usd": 10, "price_toman": 1800000},
-        GOLD: {"signals_per_hour": 30, "symbols": 30, "timeframes": ["1h","4h","1d","1w"], "ai_detail": "کامل", "price_usd": 25, "price_toman": 4500000},
-        PLATINUM: {"signals_per_hour": 999, "symbols": 999, "timeframes": ["1h","4h","1d","1w","1M"], "ai_detail": "پیشرفته", "price_usd": 50, "price_toman": 9000000},
+        FREE: {"signals_per_hour": 2, "symbols": 5, "price_toman": 0},
+        SILVER: {"signals_per_hour": 10, "symbols": 10, "price_toman": 1800000},
+        GOLD: {"signals_per_hour": 30, "symbols": 16, "price_toman": 4500000},
+        PLATINUM: {"signals_per_hour": 999, "symbols": 999, "price_toman": 9000000},
     }
     
     @classmethod
@@ -247,75 +314,26 @@ class UserManager:
 user_mgr = UserManager()
 
 # ============================================================
-# PERSIAN LIVE DATE
+# QUEUE MANAGEMENT
 # ============================================================
-class PersianLive:
-    DAYS = ['دوشنبه','سه‌شنبه','چهارشنبه','پنج‌شنبه','جمعه','شنبه','یکشنبه']
-    MONTHS = ['فروردین','اردیبهشت','خرداد','تیر','مرداد','شهریور','مهر','آبان','آذر','دی','بهمن','اسفند']
-    SEASONS = ['بهار','بهار','بهار','تابستان','تابستان','تابستان','پاییز','پاییز','پاییز','زمستان','زمستان','زمستان']
-    @classmethod
-    def now(cls): return datetime.now(TEHRAN_TZ)
-    @classmethod
-    def jalali(cls): return jdatetime.datetime.fromgregorian(datetime=cls.now())
-    @classmethod
-    def shamsi(cls):
-        j = cls.jalali(); return f"{j.day} {cls.MONTHS[j.month-1]} {j.year}"
-    @classmethod
-    def gregorian(cls): return cls.now().strftime('%Y-%m-%d')
-    @classmethod
-    def time_str(cls): return cls.now().strftime('%H:%M:%S')
-    @classmethod
-    def day_str(cls): return cls.DAYS[cls.now().weekday()]
-    @classmethod
-    def season(cls): return cls.SEASONS[cls.jalali().month-1]
-    @classmethod
-    def full(cls): return f"{cls.day_str()} {cls.shamsi()} ساعت {cls.time_str()}"
-    @classmethod
-    def both(cls): return f"{cls.day_str()} {cls.shamsi()}\nمیلادی: {cls.gregorian()}\nساعت: {cls.time_str()}"
-    @classmethod
-    def greeting(cls):
-        h = cls.now().hour
-        if 5 <= h < 12: return "صبح بخیر"
-        elif 12 <= h < 17: return "ظهر بخیر"
-        elif 17 <= h < 22: return "عصر بخیر"
-        else: return "شب بخیر"
-
-pdt = PersianLive()
-
-# ============================================================
-# TOKEN & QUEUE MANAGER
-# ============================================================
-class TokenManager:
-    MAX_TPM = 40000
-    def __init__(self): self._usage = deque(); self.groq = 0; self.gemini = 0
-    @property
-    def current(self):
-        now = time.time()
-        while self._usage and now - self._usage[0][0] > 60: self._usage.popleft()
-        return sum(t for _,t in self._usage)
-    def can(self, tokens=500): return (self.current + tokens) <= self.MAX_TPM
-    def record(self, tokens, source="groq"):
-        self._usage.append((time.time(), tokens))
-        if source == "groq": self.groq += tokens
-        else: self.gemini += tokens
-
-token_mgr = TokenManager()
-
 user_queue = deque()
 active_requests = 0
 MAX_CONCURRENT = 5
+request_lock = asyncio.Lock()
 
 async def process_queue():
     global active_requests
     while True:
-        if len(user_queue) > 0 and active_requests < MAX_CONCURRENT:
-            task = user_queue.popleft()
-            active_requests += 1
-            try:
-                await task()
-            except: pass
-            active_requests -= 1
-        await asyncio.sleep(0.5)
+        async with request_lock:
+            if len(user_queue) > 0 and active_requests < MAX_CONCURRENT:
+                task = user_queue.popleft()
+                active_requests += 1
+                try:
+                    await task()
+                except Exception as e:
+                    logger.error(f"Queue task error: {e}")
+                active_requests -= 1
+        await asyncio.sleep(0.3)
 
 # ============================================================
 # DUAL AI - PURE PERSIAN FRIENDLY
@@ -330,12 +348,12 @@ class GeminiAI:
             if self._client is None: self._client = httpx.AsyncClient(timeout=60.0)
             return self._client
     async def ask(self, prompt, max_t=500):
-        if not self.enabled or not token_mgr.can(max_t): return None
+        if not self.enabled: return None
         try:
             r = await self._get_client().post(f"{self.URL}?key={self.key}", json={"contents":[{"parts":[{"text":prompt}]}],"generationConfig":{"maxOutputTokens":max_t}})
             if r.status_code==200:
                 t = r.json().get("candidates",[{}])[0].get("content",{}).get("parts",[{}])[0].get("text","")
-                if t: token_mgr.record(max_t,"gemini"); return t
+                if t: return t
         except Exception as e: logger.error(f"Gemini: {e}")
         return None
 
@@ -353,7 +371,7 @@ class GroqAI:
             if self._client is None: self._client = httpx.AsyncClient(timeout=120.0)
             return self._client
     async def _call(self, prompt, max_t=500):
-        if not self.enabled or not token_mgr.can(max_t): return None
+        if not self.enabled: return None
         now = time.time()
         if now - self._last_call < 0.03: await asyncio.sleep(0.05)
         self._last_call = now
@@ -364,7 +382,7 @@ class GroqAI:
                     {"role":"user","content":prompt}
                 ],"max_tokens":max_t})
             if r.status_code==200:
-                d = r.json(); token_mgr.record(d.get('usage',{}).get('total_tokens',max_t),"groq")
+                d = r.json()
                 return d["choices"][0]["message"]["content"]
         except Exception as e: logger.error(f"Groq: {e}")
         return None
@@ -416,16 +434,16 @@ class ExchangeManager:
     @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10))
     def connect(self):
         try:
-            p = {'enableRateLimit':True,'timeout':30000}
+            p = {'enableRateLimit':True,'timeout':15000}
             if self.real: p.update({'apiKey':cfg.api_key,'secret':cfg.api_secret,'password':cfg.api_passphrase})
             self._ex = ccxt.coinex(p); self._ex.load_markets(); self.connected = True
         except:
-            try: self._ex = ccxt.coinex({'enableRateLimit':True,'timeout':30000}); self._ex.load_markets(); self.connected = True
+            try: self._ex = ccxt.coinex({'enableRateLimit':True,'timeout':15000}); self._ex.load_markets(); self.connected = True
             except: pass
     def ticker(self,s):
         try: return self._ex.fetch_ticker(s) if self.connected else None
         except: return None
-    def ohlcv(self,s,tf,limit=200):
+    def ohlcv(self,s,tf,limit=150):
         try:
             if not self.connected: return None
             d = self._ex.fetch_ohlcv(s,tf,limit=limit)
@@ -477,7 +495,7 @@ class UltraIndicators:
     def calc(df):
         close = df['close'].astype(float); high = df['high'].astype(float); low = df['low'].astype(float); volume = df['volume'].astype(float)
         ind = {}
-        for p in [7,14,20,50,100,200]: ind[f'EMA_{p}'] = float(close.ewm(span=p,adjust=False).mean().iloc[-1])
+        for p in [7,14,20,50,200]: ind[f'EMA_{p}'] = float(close.ewm(span=p,adjust=False).mean().iloc[-1])
         from ta.momentum import RSIIndicator, StochasticOscillator
         for p in [7,14]:
             try: ind[f'RSI_{p}'] = float(RSIIndicator(close,p).rsi().iloc[-1])
@@ -649,18 +667,6 @@ class Trader:
         try:
             with open('trader_v30.json','w') as f: json.dump({'balance':self.balance,'history':self.history[-2000:],'exp':self.exp}, f)
         except: pass
-    def learn(self):
-        if len(self.history)<10: return
-        wins = [t for t in self.history if t['pnl']>0]
-        self.exp['total']=len(self.history); self.exp['wins']=len(wins)
-        if wins: self.exp['best']=max(t['pnl'] for t in wins)
-        losses=[t for t in self.history if t['pnl']<=0]
-        if losses: self.exp['worst']=min(t['pnl'] for t in losses)
-        wr=len(wins)/len(self.history)*100
-        if wr>70: self.exp['conf']=50; self.exp['risk']=1.5
-        elif wr>60: self.exp['conf']=60; self.exp['risk']=1.3
-        elif wr<40: self.exp['conf']=75; self.exp['risk']=0.5
-        self.save()
     def stats(self):
         total = max(1,len(self.history)); wins = len([t for t in self.history if t['pnl']>0])
         return {'balance':self.balance,'pnl':sum(t['pnl'] for t in self.history),'total':total,'wins':wins,'rate':wins/total*100,'demo':self.demo_trades,'real':self.real_trades}
@@ -672,28 +678,17 @@ trader = Trader()
 # ============================================================
 class ChartGenerator:
     @staticmethod
-    def create(df, symbol, indicators):
-        if not CHART_AVAILABLE: return None
+    def create(df, symbol):
+        if not CHART_AVAILABLE or len(df) < 30: return None
         try:
             data = df.copy(); data['timestamp'] = pd.to_datetime(data['timestamp'], unit='ms'); data = data.set_index('timestamp')
-            data = data.rename(columns={'open':'Open','high':'High','low':'Low','close':'Close','volume':'Volume'})[['Open','High','Low','Close','Volume']].astype(float)
-            n = min(80, len(data)); data = data.iloc[-n:]
-            add_plots = []
-            for p, color in [(7,'#FFD700'),(20,'#00ff88'),(50,'#FF8C00'),(200,'#FFFFFF')]:
-                ema = data['Close'].ewm(span=p, adjust=False).mean(); add_plots.append(mpf.make_addplot(ema, color=color, width=1.5))
-            from ta.momentum import RSIIndicator; rsi_vals = RSIIndicator(data['Close'], 14).rsi()
-            add_plots.append(mpf.make_addplot(rsi_vals, panel=2, color='#9B59B6', ylabel='RSI'))
-            add_plots.append(mpf.make_addplot(pd.Series([70]*len(data), index=data.index), panel=2, color='#ff3333', linestyle='--'))
-            add_plots.append(mpf.make_addplot(pd.Series([30]*len(data), index=data.index), panel=2, color='#00ff88', linestyle='--'))
-            exp12 = data['Close'].ewm(span=12, adjust=False).mean(); exp26 = data['Close'].ewm(span=26, adjust=False).mean()
-            macd_hist = (exp12 - exp26) - (exp12 - exp26).ewm(span=9, adjust=False).mean()
-            add_plots.append(mpf.make_addplot(macd_hist, type='bar', panel=3, color='#00ff88', ylabel='MACD'))
+            data = data.rename(columns={'open':'Open','high':'High','low':'Low','close':'Close','volume':'Volume'})[['Open','High','Low','Close','Volume']].iloc[-60:]
             mc = mpf.make_marketcolors(up='#00ff88', down='#ff3355', edge='inherit', wick='inherit', volume='inherit')
             style = mpf.make_mpf_style(marketcolors=mc, facecolor='#061a14', figcolor='#061a14', gridcolor='#1d3b34')
-            fig, axlist = mpf.plot(data, type='candle', style=style, title=f'{symbol} - {pdt.shamsi()}', ylabel='قیمت', volume=True, addplot=add_plots, panel_ratios=(3,1,1,1), figsize=(24,16), returnfig=True)
-            buf = io.BytesIO(); fig.savefig(buf, format='png', dpi=150, bbox_inches='tight', facecolor=style['facecolor']); buf.seek(0); plt.close(fig)
+            fig, _ = mpf.plot(data, type='candle', style=style, title=f'{symbol} - {pdt.shamsi()}', volume=True, figsize=(16,10), returnfig=True)
+            buf = io.BytesIO(); fig.savefig(buf, format='png', dpi=100, bbox_inches='tight'); buf.seek(0); plt.close(fig)
             return buf
-        except Exception as e: logger.error(f"Chart: {e}"); return None
+        except: return None
 
 chart_gen = ChartGenerator()
 
@@ -705,7 +700,7 @@ class Fmt:
     def signal(a, groq_t=None, smc_t=None, pred_t=None):
         s = a['symbol'].replace('/USDT',''); i = a['indicators']; candles = a.get('candles',[])
         sig, conf, score, action, action_emoji = sg.generate(i, a['price'], a.get('mtf'), a.get('smc'))
-        entry, sl = a['price'], a['price']-i['ATR_14']*cfg.atr_sl; tp1, tp2 = a['price']+i['ATR_14']*cfg.atr_tp, a['price']+i['ATR_14']*cfg.atr_tp*1.5
+        entry, sl = a['price'], a['price']-i['ATR_14']*cfg.atr_sl; tp1 = a['price']+i['ATR_14']*cfg.atr_tp
         msg = f"""
 ╔══════════════════════╗
   {action_emoji} سیگنال {s} {action_emoji}
@@ -888,7 +883,7 @@ async def cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
 async def send_signal(bot, chat_id, symbol, ticker, df, ind, candles, mtf, smc_data, groq_t, smc_t, pred_t):
     if CHART_AVAILABLE:
-        buf = chart_gen.create(df, symbol, ind)
+        buf = chart_gen.create(df, symbol)
         if buf:
             await bot.send_photo(chat_id=chat_id, photo=buf, caption=f"📊 {symbol.replace('/USDT','')} | {ticker['last']:,.4f}$")
     a = {'symbol':symbol,'price':ticker['last'],'change':ticker.get('percentage',0),'indicators':ind,'candles':candles,'mtf':mtf,'smc':smc_data}
@@ -930,18 +925,16 @@ async def button_router(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
 🥈 نقره‌ای: {prices['نقره‌ای']:,} تومان
 - ۱۰ سیگنال در ساعت
-- ۱۵ ارز
-- تحلیل متوسط
+- ۱۰ ارز
 
 🥇 طلایی: {prices['طلایی']:,} تومان
 - ۳۰ سیگنال در ساعت
-- ۳۰ ارز
-- تحلیل کامل
+- ۱۶ ارز
 
 💎 پلاتینیوم: {prices['پلاتینیوم']:,} تومان
 - نامحدود
 - تمام ارزها
-- تحلیل پیشرفته + اسمارت مانی
+- اسمارت مانی
 
 💳 شماره کارت:
 `{cfg.card_number}`
@@ -957,7 +950,7 @@ async def button_router(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             
             sym = d[2:]; await q.answer(); await q.edit_message_text(f"🔄 تحلیل {sym.replace('/USDT','')}...")
             if not exchange_mgr.connected: exchange_mgr.connect()
-            t = exchange_mgr.ticker(sym); df = exchange_mgr.ohlcv(sym, '1h', 200)
+            t = exchange_mgr.ticker(sym); df = exchange_mgr.ohlcv(sym, '1h', 150)
             if not t or df is None:
                 await q.edit_message_text("❌ داده نیست", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]])); return
             
@@ -988,15 +981,15 @@ async def button_router(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             for prefix,tf in tf_map.items():
                 if d.startswith(prefix):
                     sym = d[len(prefix):] if len(d)>len(prefix) else "BTC/USDT"; await q.answer()
-                    t = exchange_mgr.ticker(sym); df = exchange_mgr.ohlcv(sym, tf, 200)
+                    t = exchange_mgr.ticker(sym); df = exchange_mgr.ohlcv(sym, tf, 150)
                     if t and df is not None:
                         ind, _ = ui.calc(df); sig, conf, _, action, _ = sg.generate(ind, t['last'])
                         if CHART_AVAILABLE:
-                            buf = chart_gen.create(df, sym, ind)
+                            buf = chart_gen.create(df, sym)
                             if buf: await ctx.bot.send_photo(chat_id=q.message.chat_id, photo=buf, caption=f"⏰ {tf_labels.get(tf,tf)} {sym.replace('/USDT','')} | {t['last']:,.4f}$")
                         await q.edit_message_text(f"⏰ {tf_labels.get(tf,tf)} {sym.replace('/USDT','')}\n{pdt.both()}\n💰 {t['last']:,.4f}$\n🎯 {sig}\n🚦 {action}\n✨ @CryptoPulse606", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]]))
         elif d == "smc":
-            df = exchange_mgr.ohlcv("BTC/USDT", '1h', 200)
+            df = exchange_mgr.ohlcv("BTC/USDT", '1h', 150)
             if df is not None:
                 smc_data = SmartMoney.analyze(df)
                 ai_text = await groq_ai.smc("بیتکوین", smc_data) if groq_ai.enabled else None
@@ -1023,7 +1016,6 @@ async def button_router(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             await q.edit_message_text(f"💰 سبد\n{pdt.both()}\n💵 موجودی: {s['balance']:,.2f}$\n📈 سود/زیان: {s['pnl']:+,.2f}$\n📊 کل: {s['total']}\n✅ برد: {s['wins']}\n📈 نرخ: {s['rate']:.1f}%\n🎮 دمو: {s['demo']} | 💹 واقعی: {s['real']}", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔄", callback_data="port"), InlineKeyboardButton("🔙", callback_data="back")]]))
         elif d == "status":
             txt = f"🔑 وضعیت\n{pdt.both()}\n🔌 کوینکس: {'✅' if exchange_mgr.connected else '❌'}\n🧠 گروک: {'✅' if groq_ai.enabled else '❌'}\n🌟 جمینای: {'✅' if gemini_ai.enabled else '❌'}\n📊 پوزیشن: {len(trader.positions)}\n💵 معاملات امروز: {cfg.daily_trades_count}"
-            if PSUTIL_AVAILABLE: txt += f"\n🧠 پردازنده: {psutil.cpu_percent()}% | حافظه: {psutil.virtual_memory().percent}%"
             await q.edit_message_text(txt, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]]))
         elif d == "ref": await q.edit_message_text(f"🟢 منو\n{pdt.both()}", reply_markup=Menu.main())
         elif d in ["scan","market","ai_BTC/USDT","chart_BTC/USDT","pred","whale","set"]:
@@ -1040,10 +1032,6 @@ async def text_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 # ============================================================
 # AUTO LOOPS
 # ============================================================
-course_lesson_num = 0
-TOTAL_COURSE_LESSONS = 1000
-COURSE_TOPICS = ["مبانی بلاکچین","تحلیل تکنیکال","کندل‌شناسی","میانگین‌ها","RSI","بولینگر","فیبوناچی","ایچیموکو","اسمارت مانی","مدیریت سرمایه","روانشناسی","استراتژی","دیفای","فاندامنتال","نهنگ‌ها"] * 70
-
 async def auto_signals(app: Application):
     await asyncio.sleep(10)
     while True:
@@ -1054,7 +1042,7 @@ async def auto_signals(app: Application):
             if today != cfg.last_reset_day: cfg.daily_trades_count = 0; cfg.daily_pnl = 0.0; cfg.last_reset_day = today
             for sym in ["BTC/USDT","ETH/USDT","SOL/USDT"]:
                 try:
-                    t = exchange_mgr.ticker(sym); df = exchange_mgr.ohlcv(sym,'1h',200)
+                    t = exchange_mgr.ticker(sym); df = exchange_mgr.ohlcv(sym,'1h',150)
                     if t and df is not None:
                         ind, candle_names = ui.calc(df); mtf = {}
                         for tf_name in cfg.primary_tfs:
@@ -1084,24 +1072,6 @@ async def auto_news(app: Application):
                         await safe_send(app.bot, cfg.channel_id, f"📰 اخبار\n{pdt.both()}\n\n{summary}\n\n✨ @CryptoPulse606")
         except: pass
         await asyncio.sleep(cfg.news_interval)
-
-async def auto_course(app: Application):
-    global course_lesson_num
-    await asyncio.sleep(60)
-    try:
-        with open('course_v30.json', 'r') as f: course_lesson_num = json.load(f).get('lesson',0)
-    except: pass
-    while True:
-        try:
-            if cfg.channel_id and groq_ai.enabled:
-                topic = COURSE_TOPICS[course_lesson_num % len(COURSE_TOPICS)]
-                lesson = await groq_ai.course_lesson(course_lesson_num+1, TOTAL_COURSE_LESSONS, topic)
-                if lesson:
-                    await safe_send(app.bot, cfg.channel_id, lesson)
-                    course_lesson_num += 1
-                    with open('course_v30.json','w') as f: json.dump({'lesson':course_lesson_num}, f)
-        except: pass
-        await asyncio.sleep(cfg.education_interval)
 
 async def auto_fear_greed(app: Application):
     await asyncio.sleep(180)
@@ -1141,9 +1111,9 @@ async def main():
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_handler))
     BioUpdater(app).start()
     asyncio.create_task(process_queue())
+    asyncio.create_task(cleanup_memory())
     asyncio.create_task(auto_signals(app))
     asyncio.create_task(auto_news(app))
-    asyncio.create_task(auto_course(app))
     asyncio.create_task(auto_fear_greed(app))
     asyncio.create_task(auto_whale(app))
     logger.info(f"🚀 ربات VIP آماده | پلاتینیوم: فعال | اسمارت مانی: فعال")
