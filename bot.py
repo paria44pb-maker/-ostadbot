@@ -2,12 +2,9 @@
 # -*- coding: utf-8 -*-
 """
 ╔══════════════════════════════════════════════════════════════════╗
-║ 🚀 CRYPTO PULSE v30.0 — OWNER PLATINUM — LOCKED FOR USERS      ║
+║ 🚀 CRYPTO PULSE v30.0 — OWNER PLATINUM — FREE FOR YOU           ║
 ║ ✅ Owner: 7225279768 — Free Permanent Platinum                   ║
 ║ ✅ New Users: Locked (Invite 3 or Pay)                           ║
-║ ✅ Subscriptions: 30 Days                                       ║
-║ ✅ 20% Discount  ✅ All Buttons Active                           ║
-║ ✅ Smart Money (SMC)  ✅ 100% Pure Persian                       ║
 ╚══════════════════════════════════════════════════════════════════╝
 """
 
@@ -69,9 +66,6 @@ except:
 
 load_dotenv()
 
-# ============================================================
-# MEMORY MANAGEMENT
-# ============================================================
 async def cleanup_memory():
     while True:
         gc.collect()
@@ -80,9 +74,6 @@ async def cleanup_memory():
             except: pass
         await asyncio.sleep(600)
 
-# ============================================================
-# LOGGING
-# ============================================================
 logger.setLevel(logging.INFO)
 console = logging.StreamHandler(); console.setLevel(logging.INFO)
 console.setFormatter(logging.Formatter('%(asctime)s | %(levelname)s | %(message)s'))
@@ -92,23 +83,17 @@ for name in ['crypto_v30.log','crypto_v30_errors.log']:
     h.setFormatter(logging.Formatter('%(asctime)s | %(levelname)s | %(message)s'))
     logger.addHandler(h)
 
-# ============================================================
-# PROXY
-# ============================================================
 def create_request():
     proxy_url = os.getenv("TELEGRAM_PROXY", "")
     if proxy_url: return HTTPXRequest(proxy_url=proxy_url, connect_timeout=60.0, read_timeout=60.0, write_timeout=60.0)
     else: return HTTPXRequest(connect_timeout=60.0, read_timeout=60.0, write_timeout=60.0)
 
-# ============================================================
-# CONFIGURATION
-# ============================================================
 @dataclass
 class Config:
     token: str = os.getenv("TELEGRAM_BOT_TOKEN", "")
     channel_id: str = os.getenv("CHANNEL_ID", "")
     channel_username: str = os.getenv("CHANNEL_USERNAME", "@CryptoPulse606")
-    owner_id: int = 7225279768  # 👈 آیدی عددی شما
+    owner_id: int = 7225279768
     groq_api_key: str = os.getenv("GROQ_API_KEY", "")
     gemini_api_key: str = os.getenv("GEMINI_API_KEY", "")
     card_number: str = "5859831200715448"
@@ -126,9 +111,6 @@ class Config:
 
 cfg = Config()
 
-# ============================================================
-# PROCESS LOCK
-# ============================================================
 class ProcessLock:
     _file = "crypto_v30.lock"
     @classmethod
@@ -152,9 +134,6 @@ class ProcessLock:
 for sig in [signal.SIGINT, signal.SIGTERM]:
     signal.signal(sig, lambda s,f: (ProcessLock.release(), sys.exit(0)))
 
-# ============================================================
-# PERSIAN DATE
-# ============================================================
 class PersianLive:
     DAYS = ['دوشنبه','سه‌شنبه','چهارشنبه','پنج‌شنبه','جمعه','شنبه','یکشنبه']
     MONTHS = ['فروردین','اردیبهشت','خرداد','تیر','مرداد','شهریور','مهر','آبان','آذر','دی','بهمن','اسفند']
@@ -180,9 +159,6 @@ class PersianLive:
 
 pdt = PersianLive()
 
-# ============================================================
-# SUBSCRIPTION LEVELS (۲۰٪ تخفیف + یک‌ماهه)
-# ============================================================
 class SubscriptionLevel:
     FREE = "رایگان"
     SILVER = "نقره‌ای"
@@ -198,9 +174,6 @@ class SubscriptionLevel:
     
     EMOJI = {FREE: "🆓", SILVER: "🥈", GOLD: "🥇", PLATINUM: "💎"}
 
-# ============================================================
-# USER MANAGER
-# ============================================================
 class UserManager:
     def __init__(self):
         self.users = {}
@@ -238,7 +211,10 @@ class UserManager:
         return int(uid) == cfg.owner_id
     
     def can_use(self, uid):
-        if self.is_owner(uid): return True
+        # ⭐ مالک همیشه می‌تونه استفاده کنه
+        if self.is_owner(uid): 
+            return True
+        
         user = self.get(uid)
         if user.get("unlocked"): return True
         if user.get("level") != SubscriptionLevel.FREE:
@@ -271,8 +247,13 @@ class UserManager:
         return True
     
     def check_limit(self, uid):
-        if not self.can_use(uid): return False, "ربات برای شما قفل است"
-        if self.is_owner(uid): return True, ""
+        if not self.can_use(uid): 
+            return False, "ربات برای شما قفل است"
+        
+        # ⭐ مالک محدودیت نداره
+        if self.is_owner(uid): 
+            return True, ""
+        
         user = self.get(uid)
         max_sig = SubscriptionLevel.LIMITS[user["level"]]["signals"]
         now = datetime.now()
@@ -290,9 +271,6 @@ class UserManager:
 
 user_mgr = UserManager()
 
-# ============================================================
-# CHANNEL CHECK
-# ============================================================
 async def check_channel(user_id, bot) -> bool:
     if not cfg.channel_username: return True
     try:
@@ -300,9 +278,6 @@ async def check_channel(user_id, bot) -> bool:
         return member.status in ['member', 'administrator', 'creator']
     except: return False
 
-# ============================================================
-# DUAL AI (COMPACT)
-# ============================================================
 class GroqAI:
     URL = "https://api.groq.com/openai/v1/chat/completions"; MODEL = "llama-3.3-70b-versatile"
     def __init__(self):
@@ -330,9 +305,6 @@ class GroqAI:
 
 groq_ai = GroqAI()
 
-# ============================================================
-# EXCHANGE
-# ============================================================
 class ExchangeManager:
     def __init__(self):
         self._ex = None; self.connected = False
@@ -353,9 +325,6 @@ class ExchangeManager:
 
 exchange_mgr = ExchangeManager()
 
-# ============================================================
-# SMART MONEY
-# ============================================================
 class SmartMoney:
     @staticmethod
     def analyze(df):
@@ -370,9 +339,6 @@ class SmartMoney:
         choch = "صعودی 🟢" if (bos_u and not bos_d) else ("نزولی 🔴" if (bos_d and not bos_u) else "خنثی ⚪")
         return {"شکست_ساختار":"صعود" if bos_u else "نزول" if bos_d else "هیچ","تغییر_روند":choch,"ساختار_بازار":choch}
 
-# ============================================================
-# INDICATORS
-# ============================================================
 class UltraIndicators:
     @staticmethod
     def calc(df):
@@ -415,9 +381,6 @@ class UltraIndicators:
 
 ui = UltraIndicators()
 
-# ============================================================
-# SIGNAL GENERATOR
-# ============================================================
 class SignalGen:
     @staticmethod
     def generate(ind, price, smc_data=None):
@@ -449,9 +412,6 @@ class SignalGen:
 
 sg = SignalGen()
 
-# ============================================================
-# CHART GENERATOR
-# ============================================================
 class ChartGenerator:
     @staticmethod
     def create(df, symbol):
@@ -468,9 +428,6 @@ class ChartGenerator:
 
 chart_gen = ChartGenerator()
 
-# ============================================================
-# FORMATTER
-# ============================================================
 class Fmt:
     @staticmethod
     def signal(a, groq_t=None, smc_t=None, pred_t=None):
@@ -507,9 +464,6 @@ ADX={i['ADX']:.1f} | حجم={i.get('VOL_RATIO',1):.1f}x
 
 fmt = Fmt()
 
-# ============================================================
-# NEWS
-# ============================================================
 class CryptoNews:
     CACHE = {}
     CACHE_DURATION = 14400
@@ -527,9 +481,6 @@ class CryptoNews:
         cls.CACHE = {"ts":now,"data":articles}
         return articles
 
-# ============================================================
-# FEAR & GREED
-# ============================================================
 class FearGreedIndex:
     CACHE = {}
     CACHE_DURATION = 3600
@@ -543,9 +494,6 @@ class FearGreedIndex:
                 return int(data['data'][0]['value']), data['data'][0]['value_classification']
         except: return 50, "خنثی"
 
-# ============================================================
-# SAFE SEND
-# ============================================================
 async def safe_send(bot, chat_id, text, reply_markup=None):
     try: return await bot.send_message(chat_id=chat_id, text=text, parse_mode="Markdown", reply_markup=reply_markup, disable_web_page_preview=True)
     except:
@@ -556,9 +504,6 @@ async def safe_edit(bot, chat_id, msg_id, text, reply_markup=None):
     try: return await bot.edit_message_text(chat_id=chat_id, message_id=msg_id, text=text, parse_mode="Markdown", reply_markup=reply_markup, disable_web_page_preview=True)
     except: return None
 
-# ============================================================
-# BIO UPDATER
-# ============================================================
 class BioUpdater:
     def __init__(self, app): self.app = app
     async def update(self):
@@ -579,9 +524,6 @@ class BioUpdater:
         schedule.every(cfg.bio_update_interval).seconds.do(run); run()
         threading.Thread(target=lambda: [schedule.run_pending(), time.sleep(1)], daemon=True).start()
 
-# ============================================================
-# 20 ACTIVE GLASS BUTTONS
-# ============================================================
 class Menu:
     @staticmethod
     def main() -> InlineKeyboardMarkup:
@@ -633,9 +575,7 @@ async def cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
                 user_mgr.add_referral(user_id, ref_id)
         except: pass
     
-    is_member = await check_channel(user_id, ctx.bot)
-    
-    # Owner - free platinum forever
+    # ⭐ مالک همیشه باز
     if user_mgr.is_owner(user_id):
         await update.message.reply_text(f"""
 🔥🔥🔥 کریپتو پالس نسخه ۳۰ 🔥🔥🔥
@@ -652,17 +592,17 @@ async def cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 👇 انتخاب کن:""", reply_markup=Menu.main())
         return
     
-    # Locked user
+    # بقیه کاربران
     if not user_mgr.can_use(user_id):
         user = user_mgr.get_user(user_id)
         refs = user.get("referrals", 0)
         needed = cfg.required_invites - refs
+        is_member = await check_channel(user_id, ctx.bot)
         msg = f"🔒 ربات قفل است\n\n{pdt.greeting()}!\n\n👥 {refs} از {cfg.required_invites} نفر\n📌 {needed} نفر دیگه دعوت کن\n\n💎 یا اشتراک بخر\n📢 عضو کانال باش: @CryptoPulse606"
         if not is_member: msg += "\n⚠️ هنوز عضو کانال نشدی!"
         await update.message.reply_text(msg, reply_markup=Menu.locked())
         return
     
-    # Unlocked user
     user = user_mgr.get_user(user_id)
     level = user["level"]
     await update.message.reply_text(f"""
@@ -686,7 +626,7 @@ async def button_router(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query; d = q.data
     user_id = update.effective_user.id
     
-    # Locked user buttons
+    # دکمه‌های کاربر قفل‌شده
     if d in ["unlock_invite", "check_status", "vip"] and not user_mgr.can_use(user_id) and not user_mgr.is_owner(user_id):
         if d == "unlock_invite":
             user = user_mgr.get(user_id); refs = user["referrals"]
@@ -708,17 +648,17 @@ async def button_router(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
                 await q.edit_message_text(msg, reply_markup=Menu.locked())
         elif d == "vip":
             prices = {k: SubscriptionLevel.LIMITS[k]["price"] for k in [SubscriptionLevel.SILVER, SubscriptionLevel.GOLD, SubscriptionLevel.PLATINUM]}
-            await q.edit_message_text(f"💎 اشتراک (۲۰٪ تخفیف)\n\n🥈 {prices['نقره‌ای']:,} تومان\n🥇 {prices['طلایی']:,} تومان\n💎 {prices['پلاتینیوم']:,} تومان\n\n📅 مدت: {cfg.subscription_days} روز\n💳 `{cfg.card_number}`\n📲 @CryptoPulse606", parse_mode="Markdown", reply_markup=Menu.locked())
+            await q.edit_message_text(f"💎 اشتراک (۲۰٪ تخفیف)\n\n🥈 {prices['نقره‌ای']:,} تومان\n🥇 {prices['طلایی']:,} تومان\n💎 {prices['پلاتینیوم']:,} تومان\n\n📅 {cfg.subscription_days} روز\n💳 `{cfg.card_number}`\n📲 @CryptoPulse606", parse_mode="Markdown", reply_markup=Menu.locked())
         return
     
-    # Must be unlocked or owner
+    # ⭐ مالک همیشه رد میشه
     if not user_mgr.can_use(user_id):
         await q.answer("🔒 قفل است!", show_alert=True)
         return
     
     try:
         if d == "back": await q.edit_message_text(f"🟢 منو\n\n{pdt.full()}", parse_mode="Markdown", reply_markup=Menu.main())
-        elif d == "help": await q.edit_message_text(f"❓ راهنما\n\n🎯 /signal سیگنال\n💰 /price قیمت\n🔍 /scan اسکن\n🧲 SMC اسمارت مانی\n\n✨ @CryptoPulse606", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]]))
+        elif d == "help": await q.edit_message_text(f"❓ راهنما\n\n🎯 /signal\n💰 /price\n🔍 /scan\n🧲 SMC\n\n✨ @CryptoPulse606", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]]))
         elif d == "p":
             if not exchange_mgr.connected: exchange_mgr.connect()
             txt = f"💰 قیمت‌ها\n\n{pdt.full()}\n\n"
@@ -778,7 +718,7 @@ async def button_router(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             prices = {k: SubscriptionLevel.LIMITS[k]["price"] for k in [SubscriptionLevel.SILVER, SubscriptionLevel.GOLD, SubscriptionLevel.PLATINUM]}
             await q.edit_message_text(f"💎 اشتراک ({cfg.subscription_days} روزه)\n\n🥈 {prices['نقره‌ای']:,} تومان\n🥇 {prices['طلایی']:,} تومان\n💎 {prices['پلاتینیوم']:,} تومان\n\n💳 `{cfg.card_number}`\n📲 @CryptoPulse606", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]]))
         elif d in ["scan","market","ai_BTC/USDT","chart_BTC/USDT","pred","whale","port","perf","status","set","ref"]:
-            await q.edit_message_text(f"⚡ بخش {d}\n{pdt.full()}\n\nدر حال بروزرسانی...\n✨ @CryptoPulse606", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]]))
+            await q.edit_message_text(f"⚡ {d}\n{pdt.full()}\n\nدر حال بروزرسانی...\n✨ @CryptoPulse606", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]]))
         else: await q.answer(f"⚡ {pdt.time_str()}")
     except Exception as e:
         logger.error(f"Btn: {e}")
