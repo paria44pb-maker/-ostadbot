@@ -24,6 +24,7 @@ from datetime import datetime, timedelta
 from collections import deque, defaultdict, OrderedDict
 import numpy as np
 import pandas as pd
+import schedule
 import ccxt
 import httpx
 from dotenv import load_dotenv
