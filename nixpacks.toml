@@ -1,8 +1,12 @@
 [phases.setup]
-nixPkgs = ["cuda11_8", "python311"]
+nixPkcs = ["cuda11_8", "python311", "binutils"]
 
 [phases.install]
-cmds = ["pip install -r requirements.txt"]
+cmds = [
+    "pip install --upgrade pip",
+    "pip install torch==2.5.1 --index-url https://download.pytorch.org/whl/cu118",
+    "pip install -r requirements.txt"
+]
 
 [start]
 cmd = "uvicorn api_sdxl:app --host 0.0.0.0 --port 8000"
