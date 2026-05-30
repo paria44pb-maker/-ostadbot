@@ -2289,32 +2289,112 @@ async def auto_news_loop(app):
 
 async def process_news(bot, chat_id, msg_id):
     """پردازش درخواست خبر فوری از دکمه"""
+# ============================================================
+# 📰 AUTO NEWS LOOP - ارسال اخبار هر ۴ ساعت
+# ============================================================
+
+async def fetch_crypto_news():
+    """دریافت اخبار کریپتو از منابع معتبر"""
+    articles = []
+    
+    # منابع RSS معتبر
+    rss_sources = [
+        ("https://cointelegraph.com/rss", "CoinTelegraph"),
+        ("https://cryptoslate.com/feed/", "CryptoSlate"),
+        ("https://coindesk.com/arc/outboundfeeds/rss/", "CoinDesk"),
+        ("https://decrypt.co/feed", "Decrypt"),
+        ("https://bitcoinmagazine.com/.rss/full/", "Bitcoin Magazine"),
+    ]
+    
+    for url, source in rss_sources:
+        try:
+            feed = feedparser.parse(url)
+            for entry in feed.entries[:5]:
+                articles.append({
+                    'title': entry.title,
+                    'link': entry.link,
+                    'source': source,
+                })
+        except Exception as e:
+            logger.debug(f"RSS error {source}: {e}")
+    
+    # حذف تکراری
+    seen = set()
+    unique = []
+    for a in articles:
+        if a['title'] not in seen:
+            seen.add(a['title'])
+            unique.append(a)
+    
+    logger.info(f"📰 {len(unique)} خبر دریافت شد")
+    return unique[:15]
+
+
+async def auto_news_loop(app):
+    """📰 حلقه خودکار ارسال اخبار هر ۴ ساعت"""
+    await asyncio.sleep(30)  # صبر اولیه 30 ثانیه
+    
+    while True:
+        try:
+            if not cfg.channel_id:
+                logger.warning("⚠️ CHANNEL_ID تنظیم نشده")
+                await asyncio.sleep(60)
+                continue
+            
+            logger.info("📡 در حال دریافت اخبار...")
+            
+            # دریافت اخبار
+            news_list = await fetch_crypto_news()
+            
+            if news_list:
+                # ساخت متن خبر
+                current_time = datetime.now().strftime("%H:%M")
+                msg = f"📰 *اخبار لحظه‌ای کریپتو* 💎\n"
+                msg += f"🕐 {pdt.full() if hasattr(pdt, 'full') else datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n"
+                
+                # ۵ خبر اول
+                for i, news in enumerate(news_list[:5], 1):
+                    msg += f"{i}️⃣ [{news['title']}]({news['link']})\n"
+                    msg += f"   📡 {news['source']}\n\n"
+                
+                msg += f"💎 @CryptoPulse606\n"
+                msg += f"#اخبار #کریپتو #بیتکوین"
+                
+                # ارسال به کانال
+                await safe_send(app.bot, cfg.channel_id, msg)
+                logger.info(f"✅ اخبار در ساعت {current_time} ارسال شد | {len(news_list)} خبر")
+            else:
+                logger.warning("⚠️ خبری دریافت نشد")
+                
+        except Exception as e:
+            logger.error(f"❌ خطا در حلقه اخبار: {e}")
+        
+        # منتظر ۴ ساعت (14400 ثانیه)
+        logger.info("⏰ ۴ ساعت تا ارسال بعدی اخبار...")
+        await asyncio.sleep(14400)  # 4 ساعت
+
+
+async def process_news(bot, chat_id, msg_id):
+    """📰 خبر فوری (برای دکمه)"""
     try:
-        # پیام در حال پردازش
         await bot.edit_message_text(
             chat_id=chat_id,
             message_id=msg_id,
             text="📡 در حال دریافت آخرین اخبار... ⏳"
         )
         
-        news = await fetch_crypto_news()
+        news_list = await fetch_crypto_news()
         
-        if not news:
+        if news_list:
+            msg = f"📰 *اخبار فوری کریپتو* 🔥\n\n"
+            for i, news in enumerate(news_list[:7], 1):
+                msg += f"{i}️⃣ [{news['title']}]({news['link']})\n"
+                msg += f"   📡 {news['source']}\n\n"
+            msg += f"💎 @CryptoPulse606"
+            await safe_send(bot, chat_id, msg)
+        else:
             await safe_send(bot, chat_id, "❌ خبری یافت نشد")
-            await bot.delete_message(chat_id, msg_id)
-            return
         
-        headlines = [n['title'] for n in news[:10]]
-        summary = await ai_news_summary(headlines)
-        
-        msg = f"📰 *اخبار فوری* 🔥\n\n"
-        for i, n in enumerate(news[:5], 1):
-            msg += f"{i}️⃣ [{n['title']}]({n['link']})\n"
-            msg += f"   📡 {n['source']}\n\n"
-        
-        msg += f"🧠 {summary}\n\n💎 @CryptoPulse606"
-        
-        await safe_send(bot, chat_id, msg)
         await bot.delete_message(chat_id, msg_id)
         
     except Exception as e:
