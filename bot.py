@@ -1732,6 +1732,404 @@ async def main():
 if __name__ == "__main__":
     try:
         install_packages()
+        # ============================================================
+# 📰 AUTO NEWS LOOP - حلقه خودکار اخبار
+# ============================================================
+
+async def fetch_crypto_news():
+    """دریافت اخبار کریپتو از منابع معتبر"""
+    articles = []
+    
+    # منابع RSS معتبر
+    rss_sources = [
+        ("https://cointelegraph.com/rss", "CoinTelegraph"),
+        ("https://cryptoslate.com/feed/", "CryptoSlate"),
+        ("https://cryptopanic.com/news/rss/", "CryptoPanic"),
+        ("https://coindesk.com/arc/outboundfeeds/rss/", "CoinDesk"),
+        ("https://decrypt.co/feed", "Decrypt"),
+        ("https://bitcoinmagazine.com/.rss/full/", "Bitcoin Magazine"),
+        ("https://www.newsbtc.com/feed/", "NewsBTC"),
+        ("https://cryptopotato.com/feed/", "CryptoPotato"),
+    ]
+    
+    # دریافت از RSS
+    for url, source in rss_sources:
+        try:
+            feed = feedparser.parse(url)
+            for entry in feed.entries[:5]:
+                articles.append({
+                    'title': entry.title,
+                    'link': entry.link,
+                    'source': source,
+                    'time': entry.get('published', '')
+                })
+        except Exce# ============================================================
+# 📰 AUTO NEWS LOOP - حلقه خودکار اخبار
+# ============================================================
+
+async def fetch_crypto_news():
+    """دریافت اخبار کریپتو از منابع معتبر"""
+    articles = []
+    
+    # منابع RSS معتبر
+    rss_sources = [
+        ("https://cointelegraph.com/rss", "CoinTelegraph"),
+        ("https://cryptoslate.com/feed/", "CryptoSlate"),
+        ("https://cryptopanic.com/news/rss/", "CryptoPanic"),
+        ("https://coindesk.com/arc/outboundfeeds/rss/", "CoinDesk"),
+        ("https://decrypt.co/feed", "Decrypt"),
+        ("https://bitcoinmagazine.com/.rss/full/", "Bitcoin Magazine"),
+        ("https://www.newsbtc.com/feed/", "NewsBTC"),
+    ]
+    
+    # دریافت از RSS
+    for url, source in rss_sources:
+        try:
+            feed = feedparser.parse(url)
+            for entry in feed.entries[:5]:
+                articles.append({
+                    'title': entry.title,
+                    'link': entry.link,
+                    'source': source,
+                    'time': entry.get('published', '')
+                })
+        except Exception as e:
+            logger.debug(f"RSS error {source}: {e}")
+    
+    # دریافت از API رایگان CryptoCompare
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            resp = await client.get("https://min-api.cryptocompare.com/data/v2/news/?lang=EN&limit=20")
+            if resp.status_code == 200:
+                data = resp.json()
+                for item in data.get('Data', []):
+                    articles.append({
+                        'title': item.get('title', ''),
+                        'link': item.get('url', ''),
+                        'source': 'CryptoCompare',
+                        'time': str(item.get('published_on', ''))
+                    })
+    except Exception as e:
+        logger.debug(f"API error: {e}")
+    
+    # دریافت از cryptocurrency.cv
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            resp = await client.get("https://cryptocurrency.cv/api/news?limit=15")
+            if resp.status_code == 200:
+                data = resp.json()
+                for item in data.get('items', []):
+                    articles.append({
+                        'title': item.get('title', ''),
+                        'link': item.get('url', ''),
+                        'source': 'cryptocurrency.cv',
+                        'time': item.get('published_at', '')
+                    })
+    except Exception as e:
+        logger.debug(f"CV API error: {e}")
+    
+    # حذف تکراری‌ها بر اساس عنوان
+    seen = set()
+    unique_articles = []
+    for article in articles:
+        if article['title'] not in seen:
+            seen.add(article['title'])
+            unique_articles.append(article)
+    
+    logger.info(f"📰 {len(unique_articles)} خبر جدید دریافت شد")
+    return unique_articles[:20]
+
+
+async def ai_news_summary(headlines):
+    """خلاصه‌سازی اخبار با هوش مصنوعی"""
+    if not headlines:
+        return "📭 اخباری یافت نشد."
+    
+    # استفاده از هوش مصنوعی فعلی (Groq/Gemini/DeepSeek)
+    ai = get_current_ai() if 'get_current_ai' in dir() else groq_ai
+    
+    if hasattr(ai, 'news_summary'):
+        try:
+            result = await ai.news_summary(headlines)
+            if result and len(result) > 20:
+                return result
+        except Exception as e:
+            logger.error(f"AI summary error: {e}")
+    
+    # Fallback: خلاصه ساده
+    return "📊 بازار کریپتو امروز پرنوسان است. برای جزئیات بیشتر روی لینک‌های خبری کلیک کنید. 🔍"
+
+
+async def auto_news_loop(app):
+    """📰 حلقه خودکار ارسال اخبار هر ۴ ساعت"""
+    await asyncio.sleep(45)  # صبر اولیه برای راه‌اندازی کامل
+    
+    last_news_hash = ""
+    news_counter = 0
+    
+    while True:
+        try:
+            if not cfg.channel_id:
+                logger.warning("⚠️ CHANNEL_ID تنظیم نشده، اخبار ارسال نمی‌شود")
+                await asyncio.sleep(60)
+                continue
+            
+            logger.info("📡 در حال دریافت آخرین اخبار کریپتو...")
+            
+            # دریافت اخبار
+            news_list = await fetch_crypto_news()
+            
+            if not news_list:
+                logger.warning("⚠️ خبری دریافت نشد")
+                await asyncio.sleep(cfg.news_interval)
+                continue
+            
+            # بررسی اخبار جدید
+            current_hash = hashlib.md5(
+                "".join([n['title'] for n in news_list[:10]]).encode()
+            ).hexdigest()
+            
+            # اگر خبر جدیدی وجود دارد یا هر ۲ چرخه یکبار ارسال کن
+            if current_hash != last_news_hash or news_counter % 2 == 0:
+                last_news_hash = current_hash
+                news_counter += 1
+                
+                # انتخاب عناوین برای خلاصه AI
+                headlines = [n['title'] for n in news_list[:12]]
+                
+                # دریافت خلاصه از هوش مصنوعی
+                logger.info("🧠 در حال خلاصه‌سازی اخبار با AI...")
+                summary = await ai_news_summary(headlines)
+                
+                # ساخت متن خبر با فرمت اختصاصی
+                news_text = f"""╔══════════════════════════════════════╗
+║   📰 اخبار لحظه‌ای کریپتو 💎 ║
+╠══════════════════════════════════════╣
+{pdt.greeting() if hasattr(pdt, 'greeting') else 'سلام!'}
+{pdt.full() if hasattr(pdt, 'full') else pdt.full_datetime()}
+
+📌 *آخرین عناوین خبری:*
+
+"""
+                # اضافه کردن ۵ خبر اول با لینک
+                for i, news in enumerate(news_list[:5], 1):
+                    # ایموجی بر اساس منبع
+                    source_emoji = {
+                        'CoinTelegraph': '📰',
+                        'CryptoSlate': '📊',
+                        'CryptoPanic': '😱',
+                        'CoinDesk': '💎',
+                        'Decrypt': '🔐',
+                        'Bitcoin Magazine': '₿',
+                        'NewsBTC': '📈',
+                        'CryptoCompare': '🔄',
+                        'cryptocurrency.cv': '🌐'
+                    }.get(news['source'], '📡')
+                    
+                    news_text += f"{i}️⃣ **{news['title'][:80]}**\n"
+                    news_text += f"   {source_emoji} {news['source']} | [🔗 لینک خبر]({news['link']})\n\n"
+                
+                news_text += f"""
+🧠 *خلاصه هوشمند AI:* 💎
+{summary}
+
+📊 *تحلیل سریع:*
+• مهم‌ترین رویداد: {news_list[0]['title'][:60]}...
+• تعداد اخبار امروز: {len(news_list)}+
+
+💎 @CryptoPulse606
+{' '.join(random.sample(cfg.hashtags, 4)) if hasattr(cfg, 'hashtags') else '#کریپتو #اخبار'}
+"""
+                
+                # تولید تصویر اختصاصی برای خبر
+                if hasattr(ai_img, 'for_news'):
+                    logger.info("🎨 در حال تولید تصویر خبری...")
+                    news_image = await ai_img.for_news()
+                    
+                    # ارسال تصویر به کانال
+                    if news_image:
+                        await app.bot.send_photo(
+                            chat_id=cfg.channel_id,
+                            photo=news_image,
+                            caption="📸 *تصویر اختصاصی اخبار کریپتو* 💎",
+                            parse_mode="Markdown"
+                        )
+                
+                # ارسال متن خبر
+                await safe_send(app.bot, cfg.channel_id, news_text)
+                logger.info(f"✅ اخبار با موفقیت ارسال شد | {len(news_list)} خبر")
+                
+            else:
+                logger.info("📭 خبر جدیدی از زمان ارسال قبلی وجود ندارد")
+                
+        except Exception as e:
+            logger.error(f"❌ خطا در حلقه اخبار: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
+        
+        # انتظار تا زمان ارسال بعدی (پیش‌فرض ۴ ساعت)
+        interval_hours = cfg.news_interval / 3600
+        logger.info(f"⏰ ارسال بعدی اخبار: {interval_hours:.1f} ساعت دیگر")
+        await asyncio.sleep(cfg.news_interval)
+
+
+async def process_news(bot, chat_id, msg_id):
+    """📰 پردازش درخواست خبر فوری از دکمه"""
+    try:
+        # پیام در حال پردازش
+        await bot.edit_message_text(
+            chat_id=chat_id,
+            message_id=msg_id,
+            text="📡 در حال دریافت آخرین اخبار کریپتو... ⏳"
+        )
+        
+        # دریافت اخبار
+        news_list = await fetch_crypto_news()
+        
+        if not news_list:
+            await safe_send(bot, chat_id, "❌ متأسفانه خبری یافت نشد. لطفاً بعداً تلاش کنید.")
+            await bot.delete_message(chat_id, msg_id)
+            return
+        
+        # خلاصه با AI
+        headlines = [n['title'] for n in news_list[:10]]
+        summary = await ai_news_summary(headlines)
+        
+        # ساخت متن
+        text = f"📰 *اخبار فوری کریپتو* 🔥\n{pdt.full() if hasattr(pdt, 'full') else pdt.full_datetime()}\n\n"
+        for i, news in enumerate(news_list[:7], 1):
+            text += f"{i}️⃣ [{news['title'][:70]}]({news['link']})\n   📡 {news['source']}\n\n"
+        
+        text += f"🧠 *تحلیل AI:*\n{summary}\n\n💎 @CryptoPulse606"
+        
+        # تصویر خبری
+        if hasattr(ai_img, 'for_news'):
+            img = await ai_img.for_news()
+            if img:
+                await bot.send_photo(chat_id, photo=img, caption="📸 تصویر خبری پلاتینیومی")
+        
+        await safe_send(bot, chat_id, text)
+        
+        # حذف پیام در حال پردازش
+        await bot.delete_message(chat_id, msg_id)
+        
+    except Exception as e:
+        logger.error(f"process_news error: {e}")
+        await safe_send(bot, chat_id, "❌ خطا در دریافت اخبار. لطفاً دوباره تلاش کنید.")
+                
+                # ساخت متن خبر
+                news_text = f"""╔══════════════════════════════════════╗
+║   📰 اخبار لحظه‌ای کریپتو 💎 ║
+╠══════════════════════════════════════╣
+{pdt.greeting()}
+{pdt.full()}
+
+📌 *آخرین عناوین خبری:*
+
+"""
+                # اضافه کردن ۵ خبر اول با لینک
+                for i, news in enumerate(news_list[:5], 1):
+                    # ایموجی بر اساس منبع
+                    source_emoji = {
+                        'CoinTelegraph': '📰',
+                        'CryptoSlate': '📊',
+                        'CryptoPanic': '😱',
+                        'CoinDesk': '💎',
+                        'Decrypt': '🔐',
+                        'Bitcoin Magazine': '₿',
+                        'NewsBTC': '📈',
+                        'CryptoPotato': '🥔',
+                        'CryptoCompare': '🔄'
+                    }.get(news['source'], '📡')
+                    
+                    news_text += f"{i}️⃣ **{news['title'][:80]}**\n"
+                    news_text += f"   {source_emoji} {news['source']} | [🔗 لینک خبر]({news['link']})\n\n"
+                
+                news_text += f"""
+🧠 *خلاصه هوشمند AI:* 💎
+{summary}
+
+📊 *تحلیل سریع:*
+• مهم‌ترین رویداد: {news_list[0]['title'][:60]}...
+• تعداد اخبار امروز: {len(news_list)}+
+
+💎 @CryptoPulse606
+{' '.join(random.sample(cfg.hashtags, 4))}
+"""
+                
+                # تولید تصویر اختصاصی برای خبر
+                logger.info("🎨 در حال تولید تصویر خبری...")
+                news_image = await ai_img.for_news()
+                
+                # ارسال به کانال
+                if news_image:
+                    await app.bot.send_photo(
+                        chat_id=cfg.channel_id,
+                        photo=news_image,
+                        caption="📸 *تصویر اختصاصی اخبار کریپتو* 💎",
+                        parse_mode="Markdown"
+                    )
+                
+                await safe_send(app.bot, cfg.channel_id, news_text)
+                logger.info(f"✅ اخبار با موفقیت ارسال شد | {len(news_list)} خبر")
+                
+            else:
+                logger.info("📭 خبر جدیدی از زمان ارسال قبلی وجود ندارد")
+                
+        except Exception as e:
+            logger.error(f"❌ خطا در حلقه اخبار: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
+        
+        # انتظار تا زمان ارسال بعدی (پیش‌فرض ۴ ساعت)
+        logger.info(f"⏰ ارسال بعدی اخبار: {cfg.news_interval // 3600} ساعت دیگر")
+        await asyncio.sleep(cfg.news_interval)
+
+
+# ============================================================
+# 📰 خبر فوری - دکمه مخصوص برای دریافت سریع اخبار
+# ============================================================
+async def process_news(bot, chat_id, msg_id):
+    """پردازش درخواست خبر فوری از دکمه"""
+    try:
+        # پیام در حال پردازش
+        await bot.edit_message_text(
+            chat_id=chat_id,
+            message_id=msg_id,
+            text="📡 در حال دریافت آخرین اخبار کریپتو... ⏳"
+        )
+        
+        # دریافت اخبار
+        news_list = await fetch_crypto_news()
+        
+        if not news_list:
+            await safe_send(bot, chat_id, "❌ متأسفانه خبری یافت نشد. لطفاً بعداً تلاش کنید.")
+            return
+        
+        # خلاصه با AI
+        headlines = [n['title'] for n in news_list[:10]]
+        summary = await ai_news_summary(headlines)
+        
+        # ساخت متن
+        text = f"📰 *اخبار فوری کریپتو* 🔥\n{pdt.full()}\n\n"
+        for i, news in enumerate(news_list[:7], 1):
+            text += f"{i}️⃣ [{news['title'][:70]}]({news['link']})\n   📡 {news['source']}\n\n"
+        
+        text += f"🧠 *تحلیل AI:*\n{summary}\n\n💎 @CryptoPulse606"
+        
+        # تصویر
+        img = await ai_img.for_news()
+        if img:
+            await bot.send_photo(chat_id, photo=img, caption="📸 تصویر خبری")
+        
+        await safe_send(bot, chat_id, text)
+        
+        # حذف پیام در حال پردازش
+        await bot.delete_message(chat_id, msg_id)
+        
+    except Exception as e:
+        logger.error(f"process_news error: {e}")
+        await safe_send(bot, chat_id, "❌ خطا در دریافت اخبار. لطفاً دوباره تلاش کنید.")
         asyncio.run(main())
     except KeyboardInterrupt:
         ProcessLock.release()
