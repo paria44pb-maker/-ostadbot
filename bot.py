@@ -1935,25 +1935,213 @@ async def auto_news_loop(app):
 
 📊 *تحلیل سریع:*
 • مهم‌ترین رویداد: {news_list[0]['title'][:60]}...
-• تعداد اخبار امروز: {len(news_list)}+
+# ============================================================
+# 📰 AUTO NEWS LOOP - حلقه خودکار اخبار (نسخه تصحیح شده)
+# ============================================================
+
+async def fetch_crypto_news():
+    """دریافت اخبار کریپتو از منابع معتبر (بدون نیاز به API key)"""
+    articles = []
+    
+    # منابع RSS معتبر (همگی رایگان و بدون نیاز به کلید)
+    rss_sources = [
+        ("https://cointelegraph.com/rss", "CoinTelegraph"),
+        ("https://cryptoslate.com/feed/", "CryptoSlate"),
+        ("https://cryptopanic.com/news/rss/", "CryptoPanic"),
+        ("https://coindesk.com/arc/outboundfeeds/rss/", "CoinDesk"),
+        ("https://decrypt.co/feed", "Decrypt"),
+        ("https://bitcoinmagazine.com/.rss/full/", "Bitcoin Magazine"),
+        ("https://www.newsbtc.com/feed/", "NewsBTC"),
+        ("https://cryptopotato.com/feed/", "CryptoPotato"),
+        ("https://www.zycrypto.com/feed/", "ZyCrypto"),
+        ("https://beincrypto.com/feed/", "BeInCrypto"),
+    ]
+    
+    # دریافت از RSS
+    for url, source in rss_sources:
+        try:
+            feed = feedparser.parse(url)
+            for entry in feed.entries[:5]:
+                articles.append({
+                    'title': entry.title,
+                    'link': entry.link,
+                    'source': source,
+                    'time': entry.get('published', '')
+                })
+        except Exception as e:
+            logger.debug(f"RSS error {source}: {e}")
+    
+    # دریافت از API رایگان NewsAPI (بدون کلید - محدود)
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            # استفاده از gdelt API (رایگان، بدون کلید)
+            resp = await client.get("https://api.gdeltproject.org/api/v2/doc/doc?query=bitcoin%20cryptocurrency&mode=artlist&format=json&maxrecords=10")
+            if resp.status_code == 200:
+                data = resp.json()
+                for item in data.get('articles', []):
+                    articles.append({
+                        'title': item.get('title', ''),
+                        'link': item.get('url', ''),
+                        'source': 'GDLT',
+                        'time': item.get('seendate', '')
+                    })
+    except Exception as e:
+        logger.debug(f"GDLT API error: {e}")
+    
+    # دریافت از cryptocurrency.cv (رایگان، بدون کلید)
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            resp = await client.get("https://cryptocurrency.cv/api/news?limit=15")
+            if resp.status_code == 200:
+                data = resp.json()
+                for item in data.get('items', []):
+                    articles.append({
+                        'title': item.get('title', ''),
+                        'link': item.get('url', ''),
+                        'source': 'cryptocurrency.cv',
+                        'time': item.get('published_at', '')
+                    })
+    except Exception as e:
+        logger.debug(f"CV API error: {e}")
+    
+    # حذف تکراری‌ها بر اساس عنوان
+    seen = set()
+    unique_articles = []
+    for article in articles:
+        if article['title'] not in seen:
+            seen.add(article['title'])
+            unique_articles.append(article)
+    
+    logger.info(f"📰 {len(unique_articles)} خبر جدید دریافت شد")
+    return unique_articles[:20]
+
+
+async def ai_news_summary(headlines):
+    """خلاصه‌سازی اخبار با هوش مصنوعی"""
+    if not headlines:
+        return "📭 اخباری یافت نشد."
+    
+    # استفاده از هوش مصنوعی فعلی (Groq/Gemini/DeepSeek)
+    try:
+        ai = get_current_ai()
+        if hasattr(ai, 'news_summary'):
+            result = await ai.news_summary(headlines)
+            if result and len(result) > 20:
+                return result
+    except Exception as e:
+        logger.error(f"AI summary error: {e}")
+    
+    # Fallback: خلاصه ساده (بدون AI)
+    summary = "📊 خلاصه اخبار امروز:\n\n"
+    for i, h in enumerate(headlines[:5], 1):
+        summary += f"{i}. {h}\n"
+    summary += "\nبرای جزئیات بیشتر روی لینک‌ها کلیک کنید. 🔍"
+    return summary
+
+
+async def auto_news_loop(app):
+    """📰 حلقه خودکار ارسال اخبار هر ۴ ساعت"""
+    await asyncio.sleep(45)  # صبر اولیه برای راه‌اندازی کامل
+    
+    last_news_hash = ""
+    news_counter = 0
+    consecutive_errors = 0
+    
+    while True:
+        try:
+            if not cfg.channel_id:
+                logger.warning("⚠️ CHANNEL_ID تنظیم نشده، اخبار ارسال نمی‌شود")
+                await asyncio.sleep(60)
+                continue
+            
+            logger.info("📡 در حال دریافت آخرین اخبار کریپتو...")
+            
+            # دریافت اخبار
+            news_list = await fetch_crypto_news()
+            
+            if not news_list:
+                logger.warning("⚠️ خبری دریافت نشد")
+                consecutive_errors += 1
+                wait_time = min(60 * consecutive_errors, 900)  # حداکثر 15 دقیقه
+                await asyncio.sleep(wait_time)
+                continue
+            
+            # ریست شمارنده خطا در صورت موفقیت
+            consecutive_errors = 0
+            
+            # بررسی اخبار جدید با هش
+            current_hash = hashlib.md5(
+                "".join([n['title'] for n in news_list[:10]]).encode()
+            ).hexdigest()
+            
+            # اگر خبر جدیدی وجود دارد یا هر ۴ ساعت یکبار ارسال کن
+            if current_hash != last_news_hash or news_counter >= 2:
+                last_news_hash = current_hash
+                news_counter = 0
+                
+                # انتخاب عناوین برای خلاصه AI
+                headlines = [n['title'] for n in news_list[:12]]
+                
+                # دریافت خلاصه از هوش مصنوعی
+                logger.info("🧠 در حال خلاصه‌سازی اخبار...")
+                summary = await ai_news_summary(headlines)
+                
+                # ساخت متن خبر با فرمت اختصاصی
+                news_text = f"""╔══════════════════════════════════════╗
+║   📰 اخبار لحظه‌ای کریپتو 💎 ║
+╠══════════════════════════════════════╣
+{pdt.greeting() if hasattr(pdt, 'greeting') else 'سلام!'}
+{pdt.full() if hasattr(pdt, 'full') else datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+
+📌 *آخرین عناوین خبری:*
+
+"""
+                # اضافه کردن ۵ خبر اول با لینک
+                for i, news in enumerate(news_list[:5], 1):
+                    # ایموجی بر اساس منبع
+                    source_emoji = {
+                        'CoinTelegraph': '📰',
+                        'CryptoSlate': '📊',
+                        'CryptoPanic': '😱',
+                        'CoinDesk': '💎',
+                        'Decrypt': '🔐',
+                        'Bitcoin Magazine': '₿',
+                        'NewsBTC': '📈',
+                        'CryptoPotato': '🥔',
+                        'ZyCrypto': '🔒',
+                        'BeInCrypto': '📡',
+                        'GDLT': '🌍',
+                        'cryptocurrency.cv': '🌐'
+                    }.get(news['source'], '📡')
+                    
+                    news_text += f"{i}️⃣ **{news['title'][:80]}**\n"
+                    news_text += f"   {source_emoji} {news['source']} | [🔗 لینک خبر]({news['link']})\n\n"
+                
+                news_text += f"""
+🧠 *خلاصه هوشمند:* 💎
+{summary[:500]}
+
+📊 *آمار:*
+• تعداد اخبار: {len(news_list)}+
+• منابع: {len(set(n['source'] for n in news_list))} منبع
 
 💎 @CryptoPulse606
-{' '.join(random.sample(cfg.hashtags, 4)) if hasattr(cfg, 'hashtags') else '#کریپتو #اخبار'}
 """
                 
                 # تولید تصویر اختصاصی برای خبر
                 if hasattr(ai_img, 'for_news'):
                     logger.info("🎨 در حال تولید تصویر خبری...")
-                    news_image = await ai_img.for_news()
-                    
-                    # ارسال تصویر به کانال
-                    if news_image:
-                        await app.bot.send_photo(
-                            chat_id=cfg.channel_id,
-                            photo=news_image,
-                            caption="📸 *تصویر اختصاصی اخبار کریپتو* 💎",
-                            parse_mode="Markdown"
-                        )
+                    try:
+                        news_image = await ai_img.for_news()
+                        if news_image:
+                            await app.bot.send_photo(
+                                chat_id=cfg.channel_id,
+                                photo=news_image,
+                                caption="📸 *تصویر اختصاصی اخبار کریپتو* 💎",
+                                parse_mode="Markdown"
+                            )
+                    except Exception as e:
+                        logger.error(f"خطا در تولید تصویر: {e}")
                 
                 # ارسال متن خبر
                 await safe_send(app.bot, cfg.channel_id, news_text)
@@ -1961,16 +2149,18 @@ async def auto_news_loop(app):
                 
             else:
                 logger.info("📭 خبر جدیدی از زمان ارسال قبلی وجود ندارد")
+                news_counter += 1
                 
         except Exception as e:
             logger.error(f"❌ خطا در حلقه اخبار: {e}")
             import traceback
             logger.error(traceback.format_exc())
+            consecutive_errors += 1
         
         # انتظار تا زمان ارسال بعدی (پیش‌فرض ۴ ساعت)
-        interval_hours = cfg.news_interval / 3600
-        logger.info(f"⏰ ارسال بعدی اخبار: {interval_hours:.1f} ساعت دیگر")
-        await asyncio.sleep(cfg.news_interval)
+        wait_time = cfg.news_interval if consecutive_errors == 0 else min(300, 60 * consecutive_errors)
+        logger.info(f"⏰ ارسال بعدی اخبار: {wait_time // 60} دقیقه دیگر")
+        await asyncio.sleep(wait_time)
 
 
 async def process_news(bot, chat_id, msg_id):
@@ -1996,17 +2186,20 @@ async def process_news(bot, chat_id, msg_id):
         summary = await ai_news_summary(headlines)
         
         # ساخت متن
-        text = f"📰 *اخبار فوری کریپتو* 🔥\n{pdt.full() if hasattr(pdt, 'full') else pdt.full_datetime()}\n\n"
+        text = f"📰 *اخبار فوری کریپتو* 🔥\n{pdt.full() if hasattr(pdt, 'full') else datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n"
         for i, news in enumerate(news_list[:7], 1):
             text += f"{i}️⃣ [{news['title'][:70]}]({news['link']})\n   📡 {news['source']}\n\n"
         
-        text += f"🧠 *تحلیل AI:*\n{summary}\n\n💎 @CryptoPulse606"
+        text += f"🧠 *تحلیل:*\n{summary}\n\n💎 @CryptoPulse606"
         
-        # تصویر خبری
+        # تصویر خبری (اختیاری)
         if hasattr(ai_img, 'for_news'):
-            img = await ai_img.for_news()
-            if img:
-                await bot.send_photo(chat_id, photo=img, caption="📸 تصویر خبری پلاتینیومی")
+            try:
+                img = await ai_img.for_news()
+                if img:
+                    await bot.send_photo(chat_id, photo=img, caption="📸 تصویر خبری")
+            except:
+                pass
         
         await safe_send(bot, chat_id, text)
         
@@ -2016,7 +2209,6 @@ async def process_news(bot, chat_id, msg_id):
     except Exception as e:
         logger.error(f"process_news error: {e}")
         await safe_send(bot, chat_id, "❌ خطا در دریافت اخبار. لطفاً دوباره تلاش کنید.")
-                
                 # ساخت متن خبر
                 news_text = f"""╔══════════════════════════════════════╗
 ║   📰 اخبار لحظه‌ای کریپتو 💎 ║
