@@ -654,59 +654,267 @@ class GroqAI:
         ایموجی و فرمت بامزه. ۱۲۰۰ کلمه. #دوره_کریپتو_پالس"""
         
         return await self._call(prompt, self.TOKENS['course'])
-
-# نمونه‌های هوش مصنوعی
-groq_ai = GroqAI()
-
-class GeminiAI:
-    """کلاس ارتباط با Gemini API"""
+# ============================================================
+# هوش مصنوعی Groq (اصلاح شده با مدیریت Rate Limit)
+# ============================================================
+class GroqAI:
+    """کلاس ارتباط با Groq API با مدیریت Rate Limit"""
     
-    URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent"
+    URL = "https://api.groq.com/openai/v1/chat/completions"
+    MODEL = "llama-3.3-70b-versatile"
+    
+    TOKENS = {
+        'tech': 800,        # کاهش از 1200
+        'market': 500,      # کاهش از 800
+        'edu': 800,         # کاهش از 1200
+        'news': 600,        # کاهش از 900
+        'whale': 500,       # کاهش از 800
+        'prediction': 800,  # کاهش از 1500
+        'course': 1000,     # کاهش از 1800
+        'daily_analysis': 500,
+        'weekly_analysis': 500,
+        'monthly_analysis': 500
+    }
     
     def __init__(self):
-        self.key = cfg.gemini_api_key
-        self.enabled = bool(self.key and len(self.key) > 10)
+        self.enabled = bool(cfg.groq_api_key and len(cfg.groq_api_key) > 10)
         self._client = None
         self._lock = threading.Lock()
+        self._last_call = 0
+        self._call_count = 0
         self._error_count = 0
+        self._rate_limit_wait = 1  # زمان انتظار اولیه
+        self._max_rate_limit_wait = 60  # حداکثر زمان انتظار
+        self._total_requests_minute = 0
+        self._minute_start = time.time()
     
     def _get_client(self):
         with self._lock:
             if self._client is None:
-                self._client = httpx.AsyncClient(timeout=60.0)
+                self._client = httpx.AsyncClient(
+                    timeout=120.0,
+                    limits=httpx.Limits(max_connections=5, max_keepalive_connections=2)
+                )
             return self._client
     
-    async def ask(self, prompt: str, max_t: int = 500) -> Optional[str]:
-        if not self.enabled or not token_mgr.can_use(max_t):
-            return None
-        if self._error_count >= 5:
+    def _check_rate_limit(self):
+        """بررسی محدودیت نرخ محلی"""
+        now = time.time()
+        
+        # بازنشانی شمارنده دقیقه‌ای
+        if now - self._minute_start > 60:
+            self._total_requests_minute = 0
+            self._minute_start = now
+        
+        # حداکثر ۲۰ درخواست در دقیقه
+        if self._total_requests_minute >= 20:
+            return False
+        
+        # حداقل ۳ ثانیه فاصله بین درخواست‌ها
+        if now - self._last_call < 3:
+            return False
+        
+        return True
+    
+    async def _call(self, prompt: str, max_t: int = 500, retry_count: int = 2) -> Optional[str]:
+        """فراخوانی پایه Groq با مدیریت Rate Limit"""
+        if not self.enabled:
             return None
         
-        try:
-            response = await self._get_client().post(
-                f"{self.URL}?key={self.key}",
-                json={
-                    "contents": [{"parts": [{"text": prompt}]}],
-                    "generationConfig": {"maxOutputTokens": max_t}
-                }
-            )
-            
-            if response.status_code == 200:
-                text = response.json().get("candidates", [{}])[0].get("content", {}).get("parts", [{}])[0].get("text", "")
-                if text:
-                    token_mgr.record_usage(max_t, "gemini")
+        if not token_mgr.can_use(max_t):
+            logger.warning("محدودیت توکن دقیقه‌ای")
+            return None
+        
+        if not self._check_rate_limit():
+            wait_time = 3 - (time.time() - self._last_call)
+            if wait_time > 0:
+                await asyncio.sleep(wait_time)
+        
+        for attempt in range(retry_count):
+            try:
+                self._last_call = time.time()
+                self._call_count += 1
+                self._total_requests_minute += 1
+                
+                response = await self._get_client().post(
+                    self.URL,
+                    headers={
+                        "Authorization": f"Bearer {cfg.groq_api_key}",
+                        "Content-Type": "application/json"
+                    },
+                    json={
+                        "model": self.MODEL,
+                        "messages": [
+                            {
+                                "role": "system",
+                                "content": (
+                                    "شما یک تحلیلگر حرفه‌ای و بامزه بازار کریپتو هستید. "
+                                    "فقط به فارسی روان و خودمانی پاسخ دهید. "
+                                    "از ایموجی استفاده کنید. "
+                                    "پاسخ‌ها دقیق و عملی باشد."
+                                )
+                            },
+                            {"role": "user", "content": prompt}
+                        ],
+                        "max_tokens": max_t,
+                        "temperature": 0.7
+                    }
+                )
+                
+                if response.status_code == 200:
+                    data = response.json()
+                    token_mgr.record_usage(
+                        data.get('usage', {}).get('total_tokens', max_t),
+                        "groq"
+                    )
+                    content = data["choices"][0]["message"]["content"]
                     self._error_count = 0
-                    return text
-            
-            self._error_count += 1
-        except Exception as e:
-            logger.error(f"Gemini Error: {e}")
-            self._error_count += 1
+                    self._rate_limit_wait = 1  # بازنشانی
+                    return content
+                
+                elif response.status_code == 429:
+                    # Rate Limit - افزایش زمان انتظار
+                    self._rate_limit_wait = min(self._rate_limit_wait * 2, self._max_rate_limit_wait)
+                    logger.warning(f"Rate limit Groq - انتظار {self._rate_limit_wait} ثانیه")
+                    await asyncio.sleep(self._rate_limit_wait)
+                    continue
+                
+                elif response.status_code == 503:
+                    logger.warning(f"Groq Service Unavailable (attempt {attempt+1})")
+                    await asyncio.sleep(5)
+                    continue
+                
+                else:
+                    logger.error(f"Groq API Error {response.status_code}")
+                    self._error_count += 1
+                    if self._error_count >= 10:
+                        logger.error("توقف موقت Groq - خطاهای زیاد")
+                        self.enabled = False
+                        return None
+                    break
+                
+            except httpx.TimeoutException:
+                logger.warning(f"Groq timeout (attempt {attempt+1})")
+                await asyncio.sleep(2)
+            except Exception as e:
+                logger.error(f"Groq exception: {e}")
+                self._error_count += 1
+                break
         
         return None
+    
+    async def technical_analysis(self, symbol, indicators, price, change, patterns, candles, mtf_data):
+        """تحلیل تکنیکال - نسخه سبک"""
+        if self._error_count >= 10:
+            return None
+        
+        prompt = f"""تحلیل تکنیکال {symbol} ${price:,.2f} ({change:+.1f}%)
+        RSI={indicators.get('RSI_14', 50):.0f} MACD={'صعود' if indicators.get('MACD_HIST', 0) > 0 else 'نزول'}
+        حمایت=${indicators.get('حمایت', 0):.2f} مقاومت=${indicators.get('مقاومت', 0):.2f}
+        تحلیل فارسی کوتاه: روند، ورود، ضرر، هدف. ۳۰۰ کلمه."""
+        
+        return await self._call(prompt, self.TOKENS.get('tech', 500))
 
-gemini_ai = GeminiAI()
+# ============================================================
+# کاهش فرکانس حلقه‌های خودکار
+# ============================================================
 
+# تغییر فواصل زمانی برای کاهش فشار روی API
+@dataclass
+class Config:
+    # ... بقیه تنظیمات ...
+    
+    # افزایش فواصل برای کاهش Rate Limit
+    signal_interval: int = 21600      # ۶ ساعت (قبلاً ۴ ساعت)
+    education_interval: int = 3600    # ۱ ساعت (قبلاً ۳۰ دقیقه)
+    prediction_interval: int = 172800 # ۴۸ ساعت (قبلاً ۲۴ ساعت)
+    fg_interval: int = 7200           # ۲ ساعت
+    whale_interval: int = 10800       # ۳ ساعت
+
+# ============================================================
+# اضافه کردن کش برای جلوگیری از درخواست‌های تکراری
+# ============================================================
+class AICache:
+    """کش پاسخ‌های هوش مصنوعی"""
+    
+    def __init__(self):
+        self._cache = {}
+        self._ttl = 3600  # ۱ ساعت
+    
+    def get(self, key: str) -> Optional[str]:
+        if key in self._cache:
+            data, timestamp = self._cache[key]
+            if time.time() - timestamp < self._ttl:
+                return data
+            del self._cache[key]
+        return None
+    
+    def set(self, key: str, value: str):
+        self._cache[key] = (value, time.time())
+    
+    def cleanup(self):
+        now = time.time()
+        expired = [k for k, (_, ts) in self._cache.items() if now - ts > self._ttl]
+        for k in expired:
+            del self._cache[k]
+
+ai_cache = AICache()
+
+# اصلاح متد _call در GroqAI برای استفاده از کش
+async def _call_with_cache(self, prompt: str, max_t: int = 500, retry_count: int = 2) -> Optional[str]:
+    """فراخوانی با کش"""
+    
+    # ایجاد کلید کش
+    cache_key = hashlib.md5(prompt[:200].encode()).hexdigest()
+    
+    # بررسی کش
+    cached = ai_cache.get(cache_key)
+    if cached:
+        logger.info("استفاده از پاسخ کش شده")
+        return cached
+    
+    # فراخوانی اصلی
+    result = await self._call(prompt, max_t, retry_count)
+    
+    # ذخیره در کش
+    if result:
+        ai_cache.set(cache_key, result)
+    
+    return result
+
+# جایگزینی متد _call
+GroqAI._call_original = GroqAI._call
+GroqAI._call = _call_with_cache
+
+# ============================================================
+# پاکسازی دوره‌ای کش
+# ============================================================
+async def cache_cleanup_loop():
+    """پاکسازی کش هر ۳۰ دقیقه"""
+    while True:
+        await asyncio.sleep(1800)
+        ai_cache.cleanup()
+        logger.debug("پاکسازی کش هوش مصنوعی")
+
+# اضافه کردن به main()
+# asyncio.create_task(cache_cleanup_loop())
+
+# ============================================================
+# تنظیم محدودیت‌ها در railway.toml یا متغیرهای محیطی
+# ============================================================
+# اضافه کنید به فایل railway.toml:
+"""
+[build]
+builder = "NIXPACKS"
+
+[deploy]
+numReplicas = 1
+restartPolicyType = "ON_FAILURE"
+"""
+
+# یا تنظیم متغیرهای محیطی در Railway:
+# MAX_REQUESTS_PER_MINUTE=15
+# REQUEST_DELAY=4
 # ============================================================
 # صرافی (Exchange Manager) - اصلاح شده
 # ============================================================
