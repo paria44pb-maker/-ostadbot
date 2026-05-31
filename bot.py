@@ -9,7 +9,7 @@
 ║  ✅ Live Signals with Charts from Exchange                                  ║
 ║  ✅ Auto Education Every 30 minutes (1,000,000+ lessons)                    ║
 ║  ✅ News Every 4 hours from reliable sources                                ║
-║  ✅ 24 Professional Buttons | Invite Code System                            ║
+║  ✅ 24 Professional Buttons | NO INVITE CODE REQUIRED                       ║
 ╚══════════════════════════════════════════════════════════════════════════════╝
 """
 
@@ -52,10 +52,6 @@ logging.getLogger('urllib3').setLevel(logging.ERROR)
 logging.getLogger('asyncio').setLevel(logging.ERROR)
 logging.getLogger('matplotlib').setLevel(logging.ERROR)
 logging.getLogger('PIL').setLevel(logging.ERROR)
-
-# فقط لاگ‌های خودمان با حداقل سطح
-logger = logging.getLogger('VIP')
-logger.setLevel(logging.ERROR)
 
 # ============================================================
 # ENVIRONMENT SETUP
@@ -107,45 +103,6 @@ class Config:
     news_interval: int = 14400
 
 cfg = Config()
-
-# ============================================================
-# INVITE CODE SYSTEM
-# ============================================================
-class InviteSystem:
-    VALID_CODES = {"VIP1404", "PLATINUM2026", "CRYPTOVIP", "GOLDEN1404", "DIAMONDVIP"}
-    _users = {}
-    _file = "authorized.json"
-    
-    @classmethod
-    def load(cls):
-        try:
-            if os.path.exists(cls._file):
-                with open(cls._file, 'r') as f:
-                    cls._users = json.load(f)
-        except:
-            pass
-    
-    @classmethod
-    def save(cls):
-        try:
-            with open(cls._file, 'w') as f:
-                json.dump(cls._users, f)
-        except:
-            pass
-    
-    @classmethod
-    def is_auth(cls, user_id: int) -> bool:
-        return user_id == cfg.owner_id or str(user_id) in cls._users
-    
-    @classmethod
-    def auth_user(cls, user_id: int, code: str) -> bool:
-        if code.upper().strip() in cls.VALID_CODES:
-            cls._users[str(user_id)] = code
-            cls.save()
-            return True
-        return False
-
-InviteSystem.load()
 
 # ============================================================
 # EXCHANGE MANAGER (COINEX)
@@ -248,11 +205,9 @@ class TechnicalIndicators:
         # Bollinger Bands
         sma = close.rolling(window=20).mean()
         std = close.rolling(window=20).std()
-        bb_upper = sma + (std * 2)
-        bb_lower = sma - (std * 2)
-        result['BB_UPPER'] = round(float(bb_upper.iloc[-1]), 2)
+        result['BB_UPPER'] = round(float((sma + (std * 2)).iloc[-1]), 2)
         result['BB_MIDDLE'] = round(float(sma.iloc[-1]), 2)
-        result['BB_LOWER'] = round(float(bb_lower.iloc[-1]), 2)
+        result['BB_LOWER'] = round(float((sma - (std * 2)).iloc[-1]), 2)
         
         # Volume
         avg_volume = volume.rolling(20).mean().iloc[-1]
@@ -303,26 +258,22 @@ class SignalGenerator:
     def generate(ind: Dict[str, Any], price: float) -> Dict[str, Any]:
         score = 0
         
-        # EMA
         if ind.get('EMA_7', 0) > ind.get('EMA_20', 0) > ind.get('EMA_50', 0):
             score += 30
         elif ind.get('EMA_7', 0) < ind.get('EMA_20', 0) < ind.get('EMA_50', 0):
             score -= 30
         
-        # RSI
         rsi = ind.get('RSI_14', 50)
         if rsi < 25:
             score += 40
         elif rsi > 75:
             score -= 40
         
-        # MACD
         if ind.get('MACD_HISTOGRAM', 0) > 0:
             score += 25
         else:
             score -= 25
         
-        # Volume
         if ind.get('VOLUME_RATIO', 1) > 1.2:
             score += 15 if score > 0 else -15
         
@@ -363,7 +314,6 @@ class MarketReportGenerator:
         trend = ind.get('TREND_DIRECTION', 'خنثی')
         rsi = ind.get('RSI_14', 50)
         
-        # Predictions
         if 'BTC' in symbol:
             if 'صعودی' in trend:
                 day_target = price * 1.025
@@ -423,12 +373,6 @@ class Menu:
             [InlineKeyboardButton("🕰 تاریخ", callback_data="datetime"),
              InlineKeyboardButton("❓ راهنما", callback_data="help")]
         ])
-    
-    @staticmethod
-    def invite() -> InlineKeyboardMarkup:
-        return InlineKeyboardMarkup([
-            [InlineKeyboardButton("🔑 کد دعوت", callback_data="enter_code")]
-        ])
 
 # ============================================================
 # HANDLERS
@@ -441,22 +385,6 @@ async def safe_send(bot, chat_id, text):
         return await bot.send_message(chat_id, clean[:4000])
 
 async def start_command(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    
-    if not InviteSystem.is_auth(user_id):
-        parts = update.message.text.split()
-        if len(parts) > 1:
-            code = parts[1]
-            if InviteSystem.auth_user(user_id, code):
-                await update.message.reply_text("✅ کد دعوت معتبر است!\nبه VIP پلاتینیوم خوش آمدید 💎\nلطفاً /start را دوباره بزنید.")
-                return
-            else:
-                await update.message.reply_text("❌ کد دعوت نامعتبر!", reply_markup=Menu.invite())
-                return
-        else:
-            await update.message.reply_text("🔐 دسترسی محدود!\nلطفاً کد دعوت را وارد کنید:\n/start <کد>\n\nکدهای معتبر: VIP1404, PLATINUM2026, CRYPTOVIP, GOLDEN1404, DIAMONDVIP", reply_markup=Menu.invite())
-            return
-    
     await update.message.reply_text(
         f"💎 *VIP PLATINUM v30.0* 💎\n\n{pdt.full()}\n\n✨ به ربات حرفه‌ای تحلیل کریپتو خوش آمدید!\n\n📊 ۸۰+ اندیکاتور\n🎯 سیگنال با دقت ۹۷%\n📚 آموزش هر ۳۰ دقیقه\n📰 اخبار هر ۴ ساعت\n🔮 پیش‌بینی دقیق\n\n💎 @CryptoPulse606",
         parse_mode="Markdown", reply_markup=Menu.main()
@@ -466,10 +394,6 @@ async def button_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     data = query.data
-    
-    if not InviteSystem.is_auth(query.from_user.id):
-        await query.edit_message_text("🔐 دسترسی محدود! لطفاً کد دعوت را وارد کنید.", reply_markup=Menu.invite())
-        return
     
     if data == "prices":
         exchange.connect()
@@ -501,16 +425,15 @@ async def button_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         asyncio.create_task(process_news(ctx.bot, query.message.chat_id, query.message.message_id))
         
     elif data == "education":
-        await query.edit_message_text("📚 *آموزش VIP*\n\n📖 موضوع: کندل‌شناسی\n\nکندل چکش: الگوی برگشتی صعودی\nکندل ستاره دنباله‌دار: الگوی برگشتی نزولی\n\n💎 @CryptoPulse606", parse_mode="Markdown")
+        topics = ["کندل‌شناسی", "فیبوناچی", "اسمارت مانی", "مدیریت سرمایه", "RSI", "MACD", "پرایس اکشن"]
+        topic = random.choice(topics)
+        await query.edit_message_text(f"📚 *آموزش VIP*\n\n📖 موضوع: {topic}\n\n{topic} یکی از مبانی مهم معامله‌گری است.\n\n💎 @CryptoPulse606", parse_mode="Markdown")
         
     elif data == "datetime":
         await query.edit_message_text(f"🕰 *تاریخ و ساعت*\n\n{pdt.full()}\n\n💎 @CryptoPulse606", parse_mode="Markdown")
         
     elif data == "help":
         await query.edit_message_text("📖 *راهنما*\n\n• قیمت‌ها: قیمت لحظه‌ای\n• سیگنال: سیگنال معاملاتی\n• تحلیل: تحلیل تکنیکال\n• پیش‌بینی: پیش‌بینی قیمت\n• اخبار: آخرین اخبار\n• آموزش: درس‌های آموزشی\n\n💎 @CryptoPulse606", parse_mode="Markdown")
-    
-    elif data == "enter_code":
-        await query.edit_message_text("🔑 *کد دعوت*\n\nلطفاً کد را با دستور /start <کد> وارد کنید.\n\nمثال: /start VIP1404\n\nکدهای معتبر:\nVIP1404, PLATINUM2026, CRYPTOVIP, GOLDEN1404, DIAMONDVIP", parse_mode="Markdown")
 
 async def process_signal(bot, chat_id, symbol, msg_id):
     try:
@@ -531,7 +454,7 @@ async def process_signal(bot, chat_id, symbol, msg_id):
         await bot.delete_message(chat_id, msg_id)
         
     except:
-        await safe_send(bot, chat_id, "❌ خطا در دریافت سیگنال")
+        await safe_send(bot, chat_id, "❌ خطا")
 
 async def process_analysis(bot, chat_id, symbol, msg_id):
     try:
@@ -575,7 +498,7 @@ async def process_analysis(bot, chat_id, symbol, msg_id):
         await bot.delete_message(chat_id, msg_id)
         
     except:
-        await safe_send(bot, chat_id, "❌ خطا در تحلیل")
+        await safe_send(bot, chat_id, "❌ خطا")
 
 async def process_prediction(bot, chat_id, symbol, msg_id):
     try:
@@ -616,7 +539,7 @@ async def process_prediction(bot, chat_id, symbol, msg_id):
         await bot.delete_message(chat_id, msg_id)
         
     except:
-        await safe_send(bot, chat_id, "❌ خطا در پیش‌بینی")
+        await safe_send(bot, chat_id, "❌ خطا")
 
 async def process_news(bot, chat_id, msg_id):
     try:
@@ -646,7 +569,7 @@ async def process_news(bot, chat_id, msg_id):
         await bot.delete_message(chat_id, msg_id)
         
     except:
-        await safe_send(bot, chat_id, "❌ خطا در دریافت اخبار")
+        await safe_send(bot, chat_id, "❌ خطا")
 
 # ============================================================
 # AUTO LOOPS
@@ -674,7 +597,7 @@ async def auto_signal_loop(app):
 async def auto_education_loop(app):
     await asyncio.sleep(60)
     lesson_num = 1
-    topics = ["کندل‌شناسی", "فیبوناچی", "اسمارت مانی", "مدیریت سرمایه", "RSI", "MACD", "پرایس اکشن"]
+    topics = ["کندل‌شناسی", "فیبوناچی", "اسمارت مانی", "مدیریت سرمایه", "RSI", "MACD", "پرایس اکشن", "ایچیموکو", "الگوهای هارمونیک", "روانشناسی ترید"]
     
     while True:
         if cfg.channel_id:
@@ -692,7 +615,7 @@ async def auto_education_loop(app):
 • احساسات را کنترل کنید
 
 📈 تمرین:
-حد ضرر مناسب برای معامله ۱۰,۰۰۰ دلاری محاسبه کنید.
+حد ضرر مناسب برای معامله محاسبه کنید.
 
 💎 @CryptoPulse606
 """
