@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """
 ╔══════════════════════════════════════════════════════════════════════════════╗
-║  💎 VIP PLATINUM v34.2 — وی آی پی پلاتینیوم — RAILWAY OPTIMIZED             ║
+║  💎 VIP PLATINUM v34.3 — وی آی پی پلاتینیوم — RAILWAY OPTIMIZED             ║
 ║  ✅ صرافی: CoinEx (کوینکس) — ۱۰۰٪ رایگان                                    ║
 ║  ✅ Owner: 7225279768 — Unlimited Access                                   ║
 ║  ✅ AI: Groq + Gemini — Dual Intelligence                                  ║
@@ -13,7 +13,8 @@
 ║  ✅ Chart Analysis from Uploaded Images                                    ║
 ║  ✅ 12 Professional Glass Buttons                                          ║
 ║  ✅ Railway-Optimized — Zero Log Noise — All Bugs Fixed                    ║
-║  ❌ NO EDUCATION FEATURE                                                   ║
+║  ✅ Force Join Channel — CryptoPulse606                                     ║
+║  ✅ Animated Platinum GIF Welcome                                           ║
 ╚══════════════════════════════════════════════════════════════════════════════╝
 """
 
@@ -59,7 +60,7 @@ _console = logging.StreamHandler()
 _console.setFormatter(logging.Formatter('%(asctime)s | %(message)s', datefmt='%H:%M:%S'))
 _console.addFilter(lambda r: r.name == 'VIP')
 logger.addHandler(_console)
-logger.info("🚀 VIP Platinum v34.2 starting...")
+logger.info("🚀 VIP Platinum v34.3 starting...")
 
 # ============================================================
 # 📦 AUTO-INSTALL MISSING PACKAGES
@@ -104,6 +105,8 @@ TEHRAN_TZ = pytz.timezone('Asia/Tehran')
 class Config:
     token: str = os.getenv("TELEGRAM_BOT_TOKEN", "")
     channel: str = os.getenv("CHANNEL_ID", "@CryptoPulse606")
+    channel_url: str = os.getenv("CHANNEL_URL", "https://t.me/CryptoPulse606")
+    channel_id_num: str = os.getenv("CHANNEL_ID_NUM", "-1001234567890")
     owner: int = 7225279768
     groq_key: str = os.getenv("GROQ_API_KEY", "")
     gemini_key: str = os.getenv("GEMINI_API_KEY", "")
@@ -127,6 +130,12 @@ class Config:
     ])
 
 cfg = Config()
+
+# ============================================================
+# 🎬 ANIMATED PLATINUM GIF URL
+# ============================================================
+PLATINUM_GIF_URL = "https://media.giphy.com/media/v1.Y2lkPTc5MGI3NjExZ3h4eXk5d2QzZzZ6eTl3Z2QzZzZ6eTl3Z2QzZzZ6eTl3Z2QzZyZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/3o7aD2saalBwwzGWF6/giphy.gif"
+PLATINUM_GIF_URL = "https://i.giphy.com/media/v1.Y2lkPTc5MGI3NjExeHh4eXk5d2QzZzZ6eTl3Z2QzZzZ6eTl3Z2QzZzZ6eTl3Z2QzZyZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/l0HlBO7eyXz5WqJXW/giphy.gif"
 
 # ============================================================
 # 🔒 PROCESS LOCK
@@ -178,6 +187,54 @@ class Persian:
         return f"وقت بخیر {e} ⏰"
 
 p = Persian()
+
+# ============================================================
+# 🔐 FORCE JOIN CHECKER
+# ============================================================
+class ForceJoin:
+    """بررسی عضویت اجباری در کانال"""
+    
+    @staticmethod
+    async def check(bot, user_id: int) -> bool:
+        """بررسی عضویت کاربر در کانال"""
+        try:
+            member = await bot.get_chat_member(chat_id=cfg.channel, user_id=user_id)
+            status = member.status
+            if status in ['member', 'administrator', 'creator']:
+                return True
+            return False
+        except Exception as e:
+            logger.error(f"Force join check error: {e}")
+            # اگه نتونستیم چک کنیم، اجازه دسترسی میدیم
+            return True
+    
+    @staticmethod
+    def join_keyboard() -> InlineKeyboardMarkup:
+        """کیبورد عضویت در کانال"""
+        return InlineKeyboardMarkup([
+            [InlineKeyboardButton("📢 کریپتو پالس 💎", url=cfg.channel_url)],
+            [InlineKeyboardButton("✅ عضو شدم", callback_data="check_join")]
+        ])
+    
+    @staticmethod
+    def need_join_message() -> str:
+        """پیام درخواست عضویت"""
+        return f"""
+╔══════════════════════════════════════╗
+║   💎 VIP PLATINUM 💎 ║
+╚══════════════════════════════════════╝
+
+{p.greet()} دوست عزیز! 🌟
+
+🚫 *برای بهره‌مندی از خدمات VIP پلاتینیوم، لطفاً ابتدا در کانال زیر عضو شوید:*
+
+1️⃣ کانال کریپتو پالس 👇
+📢 @{cfg.channel.replace('@','')}
+
+2️⃣ روی دکمه *"عضو شدم"* کلیک کن ✅
+
+💎 بعد از عضویت، تمام امکانات ربات در اختیارت قرار می‌گیره! 🚀
+"""
 
 # ============================================================
 # 🎨 AI IMAGE GENERATOR — CONTEXT-AWARE
@@ -725,10 +782,57 @@ class Menu:
 # 🎭 HANDLERS
 # ============================================================
 async def cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(
-        f"""
+    """شروع ربات — بررسی عضویت در کانال"""
+    user_id = update.effective_user.id
+    
+    # Owner همیشه مجازه
+    if user_id == cfg.owner:
+        await update.message.reply_animation(
+            animation=PLATINUM_GIF_URL,
+            caption=f"""
 ╔══════════════════════════════════════╗
-║   💎 VIP PLATINUM v34.2 💎 ║
+║   💎 VIP PLATINUM v34.3 💎 ║
+║   وی آی پی پلاتینیوم 🚀 ║
+╚══════════════════════════════════════╝
+
+{p.greet()} ادمین عزیز! 🌟✨
+
+{p.full()}
+
+🧠 AI: Groq + Gemini (فارسی)
+📊 ۸۰+ اندیکاتور + پرایس اکشن
+🧲 اسمارت مانی (SMC)
+🎨 تصاویر حرفه‌ای AI
+📡 سیگنال هر ۲ ساعت
+📰 اخبار بروز هر ۴ ساعت
+📊 تحلیل نمودار ارسالی
+🟢 معامله در CoinEx
+
+✨ دقت پلاتینیومی 💎✨
+""",
+            parse_mode="Markdown",
+            reply_markup=Menu.main()
+        )
+        return
+    
+    # بررسی عضویت در کانال برای سایر کاربران
+    is_member = await ForceJoin.check(ctx.bot, user_id)
+    
+    if not is_member:
+        await update.message.reply_animation(
+            animation=PLATINUM_GIF_URL,
+            caption=ForceJoin.need_join_message(),
+            parse_mode="Markdown",
+            reply_markup=ForceJoin.join_keyboard()
+        )
+        return
+    
+    # کاربر عضو هست — نمایش منوی اصلی
+    await update.message.reply_animation(
+        animation=PLATINUM_GIF_URL,
+        caption=f"""
+╔══════════════════════════════════════╗
+║   💎 VIP PLATINUM v34.3 💎 ║
 ║   وی آی پی پلاتینیوم 🚀 ║
 ╚══════════════════════════════════════╝
 
@@ -744,7 +848,10 @@ async def cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 🟢 معامله در CoinEx
 
 ✨ دقت پلاتینیومی 💎✨
-""", parse_mode="Markdown", reply_markup=Menu.main())
+""",
+        parse_mode="Markdown",
+        reply_markup=Menu.main()
+    )
 
 async def send_full_signal(bot, chat, sym, ticker, df, ind, candles, mtf, smc_data):
     """ارسال کامل سیگنال با نمودار + AI"""
@@ -769,6 +876,43 @@ async def send_full_signal(bot, chat, sym, ticker, df, ind, candles, mtf, smc_da
 async def button_router(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query
     d = q.data
+    user_id = q.from_user.id
+    
+    # بررسی دکمه "عضو شدم"
+    if d == "check_join":
+        is_member = await ForceJoin.check(ctx.bot, user_id)
+        if is_member:
+            await q.answer("✅ عضویت تایید شد! خوش اومدی 💎")
+            await q.edit_message_text(
+                f"""
+╔══════════════════════════════════════╗
+║   💎 VIP PLATINUM v34.3 💎 ║
+╚══════════════════════════════════════╝
+
+{p.greet()} به VIP پلاتینیوم خوش اومدی! 🎉
+
+حالا می‌تونی از همه امکانات استفاده کنی 🚀
+
+👇 یکی از دکمه‌ها رو انتخاب کن:""",
+                parse_mode="Markdown",
+                reply_markup=Menu.main()
+            )
+        else:
+            await q.answer("❌ هنوز عضو نشدی! لطفاً اول عضو شو 🌌")
+        return
+    
+    # برای بقیه دکمه‌ها، بررسی عضویت
+    if user_id != cfg.owner:
+        is_member = await ForceJoin.check(ctx.bot, user_id)
+        if not is_member:
+            await q.answer("⛔ لطفاً ابتدا در کانال عضو شوید!")
+            await q.edit_message_text(
+                ForceJoin.need_join_message(),
+                parse_mode="Markdown",
+                reply_markup=ForceJoin.join_keyboard()
+            )
+            return
+    
     try:
         if d == "back":
             await q.edit_message_text("💎 منوی VIP پلاتینیوم", reply_markup=Menu.main())
@@ -924,12 +1068,25 @@ async def button_router(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
 async def handle_msg(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     u = ctx.user_data
+    user_id = update.effective_user.id
+    
+    # بررسی عضویت برای همه پیام‌ها
+    if user_id != cfg.owner:
+        is_member = await ForceJoin.check(ctx.bot, user_id)
+        if not is_member:
+            await update.message.reply_animation(
+                animation=PLATINUM_GIF_URL,
+                caption=ForceJoin.need_join_message(),
+                parse_mode="Markdown",
+                reply_markup=ForceJoin.join_keyboard()
+            )
+            return
     
     if update.message.photo:
         await update.message.reply_text("📊 در حال تحلیل نمودار... 💎")
         f = await update.message.photo[-1].get_file()
         b = await f.download_as_bytearray()
-        path = f"/tmp/chart_{update.effective_user.id}.png"
+        path = f"/tmp/chart_{user_id}.png"
         with open(path, 'wb') as fp: fp.write(b)
         try:
             img = Image.open(path)
@@ -1071,11 +1228,12 @@ async def main():
             await c.get(f"https://api.telegram.org/bot{cfg.token}/deleteWebhook", params={"drop_pending_updates": True})
     except: pass
     
-    logger.info(f"💎 VIP PLATINUM v34.2 | {p.full()}")
+    logger.info(f"💎 VIP PLATINUM v34.3 | {p.full()}")
     logger.info(f"🧠 AI: Groq={'✅' if cfg.groq_key else '❌'} Gemini={'✅' if cfg.gemini_key else '❌'}")
     logger.info(f"💱 CoinEx: {'✅' if cfg.coinex_key else '⚠️ Read-only'}")
     logger.info(f"🎨 Images: Context-aware | 📊 Chart: {'✅' if CHART_OK else '❌'}")
     logger.info(f"📡 Channel: {cfg.channel}")
+    logger.info(f"🔐 Force Join: فعال")
     
     ex.connect()
     req = HTTPXRequest(connect_timeout=60.0, read_timeout=60.0, write_timeout=60.0)
@@ -1092,7 +1250,7 @@ async def main():
     asyncio.create_task(auto_whale(app))
     asyncio.create_task(auto_daily(app))
     
-    logger.info("💎 VIP PLATINUM READY — ALL BUGS FIXED — RAILWAY OPTIMIZED ✨")
+    logger.info("💎 VIP PLATINUM READY — FORCE JOIN + GIF — ALL BUGS FIXED ✨")
     
     try:
         await app.initialize()
