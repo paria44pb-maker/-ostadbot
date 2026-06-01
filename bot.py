@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """
 ╔══════════════════════════════════════════════════════════════════════════════╗
-║  💎 VIP PLATINUM v34.3 — وی آی پی پلاتینیوم — RAILWAY OPTIMIZED             ║
+║  💎 VIP PLATINUM v34.4 — وی آی پی پلاتینیوم — RAILWAY OPTIMIZED             ║
 ║  ✅ صرافی: CoinEx (کوینکس) — ۱۰۰٪ رایگان                                    ║
 ║  ✅ Owner: 7225279768 — Unlimited Access                                   ║
 ║  ✅ AI: Groq + Gemini — Dual Intelligence                                  ║
@@ -14,7 +14,7 @@
 ║  ✅ 12 Professional Glass Buttons                                          ║
 ║  ✅ Railway-Optimized — Zero Log Noise — All Bugs Fixed                    ║
 ║  ✅ Force Join Channel — CryptoPulse606                                     ║
-║  ✅ Animated Platinum GIF Welcome                                           ║
+║  ✅ Custom Start Image — Platinum VIP                                       ║
 ╚══════════════════════════════════════════════════════════════════════════════╝
 """
 
@@ -60,7 +60,7 @@ _console = logging.StreamHandler()
 _console.setFormatter(logging.Formatter('%(asctime)s | %(message)s', datefmt='%H:%M:%S'))
 _console.addFilter(lambda r: r.name == 'VIP')
 logger.addHandler(_console)
-logger.info("🚀 VIP Platinum v34.3 starting...")
+logger.info("🚀 VIP Platinum v34.4 starting...")
 
 # ============================================================
 # 📦 AUTO-INSTALL MISSING PACKAGES
@@ -106,7 +106,6 @@ class Config:
     token: str = os.getenv("TELEGRAM_BOT_TOKEN", "")
     channel: str = os.getenv("CHANNEL_ID", "@CryptoPulse606")
     channel_url: str = os.getenv("CHANNEL_URL", "https://t.me/CryptoPulse606")
-    channel_id_num: str = os.getenv("CHANNEL_ID_NUM", "-1001234567890")
     owner: int = 7225279768
     groq_key: str = os.getenv("GROQ_API_KEY", "")
     gemini_key: str = os.getenv("GEMINI_API_KEY", "")
@@ -132,10 +131,9 @@ class Config:
 cfg = Config()
 
 # ============================================================
-# 🎬 ANIMATED PLATINUM GIF URL
+# 🖼️ START IMAGE — ONLY FOR /start COMMAND
 # ============================================================
-PLATINUM_GIF_URL = "https://media.giphy.com/media/v1.Y2lkPTc5MGI3NjExZ3h4eXk5d2QzZzZ6eTl3Z2QzZzZ6eTl3Z2QzZzZ6eTl3Z2QzZyZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/3o7aD2saalBwwzGWF6/giphy.gif"
-PLATINUM_GIF_URL = "https://i.giphy.com/media/v1.Y2lkPTc5MGI3NjExeHh4eXk5d2QzZzZ6eTl3Z2QzZzZ6eTl3Z2QzZzZ6eTl3Z2QzZyZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/l0HlBO7eyXz5WqJXW/giphy.gif"
+START_IMAGE_URL = "https://gapgpt.app/media-f1/server_files/3c1f2524-d5b4-416e-a4b2-108f6d183b90.png"
 
 # ============================================================
 # 🔒 PROCESS LOCK
@@ -192,25 +190,16 @@ p = Persian()
 # 🔐 FORCE JOIN CHECKER
 # ============================================================
 class ForceJoin:
-    """بررسی عضویت اجباری در کانال"""
-    
     @staticmethod
     async def check(bot, user_id: int) -> bool:
-        """بررسی عضویت کاربر در کانال"""
         try:
             member = await bot.get_chat_member(chat_id=cfg.channel, user_id=user_id)
-            status = member.status
-            if status in ['member', 'administrator', 'creator']:
-                return True
-            return False
-        except Exception as e:
-            logger.error(f"Force join check error: {e}")
-            # اگه نتونستیم چک کنیم، اجازه دسترسی میدیم
+            return member.status in ['member', 'administrator', 'creator']
+        except:
             return True
     
     @staticmethod
     def join_keyboard() -> InlineKeyboardMarkup:
-        """کیبورد عضویت در کانال"""
         return InlineKeyboardMarkup([
             [InlineKeyboardButton("📢 کریپتو پالس 💎", url=cfg.channel_url)],
             [InlineKeyboardButton("✅ عضو شدم", callback_data="check_join")]
@@ -218,7 +207,6 @@ class ForceJoin:
     
     @staticmethod
     def need_join_message() -> str:
-        """پیام درخواست عضویت"""
         return f"""
 ╔══════════════════════════════════════╗
 ║   💎 VIP PLATINUM 💎 ║
@@ -237,7 +225,7 @@ class ForceJoin:
 """
 
 # ============================================================
-# 🎨 AI IMAGE GENERATOR — CONTEXT-AWARE
+# 🎨 AI IMAGE GENERATOR
 # ============================================================
 class AIImage:
     URL = "https://image.pollinations.ai/prompt/"
@@ -263,26 +251,21 @@ class AIImage:
         self._used.append(style)
         seed = random.randint(10000, 99999)
         ts = int(time.time() * 1000)
-        
         full = f"{prompt}, {style}, unique_id_{seed}_{ts}"
         full_hash = hashlib.md5(full.encode()).hexdigest()
-        if full_hash in self._used:
-            full += f" extra_{random.randint(1,9999)}"
-        
+        if full_hash in self._used: full += f" extra_{random.randint(1,9999)}"
         try:
             url = f"{self.URL}{urllib.parse.quote(full[:900])}?width={w}&height={h}&nologo=true&seed={seed}"
             async with aiohttp.ClientSession() as s:
                 async with s.get(url, timeout=aiohttp.ClientTimeout(total=60)) as r:
                     if r.status == 200:
                         self._cnt += 1
-                        logger.info(f"🎨 Image #{self._cnt} created")
                         return await r.read()
         except: pass
         return None
     
     async def for_signal(self, sym: str, trend: str):
-        prompt = f"professional {sym} trading analysis, {trend} market, detailed chart visualization"
-        return await self.make(prompt)
+        return await self.make(f"professional {sym} trading analysis, {trend} market, detailed chart visualization")
     
     async def for_news(self):
         return await self.make("professional cryptocurrency news visualization")
@@ -293,10 +276,9 @@ class AIImage:
 ai_img = AIImage()
 
 # ============================================================
-# 🧠 AI ENGINE — GROQ + GEMINI — FULL PERSIAN
+# 🧠 AI ENGINE — GROQ + GEMINI
 # ============================================================
 class AI:
-    """Dual AI: Groq primary, Gemini fallback"""
     GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
     GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent"
     
@@ -316,39 +298,26 @@ class AI:
     
     async def _wait(self):
         elapsed = time.time() - self._last
-        if elapsed < self._gap:
-            await asyncio.sleep(self._gap - elapsed)
+        if elapsed < self._gap: await asyncio.sleep(self._gap - elapsed)
         self._last = time.time()
     
     async def ask(self, prompt: str, max_t: int = 700) -> Optional[str]:
         await self._wait()
-        
         if self.groq_ok:
             try:
-                r = await self._client.post(
-                    self.GROQ_URL,
+                r = await self._client.post(self.GROQ_URL,
                     headers={"Authorization": f"Bearer {cfg.groq_key}", "Content-Type": "application/json"},
                     json={"model": "llama-3.3-70b-versatile", "messages": [
-                        {"role": "system", "content": self.SYS},
-                        {"role": "user", "content": prompt}
-                    ], "max_tokens": max_t, "temperature": 0.85},
-                    timeout=60.0
-                )
-                if r.status_code == 200:
-                    return r.json()["choices"][0]["message"]["content"]
+                        {"role": "system", "content": self.SYS}, {"role": "user", "content": prompt}
+                    ], "max_tokens": max_t, "temperature": 0.85}, timeout=60.0)
+                if r.status_code == 200: return r.json()["choices"][0]["message"]["content"]
             except: pass
-        
         if self.gemini_ok:
             try:
-                r = await self._client.post(
-                    f"{self.GEMINI_URL}?key={cfg.gemini_key}",
-                    json={"contents": [{"parts": [{"text": self.SYS + "\n\n" + prompt}]}]},
-                    timeout=60.0
-                )
-                if r.status_code == 200:
-                    return r.json()["candidates"][0]["content"]["parts"][0]["text"]
+                r = await self._client.post(f"{self.GEMINI_URL}?key={cfg.gemini_key}",
+                    json={"contents": [{"parts": [{"text": self.SYS + "\n\n" + prompt}]}]}, timeout=60.0)
+                if r.status_code == 200: return r.json()["candidates"][0]["content"]["parts"][0]["text"]
             except: pass
-        
         return None
     
     async def signal_analysis(self, sym, ind, price, chg, candles, mtf, smc):
@@ -361,24 +330,14 @@ BB%={ind.get('BB',0.5):.2f} | Vol={ind.get('VOL',1):.1f}x
 🌍 چندتایم‌فریم: {mtf}
 🧲 اسمارت مانی: {smc}
 
-🎯 تحلیل کامل و دقیق بده (۶۰۰ کلمه):
-1️⃣ وضعیت فعلی و روند اصلی
-2️⃣ بهترین نقطه ورود
-3️⃣ حد ضرر دقیق
-4️⃣ اهداف قیمتی (هدف ۱ و ۲)
-5️⃣ پیش‌بینی عددی قیمت برای: فردا، هفته بعد، ماه بعد
-6️⃣ نتیجه‌گیری نهایی: بخر/نخر/صبر کن
-
-کامل بنویس و ناقص رها نکن! 💎""", 700)
+🎯 تحلیل کامل (۶۰۰ کلمه):
+1️⃣ وضعیت فعلی و روند 2️⃣ نقطه ورود 3️⃣ حد ضرر 4️⃣ اهداف 5️⃣ پیش‌بینی عددی فردا/هفته/ماه 6️⃣ نتیجه: بخر/نخر/صبر کن
+کامل بنویس! 💎""", 700)
     
     async def predict(self, sym, price, ind):
-        return await self.ask(f"""🔮 پیش‌بینی عددی {sym} | قیمت فعلی: {price:,.2f}$
+        return await self.ask(f"""🔮 پیش‌بینی عددی {sym} | قیمت: {price:,.2f}$
 RSI={ind.get('RSI',50):.0f} | ADX={ind.get('ADX',20):.0f}
-🎯 پیش‌بینی دقیق عددی برای:
-📅 فردا: قیمت = ؟ دلار
-📅 یک هفته بعد: قیمت = ؟ دلار
-📅 یک ماه بعد: قیمت = ؟ دلار
-📊 درصد تغییر هرکدام رو هم بگو
+🎯 پیش‌بینی عددی: فردا؟ / یک هفته؟ / یک ماه؟ — با درصد تغییر
 کامل بنویس! 💎""", 500)
     
     async def news(self, headlines): 
@@ -388,13 +347,13 @@ RSI={ind.get('RSI',50):.0f} | ADX={ind.get('ADX',20):.0f}
         return await self.ask(f"🌍 بازار:\n"+"\n".join([f"{c['s']}:{c['c']:+.1f}%" for c in coins[:10]])+"\nتحلیل فارسی ۴۰۰ کلمه 💎", 500)
     
     async def whale(self): 
-        return await self.ask("🐋 نهنگ‌ها چی کار می‌کنن؟ تحلیل فارسی ۳۰۰ کلمه 💎", 400)
+        return await self.ask("🐋 نهنگ‌ها چی کار می‌کنن؟ ۳۰۰ کلمه 💎", 400)
     
     async def fg(self, v, t): 
-        return await self.ask(f"😱 ترس و طمع: {v} ({t}) — تحلیل فارسی ۳۰۰ کلمه 💎", 400)
+        return await self.ask(f"😱 ترس و طمع: {v} ({t}) — ۳۰۰ کلمه 💎", 400)
     
     async def daily(self, data):
-        return await self.ask(f"📊 خلاصه بازار:\n{json.dumps(data, ensure_ascii=False)}\nتحلیل فارسی ۵۰۰ کلمه 💎", 600)
+        return await self.ask(f"📊 خلاصه بازار:\n{json.dumps(data, ensure_ascii=False)}\n۵۰۰ کلمه 💎", 600)
     
     async def custom(self, q):
         return await self.ask(f"🙋 سوال: {q}\nپاسخ کامل فارسی ۸۰۰ کلمه 💎", 800)
@@ -417,13 +376,12 @@ class Exchange:
     def connect(self):
         try:
             if cfg.coinex_key and cfg.coinex_sec:
-                self._ex = ccxt.coinex({'apiKey': cfg.coinex_key, 'secret': cfg.coinex_sec, 
-                                        'enableRateLimit': True, 'timeout': 20000})
+                self._ex = ccxt.coinex({'apiKey': cfg.coinex_key, 'secret': cfg.coinex_sec, 'enableRateLimit': True, 'timeout': 20000})
             else:
                 self._ex = ccxt.coinex({'enableRateLimit': True, 'timeout': 20000})
             self._ex.load_markets()
             self.ok = True
-            logger.info(f"✅ CoinEx connected — {len(self._ex.markets)} markets")
+            logger.info(f"✅ CoinEx — {len(self._ex.markets)} markets")
         except Exception as e:
             logger.error(f"❌ CoinEx: {e}")
             self.ok = False
@@ -436,9 +394,7 @@ class Exchange:
         try:
             if not self.ok: return None
             d = self._ex.fetch_ohlcv(s, tf, limit=limit)
-            if d and len(d) > 30:
-                return pd.DataFrame(d, columns=['ts','o','h','l','c','v'])
-            return None
+            return pd.DataFrame(d, columns=['ts','o','h','l','c','v']) if d and len(d) > 30 else None
         except: return None
     
     def movers(self, n=5):
@@ -481,15 +437,13 @@ class Indicators:
         try:
             c, h, l, v = df['c'].astype(float), df['h'].astype(float), df['l'].astype(float), df['v'].astype(float)
             ind = OrderedDict()
-            for p in [7,14,20,50,100,200]:
-                ind[f'EMA{p}'] = float(c.ewm(span=p, adjust=False).mean().iloc[-1])
+            for p in [7,14,20,50,100,200]: ind[f'EMA{p}'] = float(c.ewm(span=p, adjust=False).mean().iloc[-1])
             from ta.momentum import RSIIndicator, StochasticOscillator
             try: ind['RSI'] = float(RSIIndicator(c, 14).rsi().iloc[-1])
             except: ind['RSI'] = 50.0
             try:
                 st = StochasticOscillator(h, l, c, 14, 3)
-                ind['STOCH_K'] = float(st.stoch().iloc[-1])
-                ind['STOCH_D'] = float(st.stoch_signal().iloc[-1])
+                ind['STOCH_K'], ind['STOCH_D'] = float(st.stoch().iloc[-1]), float(st.stoch_signal().iloc[-1])
             except: ind['STOCH_K'] = ind['STOCH_D'] = 50.0
             from ta.trend import MACD, ADXIndicator, CCIIndicator, IchimokuIndicator
             try: ind['MACD'] = float(MACD(c, 12, 26, 9).macd_diff().iloc[-1])
@@ -504,10 +458,8 @@ class Indicators:
             try: ind['ATR'] = float(AverageTrueRange(h, l, c, 14).average_true_range().iloc[-1])
             except: ind['ATR'] = c.iloc[-1] * 0.01
             try:
-                tp = (h + l + c) / 3
-                mf = tp * v
-                pf = mf.where(tp > tp.shift(1), 0)
-                nf = mf.where(tp < tp.shift(1), 0)
+                tp = (h + l + c) / 3; mf = tp * v
+                pf = mf.where(tp > tp.shift(1), 0); nf = mf.where(tp < tp.shift(1), 0)
                 ind['MFI'] = float((100 - (100 / (1 + pf.rolling(14).sum() / nf.rolling(14).sum()))).iloc[-1])
             except: ind['MFI'] = 50.0
             vs = v.rolling(20).mean().iloc[-1] if len(v) >= 20 else 1
@@ -522,13 +474,12 @@ class Indicators:
             h50 = h.rolling(50).max().iloc[-1] if len(h) >= 50 else h.max()
             l50 = l.rolling(50).min().iloc[-1] if len(l) >= 50 else l.min()
             diff = h50 - l50
-            for lvl in [0.236, 0.382, 0.5, 0.618, 0.786]:
-                ind[f'FIB{int(lvl*1000)}'] = float(h50 - diff * lvl)
+            for lvl in [0.236, 0.382, 0.5, 0.618, 0.786]: ind[f'FIB{int(lvl*1000)}'] = float(h50 - diff * lvl)
             candles, names = Indicators._candles(df)
             ind.update(candles)
             return ind, names
         except Exception as e:
-            logger.error(f"Indicators error: {e}")
+            logger.error(f"Indicators: {e}")
             return {}, []
     
     @staticmethod
@@ -571,14 +522,12 @@ class SignalGen:
         bb = ind.get('BB', 0.5)
         if bb < 0.05: score += 180
         elif bb > 0.95: score -= 180
-        vol = ind.get('VOL', 1)
-        if vol > 2.5: score += (100 if score > 0 else -100)
+        if ind.get('VOL', 1) > 2.5: score += (100 if score > 0 else -100)
         for b in ['hammer', 'bull_eng', '3soldier']:
             if ind.get(b): score += 130
         for br in ['shooting', 'bear_eng', '3crow']:
             if ind.get(br): score -= 130
-        if ind.get('TENKAN', 0) > ind.get('KIJUN', 0) and price > ((ind.get('TENKAN', 0) + ind.get('KIJUN', 0)) / 2):
-            score += 90
+        if ind.get('TENKAN', 0) > ind.get('KIJUN', 0) and price > ((ind.get('TENKAN', 0) + ind.get('KIJUN', 0)) / 2): score += 90
         if smc_data:
             if 'صعودی' in smc_data.get('choch', ''): score += 150
             elif 'نزولی' in smc_data.get('choch', ''): score -= 150
@@ -612,8 +561,7 @@ class ChartGen:
         if not CHART_OK or df is None or len(df) < 30: return None
         try:
             data = df.copy()
-            data['ts'] = pd.to_datetime(data['ts'], unit='ms')
-            data = data.set_index('ts')
+            data['ts'] = pd.to_datetime(data['ts'], unit='ms'); data = data.set_index('ts')
             data = data.rename(columns={'o':'Open','h':'High','l':'Low','c':'Close','v':'Volume'})
             data = data[['Open','High','Low','Close','Volume']].iloc[-60:]
             ap = []
@@ -631,10 +579,8 @@ class ChartGen:
             style = mpf.make_mpf_style(marketcolors=mc, facecolor='#1a1a2e', figcolor='#1a1a2e', gridcolor='#3a3a5e')
             fig, _ = mpf.plot(data, type='candle', style=style, title=f'💎 {symbol} - {p.shamsi()}',
                             volume=True, addplot=ap, panel_ratios=(3,1,1,1), figsize=(20,14), returnfig=True)
-            buf = io.BytesIO()
-            fig.savefig(buf, format='png', dpi=120, bbox_inches='tight', facecolor='#1a1a2e')
-            buf.seek(0)
-            plt.close(fig)
+            buf = io.BytesIO(); fig.savefig(buf, format='png', dpi=120, bbox_inches='tight', facecolor='#1a1a2e')
+            buf.seek(0); plt.close(fig)
             return buf
         except: return None
 
@@ -647,15 +593,12 @@ class Fmt:
     @staticmethod
     def signal(a, ai_t, pred_t):
         s = a['symbol'].replace('/USDT','')
-        i = a['ind']
-        candles = a.get('candles', [])
+        i = a['ind']; candles = a.get('candles', [])
         sig_text, conf, score, action, circles = sig_gen.generate(i, a['price'], a.get('smc'), a.get('mtf'))
-        entry = a['price']
-        sl = a['price'] - i['ATR'] * 2.5
-        tp1 = a['price'] + i['ATR'] * 3.5
-        tp2 = a['price'] + i['ATR'] * 6
+        entry = a['price']; sl = a['price'] - i['ATR'] * 2.5
+        tp1 = a['price'] + i['ATR'] * 3.5; tp2 = a['price'] + i['ATR'] * 6
         tags = ' '.join(random.sample(cfg.hashtags, 4))
-        msg = f"""
+        return f"""
 ╔══════════════════════════════════════╗
 ║   💎 VIP PLATINUM | {s} 💎  ║
 ╠══════════════════════════════════════╣
@@ -693,14 +636,12 @@ BB={i['BB']:.2f} | Vol={i['VOL']:.1f}x | STOCH: K={i.get('STOCH_K',50):.1f} D={i
 💎 @{cfg.channel.replace('@','')} | {p.full()}
 {tags}
 """
-        return msg
 
 # ============================================================
 # 📰 NEWS FETCHER
 # ============================================================
 class NewsFetcher:
-    _cache = {}
-    _dur = 7200
+    _cache = {}; _dur = 7200
     _srcs = [
         ("https://cryptopanic.com/news/rss/", "CryptoPanic"),
         ("https://cointelegraph.com/rss", "CoinTelegraph"),
@@ -708,21 +649,17 @@ class NewsFetcher:
         ("https://cryptoslate.com/feed/", "CryptoSlate"),
         ("https://decrypt.co/feed", "Decrypt")
     ]
-    
     @classmethod
     async def fetch(cls):
         now = time.time()
-        if cls._cache and (now - cls._cache.get("ts", 0)) < cls._dur:
-            return cls._cache.get("data", [])
+        if cls._cache and (now - cls._cache.get("ts", 0)) < cls._dur: return cls._cache.get("data", [])
         arts = []
         for url, src in cls._srcs:
             try:
                 feed = feedparser.parse(url)
-                for e in feed.entries[:8]:
-                    arts.append({"title": e.title, "link": e.link, "source": src})
+                for e in feed.entries[:8]: arts.append({"title": e.title, "link": e.link, "source": src})
             except: pass
         cls._cache = {"ts": now, "data": arts}
-        logger.info(f"📰 {len(arts)} news fetched")
         return arts
 
 class FearGreed:
@@ -730,13 +667,11 @@ class FearGreed:
     @classmethod
     async def fetch(cls):
         now = time.time()
-        if cls._cache and (now - cls._cache.get("ts", 0)) < 3600:
-            return cls._cache["v"], cls._cache["t"]
+        if cls._cache and (now - cls._cache.get("ts", 0)) < 3600: return cls._cache["v"], cls._cache["t"]
         try:
             async with httpx.AsyncClient(timeout=15) as cl:
                 r = await cl.get("https://api.alternative.me/fng/?limit=1")
-                d = r.json()
-                v, t = int(d['data'][0]['value']), d['data'][0]['value_classification']
+                d = r.json(); v, t = int(d['data'][0]['value']), d['data'][0]['value_classification']
                 cls._cache = {"ts": now, "v": v, "t": t}
                 return v, t
         except: return 50, "خنثی"
@@ -745,9 +680,7 @@ class FearGreed:
 # 🛡️ SAFE SEND
 # ============================================================
 async def safe_send(bot, chat, text, markup=None):
-    try:
-        return await bot.send_message(chat_id=chat, text=text, parse_mode="Markdown",
-                                      reply_markup=markup, disable_web_page_preview=True)
+    try: return await bot.send_message(chat_id=chat, text=text, parse_mode="Markdown", reply_markup=markup, disable_web_page_preview=True)
     except:
         try: return await bot.send_message(chat_id=chat, text=re.sub(r'[*_`~\[\]\(\)]','',text)[:4000], reply_markup=markup)
         except: return None
@@ -782,16 +715,16 @@ class Menu:
 # 🎭 HANDLERS
 # ============================================================
 async def cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-    """شروع ربات — بررسی عضویت در کانال"""
+    """شروع ربات — فقط صفحه اول عکس داره"""
     user_id = update.effective_user.id
     
     # Owner همیشه مجازه
     if user_id == cfg.owner:
-        await update.message.reply_animation(
-            animation=PLATINUM_GIF_URL,
+        await update.message.reply_photo(
+            photo=START_IMAGE_URL,
             caption=f"""
 ╔══════════════════════════════════════╗
-║   💎 VIP PLATINUM v34.3 💎 ║
+║   💎 VIP PLATINUM v34.4 💎 ║
 ║   وی آی پی پلاتینیوم 🚀 ║
 ╚══════════════════════════════════════╝
 
@@ -819,8 +752,8 @@ async def cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     is_member = await ForceJoin.check(ctx.bot, user_id)
     
     if not is_member:
-        await update.message.reply_animation(
-            animation=PLATINUM_GIF_URL,
+        await update.message.reply_photo(
+            photo=START_IMAGE_URL,
             caption=ForceJoin.need_join_message(),
             parse_mode="Markdown",
             reply_markup=ForceJoin.join_keyboard()
@@ -828,11 +761,11 @@ async def cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         return
     
     # کاربر عضو هست — نمایش منوی اصلی
-    await update.message.reply_animation(
-        animation=PLATINUM_GIF_URL,
+    await update.message.reply_photo(
+        photo=START_IMAGE_URL,
         caption=f"""
 ╔══════════════════════════════════════╗
-║   💎 VIP PLATINUM v34.3 💎 ║
+║   💎 VIP PLATINUM v34.4 💎 ║
 ║   وی آی پی پلاتینیوم 🚀 ║
 ╚══════════════════════════════════════╝
 
@@ -854,31 +787,21 @@ async def cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     )
 
 async def send_full_signal(bot, chat, sym, ticker, df, ind, candles, mtf, smc_data):
-    """ارسال کامل سیگنال با نمودار + AI"""
     if CHART_OK and df is not None:
         chart = chart_gen.create(df, sym)
-        if chart:
-            await bot.send_photo(chat, photo=chart, caption=f"📊 نمودار {sym.replace('/USDT','')} | ${ticker['last']:,.4f} 💎")
-    
+        if chart: await bot.send_photo(chat, photo=chart, caption=f"📊 نمودار {sym.replace('/USDT','')} | ${ticker['last']:,.4f} 💎")
     trend = "صعودی" if ticker.get('percentage', 0) > 0 else "نزولی"
     img = await ai_img.for_signal(sym, trend)
-    if img:
-        await bot.send_photo(chat, photo=img, caption="🎨 تصویر تحلیلی 💎")
-    
+    if img: await bot.send_photo(chat, photo=img, caption="🎨 تصویر تحلیلی 💎")
     ai_t = await ai.signal_analysis(sym, ind, ticker['last'], ticker.get('percentage', 0), candles, mtf, smc_data)
     pred_t = await ai.predict(sym, ticker['last'], ind)
-    
     a = {'symbol': sym, 'price': ticker['last'], 'change': ticker.get('percentage', 0),
          'ind': ind, 'candles': candles, 'mtf': mtf, 'smc': smc_data}
-    msg = Fmt.signal(a, ai_t, pred_t)
-    await safe_send(bot, chat, msg)
+    await safe_send(bot, chat, Fmt.signal(a, ai_t, pred_t))
 
 async def button_router(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-    q = update.callback_query
-    d = q.data
-    user_id = q.from_user.id
+    q = update.callback_query; d = q.data; user_id = q.from_user.id
     
-    # بررسی دکمه "عضو شدم"
     if d == "check_join":
         is_member = await ForceJoin.check(ctx.bot, user_id)
         if is_member:
@@ -886,7 +809,7 @@ async def button_router(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             await q.edit_message_text(
                 f"""
 ╔══════════════════════════════════════╗
-║   💎 VIP PLATINUM v34.3 💎 ║
+║   💎 VIP PLATINUM v34.4 💎 ║
 ╚══════════════════════════════════════╝
 
 {p.greet()} به VIP پلاتینیوم خوش اومدی! 🎉
@@ -894,107 +817,73 @@ async def button_router(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 حالا می‌تونی از همه امکانات استفاده کنی 🚀
 
 👇 یکی از دکمه‌ها رو انتخاب کن:""",
-                parse_mode="Markdown",
-                reply_markup=Menu.main()
+                parse_mode="Markdown", reply_markup=Menu.main()
             )
         else:
             await q.answer("❌ هنوز عضو نشدی! لطفاً اول عضو شو 🌌")
         return
     
-    # برای بقیه دکمه‌ها، بررسی عضویت
     if user_id != cfg.owner:
         is_member = await ForceJoin.check(ctx.bot, user_id)
         if not is_member:
             await q.answer("⛔ لطفاً ابتدا در کانال عضو شوید!")
-            await q.edit_message_text(
-                ForceJoin.need_join_message(),
-                parse_mode="Markdown",
-                reply_markup=ForceJoin.join_keyboard()
-            )
+            await q.edit_message_text(ForceJoin.need_join_message(), parse_mode="Markdown", reply_markup=ForceJoin.join_keyboard())
             return
     
     try:
-        if d == "back":
-            await q.edit_message_text("💎 منوی VIP پلاتینیوم", reply_markup=Menu.main())
-        
+        if d == "back": await q.edit_message_text("💎 منوی VIP پلاتینیوم", reply_markup=Menu.main())
         elif d == "p":
             if not ex.ok: ex.connect()
             txt = f"💰 *قیمت‌ها* 💎\n{p.full()}\n\n"
             for sym in cfg.symbols[:15]:
                 t = ex.ticker(sym)
-                if t:
-                    em = '🟢' if t.get('percentage', 0) > 0 else '🔴'
-                    txt += f"{em} {sym.replace('/USDT','')}: ${t['last']:,.4f} ({t.get('percentage',0):+.1f}%)\n"
+                if t: txt += f"{'🟢' if t.get('percentage',0)>0 else '🔴'} {sym.replace('/USDT','')}: ${t['last']:,.4f} ({t.get('percentage',0):+.1f}%)\n"
             await q.edit_message_text(txt, parse_mode="Markdown",
                 reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔄", callback_data="p"), InlineKeyboardButton("🔙", callback_data="back")]]))
-        
         elif d.startswith("sig_"):
-            sym = d[4:]
-            await q.answer("💎 دریافت سیگنال...")
+            sym = d[4:]; await q.answer("💎 دریافت سیگنال...")
             if not ex.ok: ex.connect()
-            t = ex.ticker(sym)
-            df = ex.ohlcv(sym, '1h', 150)
+            t = ex.ticker(sym); df = ex.ohlcv(sym, '1h', 150)
             if not t or df is None:
-                await q.edit_message_text("❌ داده نیست 🌌", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]]))
-                return
-            ind, candles = ind_calc.calc(df)
-            mtf = {}
+                await q.edit_message_text("❌ داده نیست 🌌", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]])); return
+            ind, candles = ind_calc.calc(df); mtf = {}
             for tf in cfg.tfs:
                 dft = ex.ohlcv(sym, tf, 100)
-                if dft is not None:
-                    mtf[tf], _ = ind_calc.calc(dft)
+                if dft is not None: mtf[tf], _ = ind_calc.calc(dft)
             smc_data = SMC.analyze(df)
             await send_full_signal(ctx.bot, q.message.chat_id, sym, t, df, ind, candles, mtf, smc_data)
             await q.edit_message_text(f"✅ سیگنال {sym.replace('/USDT','')} آماده 💎",
                 reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔄", callback_data=f"sig_{sym}"), InlineKeyboardButton("🔙", callback_data="back")]]))
-        
         elif d.startswith("tf4_") or d.startswith("tf1d_") or d.startswith("tf1w_"):
-            tfs = {"tf4_": "4h", "tf1d_": "1d", "tf1w_": "1w"}
-            lbs = {"4h": "۴ساعته", "1d": "روزانه", "1w": "هفتگی"}
+            tfs = {"tf4_": "4h", "tf1d_": "1d", "tf1w_": "1w"}; lbs = {"4h": "۴ساعته", "1d": "روزانه", "1w": "هفتگی"}
             for pre, tf in tfs.items():
                 if d.startswith(pre):
-                    sym = d[len(pre):] if len(d) > len(pre) else "BTC/USDT"
-                    await q.answer()
-                    t = ex.ticker(sym)
-                    df = ex.ohlcv(sym, tf, 150)
+                    sym = d[len(pre):] if len(d) > len(pre) else "BTC/USDT"; await q.answer()
+                    t = ex.ticker(sym); df = ex.ohlcv(sym, tf, 150)
                     if t and df is not None:
-                        ind, _ = ind_calc.calc(df)
-                        sig, conf, _, act, cir = sig_gen.generate(ind, t['last'])
+                        ind, _ = ind_calc.calc(df); sig, conf, _, act, cir = sig_gen.generate(ind, t['last'])
                         if CHART_OK:
                             buf = chart_gen.create(df, sym)
                             if buf: await ctx.bot.send_photo(q.message.chat_id, photo=buf, caption=f"⏰ {lbs[tf]} {sym.replace('/USDT','')} | ${t['last']:,.4f}")
-                        await q.edit_message_text(
-                            f"⏰ *{lbs[tf]} {sym.replace('/USDT','')}*\n{p.full()}\n💰 ${t['last']:,.4f}\n🎯 {sig}\n💎 {cir}\n🚦 {act}\n💎 @{cfg.channel.replace('@','')}",
+                        await q.edit_message_text(f"⏰ *{lbs[tf]} {sym.replace('/USDT','')}*\n{p.full()}\n💰 ${t['last']:,.4f}\n🎯 {sig}\n💎 {cir}\n🚦 {act}\n💎 @{cfg.channel.replace('@','')}",
                             parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]]))
-        
         elif d == "smc":
             df = ex.ohlcv("BTC/USDT", '1h', 150)
             if df is not None:
-                smc = SMC.analyze(df)
-                ai_t = await ai.ask(f"اسمارت مانی بیتکوین:\n{json.dumps(smc, ensure_ascii=False)}\nتحلیل فارسی 💎", 500)
+                smc = SMC.analyze(df); ai_t = await ai.ask(f"اسمارت مانی بیتکوین:\n{json.dumps(smc, ensure_ascii=False)}\nتحلیل فارسی 💎", 500)
                 await q.edit_message_text(f"🧲 *اسمارت مانی*\n{p.full()}\n\n{ai_t or 'داده نیست'}\n💎 @{cfg.channel.replace('@','')}",
                     parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]]))
-            else:
-                await q.edit_message_text("❌ داده نیست 🌌", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]]))
-        
         elif d == "fg":
-            v, t = await FearGreed.fetch()
-            ai_t = await ai.fg(v, t)
-            em = '🟢' if v < 30 else '🔴' if v > 70 else '🟡'
+            v, t = await FearGreed.fetch(); ai_t = await ai.fg(v, t); em = '🟢' if v < 30 else '🔴' if v > 70 else '🟡'
             await q.edit_message_text(f"😱 *ترس و طمع*\n{p.full()}\n{em} {v}/۱۰۰ — {t}\n\n{ai_t or ''}\n💎 @{cfg.channel.replace('@','')}",
                 parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔄", callback_data="fg"), InlineKeyboardButton("🔙", callback_data="back")]]))
-        
         elif d == "news":
             arts = await NewsFetcher.fetch()
             if arts:
-                sm = await ai.news([a['title'] for a in arts[:12]])
-                img = await ai_img.for_news()
+                sm = await ai.news([a['title'] for a in arts[:12]]); img = await ai_img.for_news()
                 if img: await ctx.bot.send_photo(q.message.chat_id, photo=img, caption="📰 خبری 💎")
                 await q.edit_message_text(f"📰 *اخبار*\n{p.full()}\n\n{sm}\n💎 @{cfg.channel.replace('@','')}",
                     parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔄", callback_data="news"), InlineKeyboardButton("🔙", callback_data="back")]]))
-            else:
-                await q.edit_message_text("❌ خبری نیست 🌌", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]]))
-        
         elif d == "dom":
             try:
                 async with httpx.AsyncClient(timeout=15) as cl:
@@ -1003,26 +892,10 @@ async def button_router(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
                     await q.edit_message_text(f"🏆 *دامیننس*\n{p.full()}\n₿ بیتکوین: {d['btc']:.1f}%\nΞ اتریوم: {d['eth']:.1f}%\n💎 @{cfg.channel.replace('@','')}",
                         parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]]))
             except: await q.edit_message_text("❌", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]]))
-        
-        elif d == "ai_ask":
-            await q.answer("🤖 سوالت رو بپرس...")
-            await q.edit_message_text("🤖 سوال فارسی بپرس 💎", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]]))
-            ctx.user_data['ask'] = True
-        
-        elif d == "chart_req":
-            await q.answer("📈 نام ارز (مثلاً BTC)")
-            await q.edit_message_text("📈 نماد ارز رو بفرست 💎", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]]))
-            ctx.user_data['chart'] = True
-        
-        elif d == "img":
-            await q.answer("🎨 توضیح تصویر...")
-            await q.edit_message_text("🎨 توضیح تصویر رو بفرست 💎", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]]))
-            ctx.user_data['img'] = True
-        
-        elif d == "time":
-            await q.edit_message_text(f"🕰 {p.full()}\n📅 میلادی: {p.now().strftime('%Y-%m-%d')}\n⏰ تهران\n💎 @{cfg.channel.replace('@','')}",
-                parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]]))
-        
+        elif d == "ai_ask": await q.answer(); await q.edit_message_text("🤖 سوال فارسی بپرس 💎", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]])); ctx.user_data['ask'] = True
+        elif d == "chart_req": await q.answer(); await q.edit_message_text("📈 نماد ارز رو بفرست 💎", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]])); ctx.user_data['chart'] = True
+        elif d == "img": await q.answer(); await q.edit_message_text("🎨 توضیح تصویر رو بفرست 💎", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]])); ctx.user_data['img'] = True
+        elif d == "time": await q.edit_message_text(f"🕰 {p.full()}\n📅 میلادی: {p.now().strftime('%Y-%m-%d')}\n⏰ تهران\n💎 @{cfg.channel.replace('@','')}", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]]))
         elif d == "pred":
             await q.edit_message_text("🔮 *پیش‌بینی*\nدر حال محاسبه... 💎", parse_mode="Markdown")
             try:
@@ -1030,74 +903,46 @@ async def button_router(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
                 if t:
                     df_pred = ex.ohlcv("BTC/USDT", '1d', 100)
                     if df_pred is not None and len(df_pred) > 30:
-                        ind, _ = ind_calc.calc(df_pred)
-                        ai_t = await ai.predict("BTC/USDT", t['last'], ind)
-                    else:
-                        ai_t = "⏳ داده ناکافی — لطفاً بعداً تلاش کن"
-                    await q.edit_message_text(
-                        f"🔮 *پیش‌بینی BTC*\n{p.full()}\n\n{ai_t or 'داده نیست'}\n💎 @{cfg.channel.replace('@','')}",
-                        parse_mode="Markdown", 
-                        reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]])
-                    )
-                else:
-                    await q.edit_message_text("❌ داده نیست 🌌", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]]))
+                        ind, _ = ind_calc.calc(df_pred); ai_t = await ai.predict("BTC/USDT", t['last'], ind)
+                    else: ai_t = "⏳ داده ناکافی"
+                    await q.edit_message_text(f"🔮 *پیش‌بینی BTC*\n{p.full()}\n\n{ai_t or 'داده نیست'}\n💎 @{cfg.channel.replace('@','')}",
+                        parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]]))
             except Exception as e:
-                logger.error(f"Pred error: {e}")
+                logger.error(f"Pred: {e}")
                 await q.edit_message_text("❌ خطا 🌌", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]]))
-        
         elif d == "whale":
-            try:
-                ai_t = await ai.whale()
-                await q.edit_message_text(
-                    f"🐋 *نهنگ‌ها*\n{ai_t or 'داده نیست'}\n💎 @{cfg.channel.replace('@','')}",
-                    parse_mode="Markdown", 
-                    reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]])
-                )
-            except:
-                await q.edit_message_text("❌ خطا 🌌", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]]))
-        
-        elif d == "ref":
-            await q.edit_message_text("⚡ در حال توسعه... 💎", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]]))
-        
-        else:
-            await q.answer("⚡")
+            ai_t = await ai.whale()
+            await q.edit_message_text(f"🐋 *نهنگ‌ها*\n{ai_t or 'داده نیست'}\n💎 @{cfg.channel.replace('@','')}",
+                parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]]))
+        elif d == "ref": await q.edit_message_text("⚡ در حال توسعه... 💎", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]]))
+        else: await q.answer("⚡")
     except Exception as e:
         logger.error(f"Btn: {e}")
         try: await q.answer("❌")
         except: pass
 
 async def handle_msg(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-    u = ctx.user_data
-    user_id = update.effective_user.id
+    u = ctx.user_data; user_id = update.effective_user.id
     
-    # بررسی عضویت برای همه پیام‌ها
     if user_id != cfg.owner:
         is_member = await ForceJoin.check(ctx.bot, user_id)
         if not is_member:
-            await update.message.reply_animation(
-                animation=PLATINUM_GIF_URL,
-                caption=ForceJoin.need_join_message(),
-                parse_mode="Markdown",
-                reply_markup=ForceJoin.join_keyboard()
-            )
+            await update.message.reply_text(ForceJoin.need_join_message(), parse_mode="Markdown", reply_markup=ForceJoin.join_keyboard())
             return
     
     if update.message.photo:
         await update.message.reply_text("📊 در حال تحلیل نمودار... 💎")
-        f = await update.message.photo[-1].get_file()
-        b = await f.download_as_bytearray()
+        f = await update.message.photo[-1].get_file(); b = await f.download_as_bytearray()
         path = f"/tmp/chart_{user_id}.png"
         with open(path, 'wb') as fp: fp.write(b)
         try:
-            img = Image.open(path)
-            pix = list(img.resize((100, 100)).getdata())
+            img = Image.open(path); pix = list(img.resize((100, 100)).getdata())
             ra = sum(p[0] for p in pix if len(p) >= 3) / max(1, len(pix))
             ga = sum(p[1] for p in pix if len(p) >= 3) / max(1, len(pix))
             col = "صعودی🟢" if ga > ra else "نزولی🔴" if ra > ga else "خنثی⚪"
             desc = f"ابعاد: {img.size} | رنگ: {col} | قرمز:{ra:.0f} سبز:{ga:.0f}"
             analysis = await ai.chart_img("نمودار", desc)
-            if analysis:
-                await update.message.reply_text(f"📊 *تحلیل نمودار*\n\n{analysis}\n💎 @{cfg.channel.replace('@','')}", parse_mode="Markdown")
+            if analysis: await update.message.reply_text(f"📊 *تحلیل نمودار*\n\n{analysis}\n💎 @{cfg.channel.replace('@','')}", parse_mode="Markdown")
         except: await update.message.reply_text("❌ خطا")
         finally:
             if os.path.exists(path): os.remove(path)
@@ -1111,7 +956,6 @@ async def handle_msg(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         if resp: await update.message.reply_text(f"🧠 *پاسخ:*\n{resp}", parse_mode="Markdown")
         else: await update.message.reply_text("❌ خطا")
         u['ask'] = False
-    
     elif u.get('chart'):
         sym = txt.upper().strip()
         if not sym.endswith("/USDT"): sym += "/USDT"
@@ -1122,17 +966,14 @@ async def handle_msg(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             if df is not None and CHART_OK:
                 buf = chart_gen.create(df, sym)
                 if buf: await update.message.reply_photo(photo=buf, caption=f"📈 {sym.replace('/USDT','')} 💎")
-            else:
-                await update.message.reply_text("❌ داده کافی نیست")
+            else: await update.message.reply_text("❌ داده کافی نیست")
         u['chart'] = False
-    
     elif u.get('img'):
         await update.message.reply_text("🎨 در حال ساخت... 💎")
         img = await ai_img.custom(txt)
         if img: await update.message.reply_photo(photo=img, caption="🖼️ تصویر 💎")
         else: await update.message.reply_text("❌ خطا")
         u['img'] = False
-    
     else:
         await update.message.reply_text("/start رو بزن 💎", reply_markup=Menu.main())
 
@@ -1146,15 +987,12 @@ async def auto_signals(app):
             if not ex.ok: ex.connect()
             for sym in ["BTC/USDT", "ETH/USDT", "SOL/USDT"]:
                 try:
-                    t = ex.ticker(sym)
-                    df = ex.ohlcv(sym, '1h', 150)
+                    t = ex.ticker(sym); df = ex.ohlcv(sym, '1h', 150)
                     if t and df is not None:
-                        ind, candles = ind_calc.calc(df)
-                        mtf = {}
+                        ind, candles = ind_calc.calc(df); mtf = {}
                         for tf in cfg.tfs:
                             dft = ex.ohlcv(sym, tf, 100)
-                            if dft is not None:
-                                mtf[tf], _ = ind_calc.calc(dft)
+                            if dft is not None: mtf[tf], _ = ind_calc.calc(dft)
                         smc = SMC.analyze(df)
                         await send_full_signal(app.bot, cfg.channel, sym, t, df, ind, candles, mtf, smc)
                         await asyncio.sleep(120)
@@ -1168,8 +1006,7 @@ async def auto_news(app):
         try:
             arts = await NewsFetcher.fetch()
             if arts:
-                sm = await ai.news([a['title'] for a in arts[:12]])
-                img = await ai_img.for_news()
+                sm = await ai.news([a['title'] for a in arts[:12]]); img = await ai_img.for_news()
                 if img: await app.bot.send_photo(cfg.channel, photo=img, caption="📰 خبری 💎")
                 await safe_send(app.bot, cfg.channel, f"📰 *اخبار*\n{p.full()}\n\n{sm}\n💎 @{cfg.channel.replace('@','')}\n{' '.join(random.sample(cfg.hashtags, 5))}")
         except: pass
@@ -1179,8 +1016,7 @@ async def auto_fg(app):
     await asyncio.sleep(120)
     while True:
         try:
-            v, t = await FearGreed.fetch()
-            em = '🟢' if v < 30 else '🔴' if v > 70 else '🟡'
+            v, t = await FearGreed.fetch(); em = '🟢' if v < 30 else '🔴' if v > 70 else '🟡'
             await safe_send(app.bot, cfg.channel, f"😱 *ترس و طمع*\n{em} {v}/۱۰۰ — {t}\n💎 @{cfg.channel.replace('@','')}\n{' '.join(random.sample(cfg.hashtags, 3))}")
         except: pass
         await asyncio.sleep(cfg.fg_int)
@@ -1196,8 +1032,7 @@ async def auto_whale(app):
 
 async def auto_daily(app):
     while True:
-        now = datetime.now(TEHRAN_TZ)
-        target = datetime.strptime(cfg.summary_time, "%H:%M").replace(tzinfo=TEHRAN_TZ)
+        now = datetime.now(TEHRAN_TZ); target = datetime.strptime(cfg.summary_time, "%H:%M").replace(tzinfo=TEHRAN_TZ)
         if now.hour == target.hour and now.minute == target.minute:
             try:
                 top = []
@@ -1209,8 +1044,7 @@ async def auto_daily(app):
                     r = await cl.get("https://api.coingecko.com/api/v3/global")
                     dom = r.json()['data']['market_cap_percentage']
                 data = {"top": top, "btc": dom['btc'], "eth": dom['eth'], "fg": f"{fg_v} ({fg_t})"}
-                sm = await ai.daily(data)
-                img = await ai_img.make("daily crypto market summary professional")
+                sm = await ai.daily(data); img = await ai_img.make("daily crypto market summary professional")
                 if img: await app.bot.send_photo(cfg.channel, photo=img)
                 await safe_send(app.bot, cfg.channel, f"📊 *خلاصه بازار*\n{p.full()}\n{sm}\n💎 @{cfg.channel.replace('@','')}\n{' '.join(random.sample(cfg.hashtags, 5))}")
             except: pass
@@ -1228,12 +1062,12 @@ async def main():
             await c.get(f"https://api.telegram.org/bot{cfg.token}/deleteWebhook", params={"drop_pending_updates": True})
     except: pass
     
-    logger.info(f"💎 VIP PLATINUM v34.3 | {p.full()}")
+    logger.info(f"💎 VIP PLATINUM v34.4 | {p.full()}")
     logger.info(f"🧠 AI: Groq={'✅' if cfg.groq_key else '❌'} Gemini={'✅' if cfg.gemini_key else '❌'}")
     logger.info(f"💱 CoinEx: {'✅' if cfg.coinex_key else '⚠️ Read-only'}")
     logger.info(f"🎨 Images: Context-aware | 📊 Chart: {'✅' if CHART_OK else '❌'}")
-    logger.info(f"📡 Channel: {cfg.channel}")
-    logger.info(f"🔐 Force Join: فعال")
+    logger.info(f"📡 Channel: {cfg.channel} | 🔐 Force Join: فعال")
+    logger.info(f"🖼️ Start Image: {'✅' if START_IMAGE_URL else '❌'}")
     
     ex.connect()
     req = HTTPXRequest(connect_timeout=60.0, read_timeout=60.0, write_timeout=60.0)
@@ -1250,7 +1084,7 @@ async def main():
     asyncio.create_task(auto_whale(app))
     asyncio.create_task(auto_daily(app))
     
-    logger.info("💎 VIP PLATINUM READY — FORCE JOIN + GIF — ALL BUGS FIXED ✨")
+    logger.info("💎 VIP PLATINUM READY — CUSTOM START IMAGE — ALL BUGS FIXED ✨")
     
     try:
         await app.initialize()
