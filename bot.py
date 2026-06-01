@@ -2,17 +2,18 @@
 # -*- coding: utf-8 -*-
 """
 ╔══════════════════════════════════════════════════════════════════════════════╗
-║  💎 VIP PLATINUM v34.0 — وی آی پی پلاتینیوم — RAILWAY OPTIMIZED             ║
+║  💎 VIP PLATINUM v34.1 — وی آی پی پلاتینیوم — RAILWAY OPTIMIZED             ║
 ║  ✅ صرافی: CoinEx (کوینکس) — ۱۰۰٪ رایگان                                    ║
 ║  ✅ Owner: 7225279768 — Unlimited Access                                   ║
 ║  ✅ AI: Groq + Gemini — Dual Intelligence                                  ║
 ║  ✅ 80+ Indicators — SMC — Price Action                                    ║
-║  ✅ AI Images: Context-Aware — No Bulls/Bears Only                         ║
+║  ✅ AI Images: Context-Aware — Professional Only                           ║
 ║  ✅ Signals: 2h Interval — Precise Numeric Predictions                     ║
 ║  ✅ News: 4h Interval — Live Sources                                       ║
 ║  ✅ Chart Analysis from Uploaded Images                                    ║
 ║  ✅ 12 Professional Glass Buttons                                          ║
 ║  ✅ Railway-Optimized — Zero Log Noise                                     ║
+║  ❌ NO EDUCATION FEATURE                                                   ║
 ╚══════════════════════════════════════════════════════════════════════════════╝
 """
 
@@ -58,7 +59,7 @@ _console = logging.StreamHandler()
 _console.setFormatter(logging.Formatter('%(asctime)s | %(message)s', datefmt='%H:%M:%S'))
 _console.addFilter(lambda r: r.name == 'VIP')
 logger.addHandler(_console)
-logger.info("🚀 VIP Platinum v34 starting...")
+logger.info("🚀 VIP Platinum v34.1 starting...")
 
 # ============================================================
 # 📦 AUTO-INSTALL MISSING PACKAGES
@@ -83,7 +84,7 @@ _ensure_libs()
 
 import jdatetime, pytz
 import feedparser
-from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
+from tenacity import retry, stop_after_attempt, wait_exponential
 
 try:
     import matplotlib; matplotlib.use('Agg')
@@ -116,7 +117,6 @@ class Config:
     ])
     tfs: List[str] = field(default_factory=lambda: ["4h","1d","1w"])
     signal_int: int = 7200
-    course_int: int = 1800
     news_int: int = 14400
     fg_int: int = 3600
     whale_int: int = 5400
@@ -180,7 +180,7 @@ class Persian:
 p = Persian()
 
 # ============================================================
-# 🎨 AI IMAGE GENERATOR — CONTEXT-AWARE — NO GENERIC BULLS/BEARS
+# 🎨 AI IMAGE GENERATOR — CONTEXT-AWARE
 # ============================================================
 class AIImage:
     URL = "https://image.pollinations.ai/prompt/"
@@ -266,7 +266,6 @@ class AI:
     async def ask(self, prompt: str, max_t: int = 700) -> Optional[str]:
         await self._wait()
         
-        # Try Groq first
         if self.groq_ok:
             try:
                 r = await self._client.post(
@@ -282,7 +281,6 @@ class AI:
                     return r.json()["choices"][0]["message"]["content"]
             except: pass
         
-        # Try Gemini fallback
         if self.gemini_ok:
             try:
                 r = await self._client.post(
@@ -337,10 +335,6 @@ RSI={ind.get('RSI',50):.0f} | ADX={ind.get('ADX',20):.0f}
     
     async def fg(self, v, t): 
         return await self.ask(f"😱 ترس و طمع: {v} ({t}) — تحلیل فارسی ۳۰۰ کلمه 💎", 400)
-    
-    async def course(self, num, topic):
-        return await self.ask(f"""📚 درس {num}: {topic}
-درس جذاب فارسی با مثال واقعی و نتیجه‌گیری 🎯 ۶۰۰ کلمه پر از شکلک 💎""", 600)
     
     async def daily(self, data):
         return await self.ask(f"📊 خلاصه بازار:\n{json.dumps(data, ensure_ascii=False)}\nتحلیل فارسی ۵۰۰ کلمه 💎", 600)
@@ -639,22 +633,6 @@ BB={i['BB']:.2f} | Vol={i['VOL']:.1f}x | STOCH: K={i.get('STOCH_K',50):.1f} D={i
 {tags}
 """
         return msg
-    
-    @staticmethod
-    def course(lesson):
-        tags = ' '.join(random.sample(cfg.hashtags, 4))
-        return f"""
-╔══════════════════════════════════════╗
-║   📚 دانشگاه VIP پلاتینیوم 💎 ║
-╠══════════════════════════════════════╣
-{p.full()}
-
-{lesson}
-
-╚══════════════════════════════════════╝
-💎 @{cfg.channel.replace('@','')}
-{tags}
-"""
 
 # ============================================================
 # 📰 NEWS FETCHER
@@ -734,7 +712,6 @@ class Menu:
              InlineKeyboardButton("📰 اخبار", callback_data="news"),
              InlineKeyboardButton("🏆 دامیننس", callback_data="dom")],
             [InlineKeyboardButton("🎨 ساخت تصویر", callback_data="img"),
-             InlineKeyboardButton("📚 آموزش", callback_data="course"),
              InlineKeyboardButton("🕰 ساعت", callback_data="time")],
             [InlineKeyboardButton("🔄 بروزرسانی", callback_data="ref"),
              InlineKeyboardButton("🟢 معامله CoinEx", url="https://www.coinex.com")],
@@ -747,7 +724,7 @@ async def cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         f"""
 ╔══════════════════════════════════════╗
-║   💎 VIP PLATINUM v34.0 💎 ║
+║   💎 VIP PLATINUM v34.1 💎 ║
 ║   وی آی پی پلاتینیوم 🚀 ║
 ╚══════════════════════════════════════╝
 
@@ -884,11 +861,6 @@ async def button_router(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             await q.edit_message_text("📈 نماد ارز رو بفرست 💎", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]]))
             ctx.user_data['chart'] = True
         
-        elif d == "course":
-            await q.answer("📚 موضوع آموزش؟")
-            await q.edit_message_text("📚 موضوع رو بفرست 💎", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]]))
-            ctx.user_data['course'] = True
-        
         elif d == "img":
             await q.answer("🎨 توضیح تصویر...")
             await q.edit_message_text("🎨 توضیح تصویر رو بفرست 💎", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]]))
@@ -965,12 +937,6 @@ async def handle_msg(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
                 if buf: await update.message.reply_photo(photo=buf, caption=f"📈 {sym.replace('/USDT','')} 💎")
         u['chart'] = False
     
-    elif u.get('course'):
-        await update.message.reply_text("📚 در حال تهیه درس... 💎")
-        lesson = await ai.course(1, txt)
-        if lesson: await update.message.reply_text(Fmt.course(lesson), parse_mode="Markdown")
-        u['course'] = False
-    
     elif u.get('img'):
         await update.message.reply_text("🎨 در حال ساخت... 💎")
         img = await ai_img.custom(txt)
@@ -1004,22 +970,6 @@ async def auto_signals(app):
                 except: pass
         except: pass
         await asyncio.sleep(cfg.signal_int)
-
-async def auto_course(app):
-    await asyncio.sleep(60)
-    n = 0
-    topics = ["تحلیل تکنیکال🌟","کندل‌شناسی🕯️","RSI & MACD📊","فیبوناچی📐",
-              "ایچیموکو☁️","اسمارت مانی🧲","مدیریت سرمایه💰","پرایس اکشن💫"] * 100000
-    while True:
-        try:
-            topic = topics[n % len(topics)]
-            lesson = await ai.course(n + 1, topic)
-            if lesson:
-                await safe_send(app.bot, cfg.channel, Fmt.course(lesson))
-                n += 1
-            else: n += 1
-        except: n += 1
-        await asyncio.sleep(cfg.course_int)
 
 async def auto_news(app):
     await asyncio.sleep(30)
@@ -1082,13 +1032,12 @@ async def main():
     if not ProcessLock.acquire(): sys.exit(1)
     if not cfg.token: ProcessLock.release(); return
     
-    # حذف وب‌هوک
     try:
         async with httpx.AsyncClient() as c:
             await c.get(f"https://api.telegram.org/bot{cfg.token}/deleteWebhook", params={"drop_pending_updates": True})
     except: pass
     
-    logger.info(f"💎 VIP PLATINUM v34 | {p.full()}")
+    logger.info(f"💎 VIP PLATINUM v34.1 | {p.full()}")
     logger.info(f"🧠 AI: Groq={'✅' if cfg.groq_key else '❌'} Gemini={'✅' if cfg.gemini_key else '❌'}")
     logger.info(f"💱 CoinEx: {'✅' if cfg.coinex_key else '⚠️ Read-only'}")
     logger.info(f"🎨 Images: Context-aware | 📊 Chart: {'✅' if CHART_OK else '❌'}")
@@ -1104,13 +1053,12 @@ async def main():
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_msg))
     
     asyncio.create_task(auto_signals(app))
-    asyncio.create_task(auto_course(app))
     asyncio.create_task(auto_news(app))
     asyncio.create_task(auto_fg(app))
     asyncio.create_task(auto_whale(app))
     asyncio.create_task(auto_daily(app))
     
-    logger.info("💎 VIP PLATINUM READY — RAILWAY OPTIMIZED ✨")
+    logger.info("💎 VIP PLATINUM READY — NO EDUCATION — RAILWAY OPTIMIZED ✨")
     
     try:
         await app.initialize()
