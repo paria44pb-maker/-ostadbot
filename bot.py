@@ -172,17 +172,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     logger.info(f"User {user_id} started the bot")
     
-    # بررسی می‌کند آیا کاربر قبلاً عضو شده است؟
-    if await is_member(user_id, context):
-        context.user_data["is_member"] = True
-        await update.message.reply_text(
-            "✅ *به ربات خوش آمدید!* ✅\n\nاز منوی زیر استفاده کنید:",
-            parse_mode="Markdown",
-            reply_markup=get_main_menu()
-        )
-        return
-    
-    # اگر عضو نیست، صفحه عضویت را نمایش بده
+    # صفحه عضویت با دو دکمه
     keyboard = [
         [InlineKeyboardButton("📢 عضویت در کانال", url=CHANNEL_LINK)],
         [InlineKeyboardButton("✅ عضو شدم", callback_data="check_membership")]
@@ -208,7 +198,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except:
         await update.message.reply_text(caption, parse_mode="Markdown", reply_markup=reply_markup)
 
-# ==================== دکمه عضو شدم ====================
+# ==================== دکمه عضو شدم (خودکار باز کردن ربات) ====================
 async def check_membership(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -217,8 +207,9 @@ async def check_membership(update: Update, context: ContextTypes.DEFAULT_TYPE):
     logger.info(f"Checking membership for user: {user_id}")
 
     if await is_member(user_id, context):
-        logger.info(f"User {user_id} IS a member - Opening bot")
+        logger.info(f"User {user_id} IS a member - Opening bot automatically")
         context.user_data["is_member"] = True
+        # خودکار ربات باز می‌شود - منوی اصلی نمایش داده می‌شود
         await query.edit_message_caption(
             caption="✅ *عضویت شما تأیید شد!* ✅\n\nبه ربات خوش آمدید.\nاز منوی زیر استفاده کنید:",
             parse_mode="Markdown",
@@ -226,7 +217,13 @@ async def check_membership(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
     else:
         logger.warning(f"User {user_id} is NOT a member")
-        await query.answer("❌ شما هنوز عضو کانال نشده اید! لطفاً ابتدا عضو شوید.", show_alert=True)
+        # به کاربر بگو عضو نیست و دکمه را نگه دار
+        await query.answer(
+            "❌ شما هنوز عضو کانال نشده‌اید!\n\n"
+            "لطفاً ابتدا روی دکمه «عضویت در کانال» کلیک کرده و عضو شوید.\n"
+            "سپس دوباره روی «عضو شدم» کلیک کنید.",
+            show_alert=True
+        )
 
 # ==================== قیمت لحظه‌ای ====================
 async def prices(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -448,7 +445,7 @@ async def main():
     
     asyncio.create_task(auto_signal_loop(app))
     
-    logger.info("🚀 ربات پلاتینیوم V34 با دکمه فعال عضو شدم راه‌اندازی شد.")
+    logger.info("🚀 ربات پلاتینیوم V34 راه‌اندازی شد.")
     await app.initialize()
     await app.start()
     await app.updater.start_polling()
