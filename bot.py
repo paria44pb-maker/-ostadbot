@@ -13,14 +13,13 @@ TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 CHANNEL_USERNAME = "@CryptoPulse606"  # یوزرنیم کانال خود را اینجا وارد کنید
 CHANNEL_LINK = "https://t.me/CryptoPulse606"
 
-# ========== بررسی عضویت در کانال با مدیریت خطا ==========
+# ========== بررسی عضویت ==========
 async def is_member(user_id, context):
     try:
         member = await context.bot.get_chat_member(chat_id=CHANNEL_USERNAME, user_id=user_id)
-        logger.info(f"User {user_id} status: {member.status}")
         return member.status in ["member", "administrator", "creator"]
     except Exception as e:
-        logger.error(f"Error checking membership for {user_id}: {e}")
+        logger.error(f"Error: {e}")
         return False
 
 # ========== منوی اصلی ==========
@@ -33,11 +32,8 @@ def get_main_menu():
     ]
     return InlineKeyboardMarkup(keyboard)
 
-# ========== صفحه عضویت ==========
+# ========== صفحه شروع ==========
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    logger.info(f"User {user_id} started the bot")
-    
     keyboard = [
         [InlineKeyboardButton("📢 عضویت در کانال", url=CHANNEL_LINK)],
         [InlineKeyboardButton("✅ عضو شدم", callback_data="check_membership")]
@@ -63,12 +59,13 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except:
         await update.message.reply_text(caption, parse_mode="Markdown", reply_markup=reply_markup)
 
-# ========== بررسی عضویت پس از کلیک روی دکمه ==========
+# ========== بررسی عضویت پس از کلیک ==========
 async def check_membership(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     user_id = update.effective_user.id
-    logger.info(f"Checking membership for user {user_id}")
+
+    logger.info(f"Checking membership for user: {user_id}")
 
     if await is_member(user_id, context):
         logger.info(f"User {user_id} is a member")
@@ -82,12 +79,11 @@ async def check_membership(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.warning(f"User {user_id} is NOT a member")
         await query.edit_message_caption(
             caption="❌ *شما هنوز عضو کانال نشده‌اید.* ❌\n\n"
-                    "لطفاً ابتدا در کانال عضو شوید، سپس روی دکمه «عضو شدم» کلیک کنید.\n\n"
-                    "⚠️ توجه: بعد از عضویت، چند ثانیه صبر کنید سپس کلیک کنید.",
+                    "لطفاً ابتدا در کانال عضو شوید، سپس روی دکمه «عضو شدم» کلیک کنید.",
             parse_mode="Markdown",
             reply_markup=InlineKeyboardMarkup([
                 [InlineKeyboardButton("📢 عضویت در کانال", url=CHANNEL_LINK)],
-                [InlineKeyboardButton("✅ عضو شدم (دوباره)", callback_data="check_membership")]
+                [InlineKeyboardButton("✅ عضو شدم", callback_data="check_membership")]
             ])
         )
 
@@ -96,34 +92,34 @@ async def prices(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     if not context.user_data.get("is_member"):
-        await query.edit_message_text("🔔 لطفاً ابتدا در کانال عضو شوید.", reply_markup=get_main_menu())
+        await query.edit_message_text("🔔 لطفاً ابتدا در کانال عضو شوید.")
         return
-    await query.edit_message_text("📊 *قیمت لحظه‌ای*\n\nدر حال توسعه...", parse_mode="Markdown", reply_markup=get_main_menu())
+    await query.edit_message_text("📊 *قیمت لحظه‌ای*\n\nدر حال توسعه...", parse_mode="Markdown")
 
 # ========== سیگنال لحظه‌ای ==========
 async def signal_now(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     if not context.user_data.get("is_member"):
-        await query.edit_message_text("🔔 لطفاً ابتدا در کانال عضو شوید.", reply_markup=get_main_menu())
+        await query.edit_message_text("🔔 لطفاً ابتدا در کانال عضو شوید.")
         return
-    await query.edit_message_text("🎯 *سیگنال لحظه‌ای*\n\nدر حال توسعه...", parse_mode="Markdown", reply_markup=get_main_menu())
+    await query.edit_message_text("🎯 *سیگنال لحظه‌ای*\n\nدر حال توسعه...", parse_mode="Markdown")
 
 # ========== تحلیل تکنیکال ==========
 async def technical(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     if not context.user_data.get("is_member"):
-        await query.edit_message_text("🔔 لطفاً ابتدا در کانال عضو شوید.", reply_markup=get_main_menu())
+        await query.edit_message_text("🔔 لطفاً ابتدا در کانال عضو شوید.")
         return
-    await query.edit_message_text("📈 *تحلیل تکنیکال*\n\nدر حال توسعه...", parse_mode="Markdown", reply_markup=get_main_menu())
+    await query.edit_message_text("📈 *تحلیل تکنیکال*\n\nدر حال توسعه...", parse_mode="Markdown")
 
 # ========== راهنما ==========
 async def help_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     if not context.user_data.get("is_member"):
-        await query.edit_message_text("🔔 لطفاً ابتدا در کانال عضو شوید.", reply_markup=get_main_menu())
+        await query.edit_message_text("🔔 لطفاً ابتدا در کانال عضو شوید.")
         return
     text = """
 ❓ *راهنما* ❓
@@ -134,23 +130,12 @@ async def help_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 ⚠️ فقط جنبه آموزشی
 """
-    await query.edit_message_text(text, parse_mode="Markdown", reply_markup=get_main_menu())
-
-# ========== برگشت به منو ==========
-async def back_to_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    await query.edit_message_text(
-        "🌟 *منوی اصلی* 🌟\n\nلطفاً یکی از گزینه‌ها را انتخاب کنید:",
-        parse_mode="Markdown",
-        reply_markup=get_main_menu()
-    )
+    await query.edit_message_text(text, parse_mode="Markdown")
 
 # ========== هندلر دکمه‌ها ==========
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     data = query.data
-    logger.info(f"Button clicked: {data}")
 
     if data == "check_membership":
         await check_membership(update, context)
@@ -165,14 +150,13 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         await query.answer()
 
-# ========== اجرای اصلی ==========
+# ========== اجرا ==========
 def main():
     app = Application.builder().token(TOKEN).build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CallbackQueryHandler(button_handler))
 
     logger.info("🚀 ربات پلاتینیوم V34 راه‌اندازی شد.")
-    logger.info(f"Channel: {CHANNEL_USERNAME}")
     app.run_polling()
 
 if __name__ == "__main__":
