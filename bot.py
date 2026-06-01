@@ -10,14 +10,13 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 logger = logging.getLogger(__name__)
 
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-CHANNEL_USERNAME = "@CryptoPulse606"
+CHANNEL_USERNAME = "@CryptoPulse606"  # یوزرنیم کانال خود را وارد کنید
 CHANNEL_LINK = "https://t.me/CryptoPulse606"
 
 # ========== بررسی عضویت ==========
 async def is_member(user_id, context):
     try:
         member = await context.bot.get_chat_member(chat_id=CHANNEL_USERNAME, user_id=user_id)
-        logger.info(f"User {user_id} status: {member.status}")
         return member.status in ["member", "administrator", "creator"]
     except Exception as e:
         logger.error(f"Error: {e}")
@@ -58,35 +57,27 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 reply_markup=reply_markup
             )
     except:
-        await update.message.reply_text(
-            caption,
-            parse_mode="Markdown",
-            reply_markup=reply_markup
-        )
+        await update.message.reply_text(caption, parse_mode="Markdown", reply_markup=reply_markup)
 
-# ========== بررسی عضویت (دکمه عضو شدم) ==========
+# ========== دکمه عضو شدم ==========
 async def check_membership(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     user_id = update.effective_user.id
 
-    logger.info(f"Checking membership for user: {user_id}")
-
     if await is_member(user_id, context):
-        logger.info(f"User {user_id} IS a member - Opening bot")
+        # عضو است → منوی اصلی نمایش داده شود
         context.user_data["is_member"] = True
-        # ویرایش همان پیام و حذف دکمه های عضویت
         await query.edit_message_caption(
             caption="✅ *عضویت شما تأیید شد!* ✅\n\nبه ربات خوش آمدید.\nاز منوی زیر استفاده کنید:",
             parse_mode="Markdown",
             reply_markup=get_main_menu()
         )
     else:
-        logger.warning(f"User {user_id} is NOT a member")
-        # فقط پیام خطا نمایش بده، دکمه عضو شدم همچنان فعال می ماند
+        # عضو نیست → فقط اخطار بده، دکمه ها همچنان باقی بمانند
         await query.answer("❌ شما هنوز عضو کانال نشده اید! لطفاً ابتدا عضو شوید.", show_alert=True)
 
-# ========== سایر بخش‌ها ==========
+# ========== قیمت لحظه‌ای ==========
 async def prices(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -95,6 +86,7 @@ async def prices(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     await query.edit_message_text("📊 *قیمت لحظه‌ای*\n\nدر حال توسعه...", parse_mode="Markdown", reply_markup=get_main_menu())
 
+# ========== سیگنال لحظه‌ای ==========
 async def signal_now(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -103,6 +95,7 @@ async def signal_now(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     await query.edit_message_text("🎯 *سیگنال لحظه‌ای*\n\nدر حال توسعه...", parse_mode="Markdown", reply_markup=get_main_menu())
 
+# ========== تحلیل تکنیکال ==========
 async def technical(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -111,6 +104,7 @@ async def technical(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     await query.edit_message_text("📈 *تحلیل تکنیکال*\n\nدر حال توسعه...", parse_mode="Markdown", reply_markup=get_main_menu())
 
+# ========== راهنما ==========
 async def help_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -128,21 +122,10 @@ async def help_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
 """
     await query.edit_message_text(text, parse_mode="Markdown", reply_markup=get_main_menu())
 
-# ========== برگشت به منو ==========
-async def back_to_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    await query.edit_message_text(
-        "🌟 *منوی اصلی* 🌟\n\nلطفاً یکی از گزینه‌ها را انتخاب کنید:",
-        parse_mode="Markdown",
-        reply_markup=get_main_menu()
-    )
-
 # ========== هندلر دکمه‌ها ==========
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     data = query.data
-    logger.info(f"Button clicked: {data}")
 
     if data == "check_membership":
         await check_membership(update, context)
