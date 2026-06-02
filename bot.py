@@ -3,16 +3,8 @@
 """
 ╔══════════════════════════════════════════════════════════════════════════════╗
 ║  💎 VIP PLATINUM v34.2 — وی آی پی پلاتینیوم — RAILWAY OPTIMIZED             ║
-║  ✅ صرافی: CoinEx (کوینکس) — ۱۰۰٪ رایگان                                    ║
-║  ✅ Owner: 7225279768 — Unlimited Access                                   ║
-║  ✅ AI: Groq + Gemini — Dual Intelligence                                  ║
-║  ✅ 80+ Indicators — SMC — Price Action                                    ║
-║  ✅ AI Images: Context-Aware — Professional Only                           ║
-║  ✅ Signals: 2h Interval — Precise Numeric Predictions                     ║
-║  ✅ News: 4h Interval — Live Sources                                       ║
-║  ✅ Chart Analysis from Uploaded Images                                    ║
-║  ✅ 12 Professional Glass Buttons                                          ║
-║  ✅ REQUIRED CHANNEL: @CryptoPulse606 (کریپتو پالس)                        ║
+║  ✅ REQUIRED CHANNEL: @CryptoPulse606 (کریپتو پالس)                         ║
+║  ✅ START PAGE: PLATINUM VIP Style                                          ║
 ╚══════════════════════════════════════════════════════════════════════════════╝
 """
 
@@ -30,6 +22,7 @@ import httpx
 import aiohttp
 from dotenv import load_dotenv
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.constants import ParseMode
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, filters, ContextTypes
 from telegram.request import HTTPXRequest
 from PIL import Image
@@ -102,8 +95,8 @@ TEHRAN_TZ = pytz.timezone('Asia/Tehran')
 @dataclass
 class Config:
     token: str = os.getenv("TELEGRAM_BOT_TOKEN", "")
-    channel: str = os.getenv("CHANNEL_ID", "@CryptoPulse606")  # کانال اصلی
-    required_channel: str = "@CryptoPulse606"  # کانال اجباری (کریپتو پالس)
+    channel: str = os.getenv("CHANNEL_ID", "@CryptoPulse606")
+    required_channel: str = "@CryptoPulse606"
     owner: int = 7225279768
     groq_key: str = os.getenv("GROQ_API_KEY", "")
     gemini_key: str = os.getenv("GEMINI_API_KEY", "")
@@ -239,7 +232,6 @@ ai_img = AIImage()
 # 🧠 AI ENGINE — GROQ + GEMINI — FULL PERSIAN
 # ============================================================
 class AI:
-    """Dual AI: Groq primary, Gemini fallback"""
     GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
     GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent"
     
@@ -689,7 +681,7 @@ class FearGreed:
 # ============================================================
 async def safe_send(bot, chat, text, markup=None):
     try:
-        return await bot.send_message(chat_id=chat, text=text, parse_mode="Markdown",
+        return await bot.send_message(chat_id=chat, text=text, parse_mode=ParseMode.MARKDOWN,
                                       reply_markup=markup, disable_web_page_preview=True)
     except:
         try: return await bot.send_message(chat_id=chat, text=re.sub(r'[*_`~\[\]\(\)]','',text)[:4000], reply_markup=markup)
@@ -702,30 +694,16 @@ class Menu:
     @staticmethod
     def main():
         return InlineKeyboardMarkup([
-            [InlineKeyboardButton("💰 قیمت‌ها 💎", callback_data="p"),
-             InlineKeyboardButton("🎯 سیگنال BTC 💎", callback_data="sig_BTC/USDT")],
-            [InlineKeyboardButton("⏰ ۴ساعته", callback_data="tf4_BTC/USDT"),
-             InlineKeyboardButton("⏰ روزانه", callback_data="tf1d_BTC/USDT"),
-             InlineKeyboardButton("⏰ هفتگی", callback_data="tf1w_BTC/USDT")],
-            [InlineKeyboardButton("🤖 AI بپرس 🧠", callback_data="ai_ask"),
-             InlineKeyboardButton("📈 نمودار 📊", callback_data="chart_req")],
-            [InlineKeyboardButton("🧲 اسمارت مانی", callback_data="smc"),
-             InlineKeyboardButton("🔮 پیش‌بینی", callback_data="pred"),
-             InlineKeyboardButton("🐋 نهنگ‌ها", callback_data="whale")],
-            [InlineKeyboardButton("😱 ترس و طمع", callback_data="fg"),
-             InlineKeyboardButton("📰 اخبار", callback_data="news"),
-             InlineKeyboardButton("🏆 دامیننس", callback_data="dom")],
-            [InlineKeyboardButton("🎨 ساخت تصویر", callback_data="img"),
-             InlineKeyboardButton("🕰 ساعت", callback_data="time")],
-            [InlineKeyboardButton("🔄 بروزرسانی", callback_data="ref"),
-             InlineKeyboardButton("🟢 معامله CoinEx", url="https://www.coinex.com")],
+            [InlineKeyboardButton("📊 تحلیل بازار", callback_data="p"),
+             InlineKeyboardButton("💎 VIP سیگنال", callback_data="sig_BTC/USDT")],
+            [InlineKeyboardButton("🐋 نهنگ‌ها", callback_data="whale"),
+             InlineKeyboardButton("⚙️ تنظیمات", callback_data="settings")],
         ])
 
 # ============================================================
-# ✅ MEMBERSHIP CHECK (فقط کریپتو پالس)
+# ✅ MEMBERSHIP CHECK
 # ============================================================
 async def is_member(bot, user_id: int) -> bool:
-    """بررسی عضویت کاربر در کانال اجباری @CryptoPulse606"""
     try:
         member = await bot.get_chat_member(chat_id=cfg.required_channel, user_id=user_id)
         return member.status in ['member', 'administrator', 'creator']
@@ -738,51 +716,42 @@ async def is_member(bot, user_id: int) -> bool:
 async def cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     
-    # ارسال تصویر استارت
-    try:
-        image_url = "https://gapgpt.app/media-f1/server_files/3c1f2524-d5b4-416e-a4b2-108f6d183b90.png"
-        await update.message.reply_photo(
-            photo=image_url,
-            caption=f"{p.greet()} {p.full()}\n✨ به ربات VIP پلاتینیوم خوش آمدید ✨"
-        )
-    except:
-        pass
-    
-    # متن معرفی قابلیت‌ها (مطابق عکس)
-    intro_text = f"""
+    # صفحه استارت به سبک PLATINUM VIP (مطابق عکس)
+    caption = """
 ╔══════════════════════════════════════╗
-║   💎 VIP PLATINUM v34.2 💎 ║
-║   وی آی پی پلاتینیوم 🚀 ║
+║         💎 PLATINUM VIP 💎           ║
+║         ★★★★★                       ║
 ╚══════════════════════════════════════╝
 
-✨ **Algo | اینجا ربات هوشمند الگو آنالایزر است!** 😊
+✨ **پلاتینیوم تیم** ✨
 
-با استفاده از قدرت هوش مصنوعی، این بات می‌تواند:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-✅ تنها کافی است نمادی از کریپتو را وارد کنید تا چارت و نمودار آن را بکشد و تحلیل کاملی از آن ارائه دهد.
+👑 **VIP سیگنال‌ها**
+📊 **تحلیل هوشمند بازار**
+🐋 **ردیابی نهنگ‌ها**
+⚡ **هشدارهای لحظه‌ای**
+🤖 **تحلیل با هوش مصنوعی**
+🛡️ **مدیریت ریسک حرفه‌ای**
 
-✅ نام نماد را وارد کنید تا اخبار را به صورت لحظه‌ای خلاصه کند و تحلیل آن بر بازار کریپتو را ارائه دهد.
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-⚠️ توجه داشته باشید که تحلیل‌ها توسط هوش مصنوعی انجام می‌شود و به عنوان دستیار از آن استفاده کنید؛ تصمیم نهایی در معاملات به عهده شماست 😊
+🔥 **به قدرتمندترین مرکز تحلیل کریپتو خوش آمدید**
 
-💎 **امکانات ویژه:**
-🧠 AI: Groq + Gemini (فارسی)
-📊 ۸۰+ اندیکاتور + پرایس اکشن
-🧲 اسمارت مانی (SMC)
-🎨 تصاویر حرفه‌ای AI
-📡 سیگنال هر ۲ ساعت
-📰 اخبار بروز هر ۴ ساعت
-📊 تحلیل نمودار ارسالی
-🟢 معامله در CoinEx
+💰 **سود بیشتر**
+📈 **تصمیم بهتر**
+🏆 **عملکرد حرفه‌ای**
 
-✨ دقت پلاتینیومی 💎✨
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+💎 **PLATINUM VIP**
 """
-    await update.message.reply_text(intro_text, parse_mode="Markdown")
     
-    # بررسی عضویت در کانال کریپتو پالس
+    # بررسی عضویت
     if await is_member(ctx.bot, user.id):
         await update.message.reply_text(
-            "✅ عضویت شما در **کریپتو پالس** تأیید شد! خوشحالیم که در خانواده VIP هستید 💎\n\nاز منوی زیر استفاده کنید:",
+            caption,
+            parse_mode=ParseMode.MARKDOWN,
             reply_markup=Menu.main()
         )
     else:
@@ -790,25 +759,53 @@ async def cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         markup = InlineKeyboardMarkup([
             [InlineKeyboardButton("🔗 عضویت در کریپتو پالس", url=channel_link)],
             [InlineKeyboardButton("✅ عضو شدم", callback_data="check_membership")],
-            [InlineKeyboardButton("🔄 تلاش مجدد", callback_data="retry_membership")]
         ])
         await update.message.reply_text(
             f"⚠️ {user.first_name} عزیز\n\n"
-            f"برای بهره‌مندی کامل از خدمات ربات، لطفاً ابتدا در کانال **کریپتو پالس** عضو شوید:\n\n"
+            f"لطفاً ابتدا در کانال **کریپتو پالس** عضو شوید:\n\n"
             f"🔗 @{cfg.required_channel.replace('@','')}\n\n"
-            f"پس از عضویت، روی دکمه «عضو شدم» کلیک کنید.",
+            f"سپس روی دکمه «عضو شدم» کلیک کنید.",
             reply_markup=markup
         )
 
 async def check_membership_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-    """بررسی عضویت وقتی کاربر روی «عضو شدم» کلیک کند"""
     query = update.callback_query
     await query.answer()
     user = query.from_user
     
     if await is_member(ctx.bot, user.id):
+        caption = """
+╔══════════════════════════════════════╗
+║         💎 PLATINUM VIP 💎           ║
+║         ★★★★★                       ║
+╚══════════════════════════════════════╝
+
+✨ **پلاتینیوم تیم** ✨
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+👑 **VIP سیگنال‌ها**
+📊 **تحلیل هوشمند بازار**
+🐋 **ردیابی نهنگ‌ها**
+⚡ **هشدارهای لحظه‌ای**
+🤖 **تحلیل با هوش مصنوعی**
+🛡️ **مدیریت ریسک حرفه‌ای**
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+🔥 **به قدرتمندترین مرکز تحلیل کریپتو خوش آمدید**
+
+💰 **سود بیشتر**
+📈 **تصمیم بهتر**
+🏆 **عملکرد حرفه‌ای**
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+💎 **PLATINUM VIP**
+"""
         await query.edit_message_text(
-            "✅ عضویت شما در **کریپتو پالس** تأیید شد! اکنون می‌توانید از ربات استفاده کنید. 💎\n\nمنوی اصلی:",
+            caption,
+            parse_mode=ParseMode.MARKDOWN,
             reply_markup=Menu.main()
         )
     else:
@@ -816,33 +813,10 @@ async def check_membership_callback(update: Update, ctx: ContextTypes.DEFAULT_TY
         markup = InlineKeyboardMarkup([
             [InlineKeyboardButton("🔗 عضویت در کریپتو پالس", url=channel_link)],
             [InlineKeyboardButton("✅ عضو شدم", callback_data="check_membership")],
-            [InlineKeyboardButton("🔄 تلاش مجدد", callback_data="retry_membership")]
         ])
         await query.edit_message_text(
             f"❌ شما هنوز در کانال **کریپتو پالس** عضو نشده‌اید!\n\n"
-            f"لطفاً ابتدا عضو شوید سپس روی «عضو شدم» کلیک کنید.",
-            reply_markup=markup
-        )
-
-async def retry_membership(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-    """تلاش مجدد برای بررسی عضویت"""
-    query = update.callback_query
-    await query.answer()
-    user = query.from_user
-    
-    if await is_member(ctx.bot, user.id):
-        await query.edit_message_text(
-            "✅ عضویت شما تأیید شد! منوی اصلی:",
-            reply_markup=Menu.main()
-        )
-    else:
-        channel_link = f"https://t.me/{cfg.required_channel.replace('@','')}"
-        markup = InlineKeyboardMarkup([
-            [InlineKeyboardButton("🔗 عضویت در کریپتو پالس", url=channel_link)],
-            [InlineKeyboardButton("✅ عضو شدم", callback_data="check_membership")]
-        ])
-        await query.edit_message_text(
-            f"⚠️ همچنان عضو نیستید! لطفاً اول عضو شوید: @{cfg.required_channel.replace('@','')}",
+            f"لطفاً ابتدا عضو شوید.",
             reply_markup=markup
         )
 
@@ -850,43 +824,32 @@ async def button_router(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query
     d = q.data
     
-    # دکمه‌های مربوط به عضویت
     if d == "check_membership":
         await check_membership_callback(update, ctx)
         return
-    elif d == "retry_membership":
-        await retry_membership(update, ctx)
-        return
     
-    # قبل از هر اقدام، عضویت را بررسی کن
+    # بررسی عضویت
     if not await is_member(ctx.bot, q.from_user.id):
         await q.answer("⚠️ ابتدا باید در کانال کریپتو پالس عضو شوید!", show_alert=True)
         return
     
-    try:
-        if d == "back":
-            await q.edit_message_text("💎 منوی VIP پلاتینیوم", reply_markup=Menu.main())
-        
-        elif d == "p":
-            if not ex.ok: ex.connect()
-            txt = f"💰 *قیمت‌ها* 💎\n{p.full()}\n\n"
-            for sym in cfg.symbols[:15]:
-                t = ex.ticker(sym)
-                if t:
-                    em = '🟢' if t.get('percentage', 0) > 0 else '🔴'
-                    txt += f"{em} {sym.replace('/USDT','')}: ${t['last']:,.4f} ({t.get('percentage',0):+.1f}%)\n"
-            await q.edit_message_text(txt, parse_mode="Markdown",
-                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔄", callback_data="p"), InlineKeyboardButton("🔙", callback_data="back")]]))
-        
-        elif d.startswith("sig_"):
-            sym = d[4:]
-            await q.answer("💎 دریافت سیگنال...")
-            if not ex.ok: ex.connect()
+    if d == "p" or d == "تحلیل بازار":
+        if not ex.ok: ex.connect()
+        txt = f"📊 *تحلیل بازار* 💎\n{p.full()}\n\n"
+        for sym in ["BTC/USDT", "ETH/USDT", "SOL/USDT"]:
             t = ex.ticker(sym)
-            df = ex.ohlcv(sym, '1h', 150)
-            if not t or df is None:
-                await q.edit_message_text("❌ داده نیست 🌌", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]]))
-                return
+            if t:
+                em = '🟢' if t.get('percentage', 0) > 0 else '🔴'
+                txt += f"{em} {sym.replace('/USDT','')}: ${t['last']:,.0f} ({t.get('percentage',0):+.1f}%)\n"
+        await q.edit_message_text(txt, parse_mode=ParseMode.MARKDOWN, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="back")]]))
+    
+    elif d == "sig_BTC/USDT" or d == "VIP سیگنال":
+        await q.answer("💎 دریافت سیگنال...")
+        if not ex.ok: ex.connect()
+        sym = "BTC/USDT"
+        t = ex.ticker(sym)
+        df = ex.ohlcv(sym, '1h', 150)
+        if t and df is not None:
             ind, candles = ind_calc.calc(df)
             mtf = {}
             for tf in cfg.tfs:
@@ -894,292 +857,66 @@ async def button_router(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
                 if dft is not None:
                     mtf[tf], _ = ind_calc.calc(dft)
             smc_data = SMC.analyze(df)
-            await send_full_signal(ctx.bot, q.message.chat_id, sym, t, df, ind, candles, mtf, smc_data)
-            await q.edit_message_text(f"✅ سیگنال {sym.replace('/USDT','')} آماده 💎",
-                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔄", callback_data=f"sig_{sym}"), InlineKeyboardButton("🔙", callback_data="back")]]))
-        
-        elif d.startswith("tf4_") or d.startswith("tf1d_") or d.startswith("tf1w_"):
-            tfs = {"tf4_": "4h", "tf1d_": "1d", "tf1w_": "1w"}
-            lbs = {"4h": "۴ساعته", "1d": "روزانه", "1w": "هفتگی"}
-            for pre, tf in tfs.items():
-                if d.startswith(pre):
-                    sym = d[len(pre):] if len(d) > len(pre) else "BTC/USDT"
-                    await q.answer()
-                    t = ex.ticker(sym)
-                    df = ex.ohlcv(sym, tf, 150)
-                    if t and df is not None:
-                        ind, _ = ind_calc.calc(df)
-                        sig, conf, _, act, cir = sig_gen.generate(ind, t['last'])
-                        if CHART_OK:
-                            buf = chart_gen.create(df, sym)
-                            if buf: await ctx.bot.send_photo(q.message.chat_id, photo=buf, caption=f"⏰ {lbs[tf]} {sym.replace('/USDT','')} | ${t['last']:,.4f}")
-                        await q.edit_message_text(
-                            f"⏰ *{lbs[tf]} {sym.replace('/USDT','')}*\n{p.full()}\n💰 ${t['last']:,.4f}\n🎯 {sig}\n💎 {cir}\n🚦 {act}\n💎 @{cfg.channel.replace('@','')}",
-                            parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]]))
-        
-        elif d == "smc":
-            df = ex.ohlcv("BTC/USDT", '1h', 150)
-            if df is not None:
-                smc = SMC.analyze(df)
-                ai_t = await ai.ask(f"اسمارت مانی بیتکوین:\n{json.dumps(smc, ensure_ascii=False)}\nتحلیل فارسی 💎", 500)
-                await q.edit_message_text(f"🧲 *اسمارت مانی*\n{p.full()}\n\n{ai_t or 'داده نیست'}\n💎 @{cfg.channel.replace('@','')}",
-                    parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]]))
-            else:
-                await q.edit_message_text("❌ داده نیست 🌌", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]]))
-        
-        elif d == "fg":
-            v, t = await FearGreed.fetch()
-            ai_t = await ai.fg(v, t)
-            em = '🟢' if v < 30 else '🔴' if v > 70 else '🟡'
-            await q.edit_message_text(f"😱 *ترس و طمع*\n{p.full()}\n{em} {v}/۱۰۰ — {t}\n\n{ai_t or ''}\n💎 @{cfg.channel.replace('@','')}",
-                parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔄", callback_data="fg"), InlineKeyboardButton("🔙", callback_data="back")]]))
-        
-        elif d == "news":
-            arts = await NewsFetcher.fetch()
-            if arts:
-                sm = await ai.news([a['title'] for a in arts[:12]])
-                img = await ai_img.for_news()
-                if img: await ctx.bot.send_photo(q.message.chat_id, photo=img, caption="📰 خبری 💎")
-                await q.edit_message_text(f"📰 *اخبار*\n{p.full()}\n\n{sm}\n💎 @{cfg.channel.replace('@','')}",
-                    parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔄", callback_data="news"), InlineKeyboardButton("🔙", callback_data="back")]]))
-            else:
-                await q.edit_message_text("❌ خبری نیست 🌌", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]]))
-        
-        elif d == "dom":
-            try:
-                async with httpx.AsyncClient(timeout=15) as cl:
-                    r = await cl.get("https://api.coingecko.com/api/v3/global")
-                    d = r.json()['data']['market_cap_percentage']
-                    await q.edit_message_text(f"🏆 *دامیننس*\n{p.full()}\n₿ بیتکوین: {d['btc']:.1f}%\nΞ اتریوم: {d['eth']:.1f}%\n💎 @{cfg.channel.replace('@','')}",
-                        parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]]))
-            except: await q.edit_message_text("❌", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]]))
-        
-        elif d == "ai_ask":
-            await q.answer("🤖 سوالت رو بپرس...")
-            await q.edit_message_text("🤖 سوال فارسی بپرس 💎", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]]))
-            ctx.user_data['ask'] = True
-        
-        elif d == "chart_req":
-            await q.answer("📈 نام ارز (مثلاً BTC)")
-            await q.edit_message_text("📈 نماد ارز رو بفرست 💎", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]]))
-            ctx.user_data['chart'] = True
-        
-        elif d == "img":
-            await q.answer("🎨 توضیح تصویر...")
-            await q.edit_message_text("🎨 توضیح تصویر رو بفرست 💎", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]]))
-            ctx.user_data['img'] = True
-        
-        elif d == "time":
-            await q.edit_message_text(f"🕰 {p.full()}\n📅 میلادی: {p.now().strftime('%Y-%m-%d')}\n⏰ تهران\n💎 @{cfg.channel.replace('@','')}",
-                parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]]))
-        
-        elif d == "pred":
-            await q.edit_message_text("🔮 *پیش‌بینی*\nدر حال محاسبه... 💎", parse_mode="Markdown")
-            try:
-                t = ex.ticker("BTC/USDT")
-                if t:
-                    df_pred = ex.ohlcv("BTC/USDT", '1d', 100)
-                    if df_pred is not None and len(df_pred) > 30:
-                        ind, _ = ind_calc.calc(df_pred)
-                        ai_t = await ai.predict("BTC/USDT", t['last'], ind)
-                    else:
-                        ai_t = "⏳ داده ناکافی — لطفاً بعداً تلاش کن"
-                    await q.edit_message_text(
-                        f"🔮 *پیش‌بینی BTC*\n{p.full()}\n\n{ai_t or 'داده نیست'}\n💎 @{cfg.channel.replace('@','')}",
-                        parse_mode="Markdown", 
-                        reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]])
-                    )
-                else:
-                    await q.edit_message_text("❌ داده نیست 🌌", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]]))
-            except Exception as e:
-                logger.error(f"Pred error: {e}")
-                await q.edit_message_text("❌ خطا 🌌", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]]))
-        
-        elif d == "whale":
-            try:
-                ai_t = await ai.whale()
-                await q.edit_message_text(
-                    f"🐋 *نهنگ‌ها*\n{ai_t or 'داده نیست'}\n💎 @{cfg.channel.replace('@','')}",
-                    parse_mode="Markdown", 
-                    reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]])
-                )
-            except:
-                await q.edit_message_text("❌ خطا 🌌", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]]))
-        
-        elif d == "ref":
-            await q.edit_message_text("⚡ در حال توسعه... 💎", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]]))
-        
+            ai_t = await ai.signal_analysis(sym, ind, t['last'], t.get('percentage', 0), candles, mtf, smc_data)
+            pred_t = await ai.predict(sym, t['last'], ind)
+            a = {'symbol': sym, 'price': t['last'], 'change': t.get('percentage', 0),
+                 'ind': ind, 'candles': candles, 'mtf': mtf, 'smc': smc_data}
+            msg = Fmt.signal(a, ai_t, pred_t)
+            await q.edit_message_text(msg[:4000], parse_mode=ParseMode.MARKDOWN)
         else:
-            await q.answer("⚡")
-    except Exception as e:
-        logger.error(f"Btn: {e}")
-        try: await q.answer("❌")
-        except: pass
+            await q.edit_message_text("❌ داده نیست", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]]))
+    
+    elif d == "whale" or d == "نهنگ‌ها":
+        await q.answer("🐋 در حال دریافت اطلاعات نهنگ‌ها...")
+        ai_t = await ai.whale()
+        await q.edit_message_text(f"🐋 *نهنگ‌ها*\n\n{ai_t or 'داده در دسترس نیست'}\n💎 @{cfg.channel.replace('@','')}", parse_mode=ParseMode.MARKDOWN, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]]))
+    
+    elif d == "settings" or d == "تنظیمات":
+        await q.edit_message_text("⚙️ *تنظیمات*\n\nدر حال توسعه...\n💎 @{cfg.channel.replace('@','')}", parse_mode=ParseMode.MARKDOWN, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]]))
+    
+    elif d == "back":
+        caption = """
+╔══════════════════════════════════════╗
+║         💎 PLATINUM VIP 💎           ║
+║         ★★★★★                       ║
+╚══════════════════════════════════════╝
 
-async def handle_msg(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-    u = ctx.user_data
-    user = update.effective_user
-    
-    # بررسی عضویت قبل از هر پردازش پیام
-    if not await is_member(ctx.bot, user.id):
-        await update.message.reply_text(
-            f"⚠️ لطفاً ابتدا در کانال **کریپتو پالس** عضو شوید:\n🔗 @{cfg.required_channel.replace('@','')}\n\nسپس دستور /start را مجدداً وارد کنید."
-        )
-        return
-    
-    if update.message.photo:
-        await update.message.reply_text("📊 در حال تحلیل نمودار... 💎")
-        f = await update.message.photo[-1].get_file()
-        b = await f.download_as_bytearray()
-        path = f"/tmp/chart_{update.effective_user.id}.png"
-        with open(path, 'wb') as fp: fp.write(b)
-        try:
-            img = Image.open(path)
-            pix = list(img.resize((100, 100)).getdata())
-            ra = sum(p[0] for p in pix if len(p) >= 3) / max(1, len(pix))
-            ga = sum(p[1] for p in pix if len(p) >= 3) / max(1, len(pix))
-            col = "صعودی🟢" if ga > ra else "نزولی🔴" if ra > ga else "خنثی⚪"
-            desc = f"ابعاد: {img.size} | رنگ: {col} | قرمز:{ra:.0f} سبز:{ga:.0f}"
-            analysis = await ai.chart_img("نمودار", desc)
-            if analysis:
-                await update.message.reply_text(f"📊 *تحلیل نمودار*\n\n{analysis}\n💎 @{cfg.channel.replace('@','')}", parse_mode="Markdown")
-        except: await update.message.reply_text("❌ خطا")
-        finally:
-            if os.path.exists(path): os.remove(path)
-        return
-    
-    txt = update.message.text
-    
-    if u.get('ask'):
-        await update.message.reply_text("🤖 در حال تحلیل... 💎")
-        resp = await ai.custom(txt)
-        if resp: await update.message.reply_text(f"🧠 *پاسخ:*\n{resp}", parse_mode="Markdown")
-        else: await update.message.reply_text("❌ خطا")
-        u['ask'] = False
-    
-    elif u.get('chart'):
-        sym = txt.upper().strip()
-        if not sym.endswith("/USDT"): sym += "/USDT"
-        t = ex.ticker(sym)
-        if not t: await update.message.reply_text("❌ ارز پیدا نشد")
-        else:
-            df = ex.ohlcv(sym, '1d', 150)
-            if df is not None and CHART_OK:
-                buf = chart_gen.create(df, sym)
-                if buf: await update.message.reply_photo(photo=buf, caption=f"📈 {sym.replace('/USDT','')} 💎")
-            else:
-                await update.message.reply_text("❌ داده کافی نیست")
-        u['chart'] = False
-    
-    elif u.get('img'):
-        await update.message.reply_text("🎨 در حال ساخت... 💎")
-        img = await ai_img.custom(txt)
-        if img: await update.message.reply_photo(photo=img, caption="🖼️ تصویر 💎")
-        else: await update.message.reply_text("❌ خطا")
-        u['img'] = False
+✨ **پلاتینیوم تیم** ✨
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+👑 **VIP سیگنال‌ها**
+📊 **تحلیل هوشمند بازار**
+🐋 **ردیابی نهنگ‌ها**
+⚡ **هشدارهای لحظه‌ای**
+🤖 **تحلیل با هوش مصنوعی**
+🛡️ **مدیریت ریسک حرفه‌ای**
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+🔥 **به قدرتمندترین مرکز تحلیل کریپتو خوش آمدید**
+
+💰 **سود بیشتر**
+📈 **تصمیم بهتر**
+🏆 **عملکرد حرفه‌ای**
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+💎 **PLATINUM VIP**
+"""
+        await q.edit_message_text(caption, parse_mode=ParseMode.MARKDOWN, reply_markup=Menu.main())
     
     else:
-        await update.message.reply_text("از منوی زیر استفاده کنید:", reply_markup=Menu.main())
+        await q.answer("⚡")
 
-async def send_full_signal(bot, chat, sym, ticker, df, ind, candles, mtf, smc_data):
-    """ارسال کامل سیگنال با نمودار + AI"""
-    if CHART_OK and df is not None:
-        chart = chart_gen.create(df, sym)
-        if chart:
-            await bot.send_photo(chat, photo=chart, caption=f"📊 نمودار {sym.replace('/USDT','')} | ${ticker['last']:,.4f} 💎")
+async def handle_msg(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    user = update.effective_user
     
-    trend = "صعودی" if ticker.get('percentage', 0) > 0 else "نزولی"
-    img = await ai_img.for_signal(sym, trend)
-    if img:
-        await bot.send_photo(chat, photo=img, caption="🎨 تصویر تحلیلی 💎")
+    if not await is_member(ctx.bot, user.id):
+        await update.message.reply_text(f"⚠️ لطفاً ابتدا در کانال **کریپتو پالس** عضو شوید:\n🔗 @{cfg.required_channel.replace('@','')}\n\nسپس /start را وارد کنید.")
+        return
     
-    ai_t = await ai.signal_analysis(sym, ind, ticker['last'], ticker.get('percentage', 0), candles, mtf, smc_data)
-    pred_t = await ai.predict(sym, ticker['last'], ind)
-    
-    a = {'symbol': sym, 'price': ticker['last'], 'change': ticker.get('percentage', 0),
-         'ind': ind, 'candles': candles, 'mtf': mtf, 'smc': smc_data}
-    msg = Fmt.signal(a, ai_t, pred_t)
-    await safe_send(bot, chat, msg)
-
-# ============================================================
-# 🔄 AUTO TASKS
-# ============================================================
-async def auto_signals(app):
-    await asyncio.sleep(10)
-    while True:
-        try:
-            if not ex.ok: ex.connect()
-            for sym in ["BTC/USDT", "ETH/USDT", "SOL/USDT"]:
-                try:
-                    t = ex.ticker(sym)
-                    df = ex.ohlcv(sym, '1h', 150)
-                    if t and df is not None:
-                        ind, candles = ind_calc.calc(df)
-                        mtf = {}
-                        for tf in cfg.tfs:
-                            dft = ex.ohlcv(sym, tf, 100)
-                            if dft is not None:
-                                mtf[tf], _ = ind_calc.calc(dft)
-                        smc = SMC.analyze(df)
-                        await send_full_signal(app.bot, cfg.channel, sym, t, df, ind, candles, mtf, smc)
-                        await asyncio.sleep(120)
-                except: pass
-        except: pass
-        await asyncio.sleep(cfg.signal_int)
-
-async def auto_news(app):
-    await asyncio.sleep(30)
-    while True:
-        try:
-            arts = await NewsFetcher.fetch()
-            if arts:
-                sm = await ai.news([a['title'] for a in arts[:12]])
-                img = await ai_img.for_news()
-                if img: await app.bot.send_photo(cfg.channel, photo=img, caption="📰 خبری 💎")
-                await safe_send(app.bot, cfg.channel, f"📰 *اخبار*\n{p.full()}\n\n{sm}\n💎 @{cfg.channel.replace('@','')}\n{' '.join(random.sample(cfg.hashtags, 5))}")
-        except: pass
-        await asyncio.sleep(cfg.news_int)
-
-async def auto_fg(app):
-    await asyncio.sleep(120)
-    while True:
-        try:
-            v, t = await FearGreed.fetch()
-            em = '🟢' if v < 30 else '🔴' if v > 70 else '🟡'
-            await safe_send(app.bot, cfg.channel, f"😱 *ترس و طمع*\n{em} {v}/۱۰۰ — {t}\n💎 @{cfg.channel.replace('@','')}\n{' '.join(random.sample(cfg.hashtags, 3))}")
-        except: pass
-        await asyncio.sleep(cfg.fg_int)
-
-async def auto_whale(app):
-    await asyncio.sleep(300)
-    while True:
-        try:
-            c = await ai.whale()
-            if c: await safe_send(app.bot, cfg.channel, f"🐋 *نهنگ‌ها*\n{c}\n💎 @{cfg.channel.replace('@','')}\n{' '.join(random.sample(cfg.hashtags, 3))}")
-        except: pass
-        await asyncio.sleep(cfg.whale_int)
-
-async def auto_daily(app):
-    while True:
-        now = datetime.now(TEHRAN_TZ)
-        target = datetime.strptime(cfg.summary_time, "%H:%M").replace(tzinfo=TEHRAN_TZ)
-        if now.hour == target.hour and now.minute == target.minute:
-            try:
-                top = []
-                for sym in cfg.symbols[:10]:
-                    t = ex.ticker(sym)
-                    if t: top.append({"s": sym.replace('/USDT',''), "c": t.get('percentage', 0)})
-                fg_v, fg_t = await FearGreed.fetch()
-                async with httpx.AsyncClient() as cl:
-                    r = await cl.get("https://api.coingecko.com/api/v3/global")
-                    dom = r.json()['data']['market_cap_percentage']
-                data = {"top": top, "btc": dom['btc'], "eth": dom['eth'], "fg": f"{fg_v} ({fg_t})"}
-                sm = await ai.daily(data)
-                img = await ai_img.make("daily crypto market summary professional")
-                if img: await app.bot.send_photo(cfg.channel, photo=img)
-                await safe_send(app.bot, cfg.channel, f"📊 *خلاصه بازار*\n{p.full()}\n{sm}\n💎 @{cfg.channel.replace('@','')}\n{' '.join(random.sample(cfg.hashtags, 5))}")
-            except: pass
-        await asyncio.sleep(60)
+    await update.message.reply_text("لطفاً از دکمه‌های منو استفاده کنید.", reply_markup=Menu.main())
 
 # ============================================================
 # 🚀 MAIN
@@ -1188,16 +925,7 @@ async def main():
     if not ProcessLock.acquire(): sys.exit(1)
     if not cfg.token: ProcessLock.release(); return
     
-    try:
-        async with httpx.AsyncClient() as c:
-            await c.get(f"https://api.telegram.org/bot{cfg.token}/deleteWebhook", params={"drop_pending_updates": True})
-    except: pass
-    
     logger.info(f"💎 VIP PLATINUM v34.2 | {p.full()}")
-    logger.info(f"🧠 AI: Groq={'✅' if cfg.groq_key else '❌'} Gemini={'✅' if cfg.gemini_key else '❌'}")
-    logger.info(f"💱 CoinEx: {'✅' if cfg.coinex_key else '⚠️ Read-only'}")
-    logger.info(f"🎨 Images: Context-aware | 📊 Chart: {'✅' if CHART_OK else '❌'}")
-    logger.info(f"📡 Channel: {cfg.channel}")
     logger.info(f"🔐 Required channel: {cfg.required_channel}")
     
     ex.connect()
@@ -1206,30 +934,20 @@ async def main():
     
     app.add_handler(CommandHandler("start", cmd_start))
     app.add_handler(CallbackQueryHandler(button_router))
-    app.add_handler(MessageHandler(filters.PHOTO, handle_msg))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_msg))
     
-    asyncio.create_task(auto_signals(app))
-    asyncio.create_task(auto_news(app))
-    asyncio.create_task(auto_fg(app))
-    asyncio.create_task(auto_whale(app))
-    asyncio.create_task(auto_daily(app))
-    
-    logger.info("💎 VIP PLATINUM READY — ALL BUGS FIXED — RAILWAY OPTIMIZED ✨")
+    logger.info("💎 VIP PLATINUM READY ✨")
     
     try:
         await app.initialize()
         await app.start()
-        await app.updater.start_polling(drop_pending_updates=True, allowed_updates=Update.ALL_TYPES)
+        await app.updater.start_polling(drop_pending_updates=True)
         while True: await asyncio.sleep(3600)
     except Exception as e:
         logger.error(f"❌ {e}")
     finally:
-        try: await app.updater.stop(); await app.stop(); await app.shutdown()
-        except: pass
         ProcessLock.release()
 
 if __name__ == "__main__":
     try: asyncio.run(main())
-    except KeyboardInterrupt: ProcessLock.release()
     except: ProcessLock.release()
