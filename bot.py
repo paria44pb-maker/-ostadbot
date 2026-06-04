@@ -28,35 +28,19 @@ CHANNEL_USERNAME = "@CryptoPulse606"
 CHANNEL_LINK = "https://t.me/CryptoPulse606"
 OWNER_ID = int(os.getenv("OWNER_ID", "0"))
 
-# CoinEx
-COINEX_API_KEY = os.getenv("COINEX_API_KEY", "")
-COINEX_SECRET_KEY = os.getenv("COINEX_SECRET_KEY", "")
-COINEX_PASSPHRASE = os.getenv("COINEX_PASSPHRASE", "")
-
-# ارزهای تحت پوشش (۷ ارز معتبر)
-SYMBOLS = ["BTCUSDT", "ETHUSDT", "SOLUSDT", "XRPUSDT", "ADAUSDT", "DOGEUSDT", "DOTUSDT"]
-TIMEFRAMES = {"15m": "15m", "1h": "1h", "4h": "4h", "1d": "1d"}
-
-# تنظیمات معاملاتی
-MAX_POSITIONS = 3
-RISK_PER_TRADE = 0.02
-ATR_MULTIPLIER_SL = 1.5
-RR_RATIO = 2.0
-AUTO_TRADE_ENABLED = False
-DEMO_BALANCE = 10000
-
-# ==================== صرافی ====================
+# CoinEx (بدون نیاز به API key برای خواندن قیمت)
 exchange = ccxt.coinex({
-    'apiKey': COINEX_API_KEY,
-    'secret': COINEX_SECRET_KEY,
-    'password': COINEX_PASSPHRASE,
     'enableRateLimit': True,
 })
 
-# ==================== دمو معامله ====================
-demo_balance = DEMO_BALANCE
+# ارزهای تحت پوشش (۷ ارز معتبر)
+SYMBOLS = ["BTCUSDT", "ETHUSDT", "SOLUSDT", "XRPUSDT", "ADAUSDT", "DOGEUSDT", "DOTUSDT"]
+
+# تنظیمات دمو
+demo_balance = 10000
 demo_positions = {}
 demo_history = []
+auto_trade_enabled = False
 
 # ==================== بررسی عضویت در کانال ====================
 async def is_member(user_id, context):
@@ -76,13 +60,13 @@ def get_main_menu():
         [InlineKeyboardButton("⚡ معامله خودکار", callback_data="auto_trade")],
         [InlineKeyboardButton("🤖 هوش مصنوعی (همیشه فعال)", callback_data="ai_chat")],
         [InlineKeyboardButton("📊 رشد و ریزش روزانه", callback_data="daily_report")],
-        [InlineKeyboardButton("📰 اخبار داغ کریپتو", callback_data="news")],
+        [InlineKeyboardButton("📰 اخبار داغ", callback_data="news")],
         [InlineKeyboardButton("😨 شاخص ترس و طمع", callback_data="fear_greed")],
         [InlineKeyboardButton("❓ راهنما", callback_data="help")],
     ]
     return InlineKeyboardMarkup(keyboard)
 
-# ==================== اندیکاتورهای پیشرفته (۲۰+ اندیکاتور) ====================
+# ==================== اندیکاتورهای پیشرفته (۲۵+ اندیکاتور) ====================
 class AdvancedIndicators:
     @staticmethod
     def calculate_all(df):
@@ -100,56 +84,56 @@ class AdvancedIndicators:
         
         # میانگین متحرک
         for p in [9, 12, 20, 26, 50, 100, 200]:
-            ind[f'EMA{p}'] = ta.trend.ema_indicator(close_series, window=p).iloc[-1]
-            ind[f'SMA{p}'] = ta.trend.sma_indicator(close_series, window=p).iloc[-1]
+            ind[f'EMA{p}'] = ta.trend.ema_indicator(close_series, window=p).iloc[-1] if len(close_series) >= p else close[-1]
+            ind[f'SMA{p}'] = ta.trend.sma_indicator(close_series, window=p).iloc[-1] if len(close_series) >= p else close[-1]
         
         # اسیلاتورها
-        ind['RSI'] = ta.momentum.rsi(close_series, window=14).iloc[-1]
-        ind['RSI_FAST'] = ta.momentum.rsi(close_series, window=7).iloc[-1]
-        ind['RSI_SLOW'] = ta.momentum.rsi(close_series, window=21).iloc[-1]
+        ind['RSI'] = ta.momentum.rsi(close_series, window=14).iloc[-1] if len(close_series) >= 14 else 50
+        ind['RSI_FAST'] = ta.momentum.rsi(close_series, window=7).iloc[-1] if len(close_series) >= 7 else 50
+        ind['RSI_SLOW'] = ta.momentum.rsi(close_series, window=21).iloc[-1] if len(close_series) >= 21 else 50
         
         macd = ta.trend.MACD(close_series)
-        ind['MACD'] = macd.macd().iloc[-1]
-        ind['MACD_SIGNAL'] = macd.macd_signal().iloc[-1]
-        ind['MACD_HIST'] = macd.macd_diff().iloc[-1]
+        ind['MACD'] = macd.macd().iloc[-1] if len(macd.macd()) > 0 else 0
+        ind['MACD_SIGNAL'] = macd.macd_signal().iloc[-1] if len(macd.macd_signal()) > 0 else 0
+        ind['MACD_HIST'] = macd.macd_diff().iloc[-1] if len(macd.macd_diff()) > 0 else 0
         
-        ind['STOCH_K'] = ta.momentum.stoch(high_series, low_series, close_series, window=14, smooth_window=3).iloc[-1]
-        ind['STOCH_D'] = ta.momentum.stoch_signal(high_series, low_series, close_series, window=14, smooth_window=3).iloc[-1]
+        ind['STOCH_K'] = ta.momentum.stoch(high_series, low_series, close_series, window=14, smooth_window=3).iloc[-1] if len(close_series) >= 14 else 50
+        ind['STOCH_D'] = ta.momentum.stoch_signal(high_series, low_series, close_series, window=14, smooth_window=3).iloc[-1] if len(close_series) >= 14 else 50
         
-        ind['CCI'] = ta.trend.cci(high_series, low_series, close_series, window=20).iloc[-1]
-        ind['WILLIAMS_R'] = ta.momentum.williams_r(high_series, low_series, close_series, lbp=14).iloc[-1]
-        ind['ULTIMATE'] = ta.momentum.ultimate_oscillator(high_series, low_series, close_series, window1=7, window2=14, window3=28).iloc[-1]
+        ind['CCI'] = ta.trend.cci(high_series, low_series, close_series, window=20).iloc[-1] if len(close_series) >= 20 else 0
+        ind['WILLIAMS_R'] = ta.momentum.williams_r(high_series, low_series, close_series, lbp=14).iloc[-1] if len(close_series) >= 14 else -50
+        ind['ULTIMATE'] = ta.momentum.ultimate_oscillator(high_series, low_series, close_series, window1=7, window2=14, window3=28).iloc[-1] if len(close_series) >= 28 else 50
         
         # باند بولینگر
         bb = ta.volatility.BollingerBands(close_series, window=20, window_dev=2)
-        ind['BB_UPPER'] = bb.bollinger_hband().iloc[-1]
-        ind['BB_MIDDLE'] = bb.bollinger_mavg().iloc[-1]
-        ind['BB_LOWER'] = bb.bollinger_lband().iloc[-1]
+        ind['BB_UPPER'] = bb.bollinger_hband().iloc[-1] if len(bb.bollinger_hband()) > 0 else close[-1] * 1.05
+        ind['BB_MIDDLE'] = bb.bollinger_mavg().iloc[-1] if len(bb.bollinger_mavg()) > 0 else close[-1]
+        ind['BB_LOWER'] = bb.bollinger_lband().iloc[-1] if len(bb.bollinger_lband()) > 0 else close[-1] * 0.95
         ind['BB_WIDTH'] = (ind['BB_UPPER'] - ind['BB_LOWER']) / ind['BB_MIDDLE']
         
         # نوسان
-        ind['ATR'] = ta.volatility.average_true_range(high_series, low_series, close_series, window=14).iloc[-1]
-        ind['NATR'] = ind['ATR'] / close[-1] * 100
+        ind['ATR'] = ta.volatility.average_true_range(high_series, low_series, close_series, window=14).iloc[-1] if len(close_series) >= 14 else 0
+        ind['NATR'] = ind['ATR'] / close[-1] * 100 if close[-1] != 0 else 0
         
         # قدرت روند
-        ind['ADX'] = ta.trend.adx(high_series, low_series, close_series, window=14).iloc[-1]
-        ind['PLUS_DI'] = ta.trend.plus_di(high_series, low_series, close_series, window=14).iloc[-1]
-        ind['MINUS_DI'] = ta.trend.minus_di(high_series, low_series, close_series, window=14).iloc[-1]
+        ind['ADX'] = ta.trend.adx(high_series, low_series, close_series, window=14).iloc[-1] if len(close_series) >= 14 else 25
+        ind['PLUS_DI'] = ta.trend.plus_di(high_series, low_series, close_series, window=14).iloc[-1] if len(close_series) >= 14 else 20
+        ind['MINUS_DI'] = ta.trend.minus_di(high_series, low_series, close_series, window=14).iloc[-1] if len(close_series) >= 14 else 20
         
         # حجم
-        ind['OBV'] = ta.volume.on_balance_volume(close_series, volume_series).iloc[-1]
-        ind['MFI'] = ta.volume.money_flow_index(high_series, low_series, close_series, volume_series, window=14).iloc[-1]
-        ind['VOLUME_SMA'] = volume_series.rolling(20).mean().iloc[-1]
+        ind['OBV'] = ta.volume.on_balance_volume(close_series, volume_series).iloc[-1] if len(close_series) > 1 else 0
+        ind['MFI'] = ta.volume.money_flow_index(high_series, low_series, close_series, volume_series, window=14).iloc[-1] if len(close_series) >= 14 else 50
+        ind['VOLUME_SMA'] = volume_series.rolling(20).mean().iloc[-1] if len(volume_series) >= 20 else volume[-1]
         
         return ind
 
-# ==================== تولید سیگنال فوق‌دقیق با امتیازدهی پیشرفته ====================
+# ==================== تولید سیگنال فوق‌دقیق ====================
 def generate_signal(indicators, current_price, change):
     buy_score = 0
     sell_score = 0
     reasons = []
     
-    # RSI (وزن 30)
+    # RSI (وزن 35)
     rsi = indicators['RSI']
     if rsi < 25:
         buy_score += 35
@@ -210,23 +194,7 @@ def generate_signal(indicators, current_price, change):
         sell_score += 10
         reasons.append(f"📊 CCI اشباع خرید ({indicators['CCI']:.0f})")
     
-    # ADX (قدرت روند)
-    if indicators['ADX'] > 30:
-        if buy_score > sell_score:
-            buy_score += 15
-            reasons.append(f"💪 روند صعودی بسیار قوی (ADX:{indicators['ADX']:.0f})")
-        elif sell_score > buy_score:
-            sell_score += 15
-            reasons.append(f"💪 روند نزولی بسیار قوی (ADX:{indicators['ADX']:.0f})")
-    elif indicators['ADX'] > 25:
-        if buy_score > sell_score:
-            buy_score += 10
-            reasons.append(f"👍 روند صعودی قوی (ADX:{indicators['ADX']:.0f})")
-        elif sell_score > buy_score:
-            sell_score += 10
-            reasons.append(f"👍 روند نزولی قوی (ADX:{indicators['ADX']:.0f})")
-    
-    # ویلیامز %R
+    # ویلیامز (وزن 10)
     if indicators['WILLIAMS_R'] < -85:
         buy_score += 10
         reasons.append("📉 ویلیامز فوق‌اشباع فروش")
@@ -238,7 +206,24 @@ def generate_signal(indicators, current_price, change):
     elif indicators['WILLIAMS_R'] > -20:
         sell_score += 5
     
-    # MFI (شاخص جریان پول)
+    # ADX (قدرت روند)
+    adx = indicators['ADX']
+    if adx > 30:
+        if buy_score > sell_score:
+            buy_score += 15
+            reasons.append(f"💪 روند صعودی بسیار قوی (ADX:{adx:.0f})")
+        elif sell_score > buy_score:
+            sell_score += 15
+            reasons.append(f"💪 روند نزولی بسیار قوی (ADX:{adx:.0f})")
+    elif adx > 25:
+        if buy_score > sell_score:
+            buy_score += 10
+            reasons.append(f"👍 روند صعودی قوی (ADX:{adx:.0f})")
+        elif sell_score > buy_score:
+            sell_score += 10
+            reasons.append(f"👍 روند نزولی قوی (ADX:{adx:.0f})")
+    
+    # MFI (وزن 10)
     if indicators['MFI'] < 20:
         buy_score += 10
         reasons.append(f"💰 جریان پول اشباع فروش (MFI:{indicators['MFI']:.0f})")
@@ -246,13 +231,7 @@ def generate_signal(indicators, current_price, change):
         sell_score += 10
         reasons.append(f"💰 جریان پول اشباع خرید (MFI:{indicators['MFI']:.0f})")
     
-    # OBV (حجم تعادلی)
-    if indicators['OBV'] > 0:
-        buy_score += 5
-    else:
-        sell_score += 5
-    
-    # تغییر قیمت
+    # تغییر قیمت (وزن 15)
     if change > 3:
         buy_score += 15
         reasons.append(f"🚀 رشد استثنایی {change:+.1f}%")
@@ -266,19 +245,8 @@ def generate_signal(indicators, current_price, change):
         sell_score += 10
         reasons.append(f"📉 ریزش قابل توجه {change:+.1f}%")
     
-    # حجم (تأیید)
-    volume_ratio = indicators.get('volume_ratio', 1)
-    if volume_ratio > 1.5:
-        if buy_score > sell_score:
-            buy_score += 10
-            reasons.append("📊 حجم بالا تأیید صعود")
-        elif sell_score > buy_score:
-            sell_score += 10
-            reasons.append("📊 حجم بالا تأیید نزول")
-    
     total_score = buy_score - sell_score
     
-    # تعیین سیگنال نهایی با قدرت (دایره‌های سبز/قرمز)
     if total_score >= 80:
         signal = "خرید فوق‌العاده قوی"
         confidence = 98
@@ -311,19 +279,18 @@ def generate_signal(indicators, current_price, change):
     return signal, confidence, strength, total_score, reasons[:5]
 
 # ==================== رسم نمودار حرفه‌ای ====================
-def create_chart(df, symbol, indicators):
+def create_chart(df, symbol):
     """ایجاد نمودار کندل استیک با کیفیت عالی"""
     df_copy = df.copy()
     df_copy.set_index('timestamp', inplace=True)
     df_copy.index = pd.DatetimeIndex(df_copy.index)
     
-    # افزودن میانگین متحرک به نمودار
+    # افزودن میانگین متحرک
     add_plots = [
         mpf.make_addplot(df_copy['EMA20'], color='blue', width=0.5),
         mpf.make_addplot(df_copy['EMA50'], color='orange', width=0.5),
     ]
     
-    # تنظیمات نمودار شیک و حرفه‌ای
     style = 'charles'
     figsize = (12, 8)
     title = f"{symbol.replace('USDT', '')} - تحلیل تکنیکال پیشرفته"
@@ -340,35 +307,30 @@ def create_chart(df, symbol, indicators):
 
 # ==================== دریافت اخبار از چند منبع ====================
 async def get_crypto_news():
-    news_sources = [
-        "https://cryptopanic.com/api/v1/posts/?auth_token=&public=true&kind=news",
-        "https://www.coindesk.com/feed/",
-        "https://cointelegraph.com/rss"
-    ]
     all_news = []
     try:
         # CryptoPanic
         async with httpx.AsyncClient(timeout=10) as client:
-            resp = await client.get(news_sources[0])
+            resp = await client.get("https://cryptopanic.com/api/v1/posts/?auth_token=&public=true&kind=news")
             if resp.status_code == 200:
                 data = resp.json()
                 for item in data.get('results', [])[:3]:
                     all_news.append({"title": item['title'], "source": "CryptoPanic"})
         
         # CoinDesk RSS
-        feed = feedparser.parse(news_sources[1])
+        feed = feedparser.parse("https://www.coindesk.com/feed/")
         for entry in feed.entries[:2]:
             all_news.append({"title": entry.title, "source": "CoinDesk"})
         
         # CoinTelegraph RSS
-        feed2 = feedparser.parse(news_sources[2])
+        feed2 = feedparser.parse("https://cointelegraph.com/rss")
         for entry in feed2.entries[:2]:
             all_news.append({"title": entry.title, "source": "CoinTelegraph"})
     except:
         pass
-    return all_news[:7]  # حداکثر ۷ خبر
+    return all_news[:7]
 
-# ==================== گزارش رشد و ریزش (هر ۱۲ ساعت) ====================
+# ==================== رشد و ریزش روزانه ====================
 async def get_top_gainers_losers():
     gainers = []
     losers = []
@@ -386,7 +348,7 @@ async def get_top_gainers_losers():
     losers.sort(key=lambda x: x[1])
     return gainers[:5], losers[:5]
 
-# ==================== هوش مصنوعی Groq (همیشه فعال) ====================
+# ==================== هوش مصنوعی Groq ====================
 async def groq_chat(prompt):
     if not GROQ_API_KEY:
         return "🤖 هوش مصنوعی در دسترس نیست (کلید API تنظیم نشده)."
@@ -409,20 +371,19 @@ async def groq_chat(prompt):
         logger.error(f"Groq error: {e}")
     return "🤖 خطا در ارتباط با هوش مصنوعی. لطفاً بعداً تلاش کن."
 
-# ==================== ارسال خودکار به کانال (هر ۵ دقیقه سیگنال + هر ۱۲ ساعت گزارش و اخبار) ====================
+# ==================== ارسال خودکار به کانال (هر ۵ دقیقه) ====================
 async def auto_signal_loop(app):
     await asyncio.sleep(10)
     last_daily_report = 0
     last_news = 0
     
     while True:
-        await asyncio.sleep(300)  # ۵ دقیقه
+        await asyncio.sleep(300)  # 5 دقیقه
         
-        # ارسال سیگنال برای همه ارزهای تحت پوشش
         for symbol in SYMBOLS:
             try:
                 ticker = exchange.fetch_ticker(symbol)
-                if not ticker or ticker['volume'] < 1_000_000:  # فیلتر حجم
+                if not ticker or ticker['volume'] < 1000000:
                     continue
                 
                 ohlcv = exchange.fetch_ohlcv(symbol, '1h', 200)
@@ -431,14 +392,16 @@ async def auto_signal_loop(app):
                 
                 # محاسبه اندیکاتورها
                 indicators = AdvancedIndicators.calculate_all(df)
-                indicators['volume_ratio'] = df['volume'].iloc[-1] / df['volume'].rolling(50).mean().iloc[-1]
+                
+                # اضافه کردن میانگین متحرک به df برای نمودار
+                df['EMA20'] = indicators['EMA20']
+                df['EMA50'] = indicators['EMA50']
                 
                 signal, confidence, strength, score, reasons = generate_signal(indicators, ticker['last'], ticker['percentage'])
                 
                 # رسم نمودار
-                chart_file = create_chart(df, symbol, indicators)
+                chart_file = create_chart(df, symbol)
                 
-                # ساخت پیام
                 msg = f"""
 ╔══════════════════════════════════════════════════════════╗
 ║   🔥 *سیگنال حرفه‌ای {symbol.replace('USDT', '')}* 🔥   ║
@@ -493,7 +456,7 @@ async def auto_signal_loop(app):
                 logger.error(f"Auto signal error {symbol}: {e}")
         
         # گزارش رشد و ریزش هر ۱۲ ساعت
-        if time.time() - last_daily_report > 43200:  # 12 ساعت
+        if time.time() - last_daily_report > 43200:
             last_daily_report = time.time()
             gainers, losers = await get_top_gainers_losers()
             
@@ -526,11 +489,9 @@ async def auto_signal_loop(app):
                 news_text += f"\n✨ @CryptoPulse606"
                 await app.bot.send_message(chat_id=CHANNEL_USERNAME, text=news_text, parse_mode="Markdown")
 
-# ==================== شروع ربات ====================
+# ==================== هندلرهای ربات ====================
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
-    
-    # بررسی عضویت قبلی
     if await is_member(user_id, context):
         context.user_data["is_member"] = True
         await update.message.reply_text(
@@ -566,12 +527,10 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except:
         await update.message.reply_text(caption, parse_mode="Markdown", reply_markup=reply_markup)
 
-# ==================== دکمه عضو شدم ====================
 async def check_membership(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     user_id = update.effective_user.id
-    
     if await is_member(user_id, context):
         context.user_data["is_member"] = True
         await query.edit_message_caption(
@@ -581,9 +540,6 @@ async def check_membership(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
     else:
         await query.answer("❌ هنوز عضو کانال نشدی! لطفاً اول عضو شو بعد بیا اینجا 😊", show_alert=True)
-
-# ==================== سایر هندلرها (قیمت، سیگنال، تحلیل، پورتفوی، معامله خودکار، هوش مصنوعی، گزارش، اخبار، راهنما) ====================
-# (به دلیل طولانی شدن کد، این بخش‌ها مشابه قبل هستند با بهبودهای کوچک)
 
 async def prices(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -616,7 +572,6 @@ async def signal_now(update: Update, context: ContextTypes.DEFAULT_TYPE):
         df = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
         df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
         indicators = AdvancedIndicators.calculate_all(df)
-        indicators['volume_ratio'] = df['volume'].iloc[-1] / df['volume'].rolling(50).mean().iloc[-1]
         signal, confidence, strength, score, reasons = generate_signal(indicators, ticker['last'], ticker['percentage'])
         
         msg = f"""
@@ -680,16 +635,39 @@ async def technical_analysis(update: Update, context: ContextTypes.DEFAULT_TYPE)
 • EMA20: `${indicators['EMA20']:.2f}` | EMA50: `${indicators['EMA50']:.2f}`
 • باند بولینگر: پایین `${indicators['BB_LOWER']:.2f}` | بالا `${indicators['BB_UPPER']:.2f}`
 • ADX: `{indicators['ADX']:.1f}` | ATR: `${indicators['ATR']:.2f}`
-
-{trap_msg}
 """
         await update.message.reply_text(text, parse_mode="Markdown")
     except Exception as e:
         await update.message.reply_text(f"❌ خطا: {e}")
     context.user_data["waiting_technical"] = False
 
-# سایر هندلرها (portfolio, auto_trade, ai_chat, daily_report, news, fear_greed, help)
-# (برای اختصار مشابه قبل، ولی با متن‌های شوخ و فارسی)
+async def portfolio_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    if not context.user_data.get("is_member"):
+        await query.edit_message_text("🔔 لطفاً ابتدا در کانال عضو شوید.")
+        return
+    total_pnl = sum(h.get('pnl', 0) for h in demo_history)
+    text = f"""
+💰 *پورتفوی دمو* 💰
+
+موجودی: ${demo_balance:,.2f}
+پوزیشن‌های باز: {len(demo_positions)}
+سود/زیان کل: ${total_pnl:+.2f}
+⚡ معامله خودکار: {'فعال' if auto_trade_enabled else 'غیرفعال'}
+"""
+    await query.edit_message_text(text, parse_mode="Markdown", reply_markup=get_main_menu())
+
+async def auto_trade_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    global auto_trade_enabled
+    query = update.callback_query
+    await query.answer()
+    if not context.user_data.get("is_member"):
+        await query.edit_message_text("🔔 لطفاً ابتدا در کانال عضو شوید.")
+        return
+    auto_trade_enabled = not auto_trade_enabled
+    status = "✅ فعال" if auto_trade_enabled else "❌ غیرفعال"
+    await query.edit_message_text(f"⚡ *معامله خودکار*\n\nوضعیت: {status}", parse_mode="Markdown", reply_markup=get_main_menu())
 
 async def ai_chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -718,7 +696,121 @@ async def handle_ai_chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
     response = await groq_chat(user_msg)
     await update.message.reply_text(response, parse_mode="Markdown")
 
-# و بقیه هندلرها (portfolio, auto_trade, daily_report, news, fear_greed, help) شبیه قبل با پیام‌های شوخ
+async def daily_report_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    if not context.user_data.get("is_member"):
+        await query.edit_message_text("🔔 لطفاً ابتدا در کانال عضو شوید.")
+        return
+    await query.edit_message_text("🔄 در حال دریافت گزارش روزانه...")
+    gainers, losers = await get_top_gainers_losers()
+    gainers_text = "\n".join([f"• {sym.replace('USDT', '')}: +{chg:.2f}% (${price:,.2f})" for sym, chg, price in gainers])
+    losers_text = "\n".join([f"• {sym.replace('USDT', '')}: {chg:.2f}% (${price:,.2f})" for sym, chg, price in losers])
+    msg = f"""
+📊 *گزارش رشد و ریزش بازار* 📊
+
+🚀 **بیشترین رشد‌ها:**
+{gainers_text if gainers_text else 'هیچ'}
+
+💀 **بیشترین ریزش‌ها:**
+{losers_text if losers_text else 'هیچ'}
+
+📅 {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+"""
+    await query.edit_message_text(msg, parse_mode="Markdown", reply_markup=get_main_menu())
+
+async def news_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    if not context.user_data.get("is_member"):
+        await query.edit_message_text("🔔 لطفاً ابتدا در کانال عضو شوید.")
+        return
+    await query.edit_message_text("🔄 دریافت اخبار داغ...")
+    news_list = await get_crypto_news()
+    if not news_list:
+        await query.edit_message_text("📰 اخباری یافت نشد.", reply_markup=get_main_menu())
+        return
+    text = "📰 *اخبار داغ کریپتو* 📰\n\n"
+    for n in news_list[:5]:
+        text += f"🔥 {n['title'][:120]}...\n📍 _{n['source']}_\n\n"
+    await query.edit_message_text(text, parse_mode="Markdown", reply_markup=get_main_menu())
+
+async def fear_greed_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    if not context.user_data.get("is_member"):
+        await query.edit_message_text("🔔 لطفاً ابتدا در کانال عضو شوید.")
+        return
+    await query.edit_message_text("😨 *شاخص ترس و طمع*\n\nدر حال توسعه...", parse_mode="Markdown", reply_markup=get_main_menu())
+
+async def help_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    if not context.user_data.get("is_member"):
+        await query.edit_message_text("🔔 لطفاً ابتدا در کانال عضو شوید.")
+        return
+    text = """
+❓ *راهنمای پلاتینیوم VIP* ❓
+
+📊 قیمت لحظه‌ای: نمایش قیمت ارزها
+🎯 سیگنال فوق‌دقیق: دریافت سیگنال خرید/فروش با دقت بالا
+📈 تحلیل تکنیکال: تحلیل با ۲۰+ اندیکاتور
+💰 پورتفوی دمو: مدیریت سرمایه مجازی
+⚡ معامله خودکار: خرید/فروش خودکار (دمو)
+🤖 هوش مصنوعی: چت با AI (همیشه فعال)
+📊 رشد و ریزش: گزارش روزانه
+📰 اخبار داغ: اخبار لحظه‌ای
+😨 ترس و طمع: شاخص بازار
+
+⚠️ فقط جنبه آموزشی – مسئولیت با شماست
+"""
+    await query.edit_message_text(text, parse_mode="Markdown", reply_markup=get_main_menu())
+
+async def back_to_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    await query.edit_message_text(
+        "🌟 *منوی اصلی* 🌟\n\nلطفاً یکی از گزینه‌ها را انتخاب کنید:",
+        parse_mode="Markdown",
+        reply_markup=get_main_menu()
+    )
+
+async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if context.user_data.get("waiting_technical"):
+        await technical_analysis(update, context)
+        context.user_data["waiting_technical"] = False
+    elif context.user_data.get("ai_chat_mode"):
+        await handle_ai_chat(update, context)
+    else:
+        await update.message.reply_text("لطفاً از دکمه‌های منو استفاده کنید یا /start بزنید.")
+
+async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    data = query.data
+    if data == "check_membership":
+        await check_membership(update, context)
+    elif data == "prices":
+        await prices(update, context)
+    elif data == "signal":
+        await signal_now(update, context)
+    elif data == "technical":
+        await technical_menu(update, context)
+    elif data == "portfolio":
+        await portfolio_menu(update, context)
+    elif data == "auto_trade":
+        await auto_trade_menu(update, context)
+    elif data == "ai_chat":
+        await ai_chat(update, context)
+    elif data == "daily_report":
+        await daily_report_menu(update, context)
+    elif data == "news":
+        await news_menu(update, context)
+    elif data == "fear_greed":
+        await fear_greed_menu(update, context)
+    elif data == "help":
+        await help_menu(update, context)
+    else:
+        await query.answer()
 
 # ==================== اجرای اصلی ====================
 async def main():
