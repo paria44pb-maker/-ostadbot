@@ -1,9 +1,4 @@
-# VIP PLATINUM v34.2 - نسخه تکمیل‌شده و بهینه‌شده
-
-```python
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-"""
+# VI
 ╔══════════════════════════════════════════════════════════════════════════════╗
 ║  💎 VIP PLATINUM v34.2 — وی آی پی پلاتینیوم — ULTIMATE EDITION              ║
 ║  ✅ REQUIRED CHANNEL: @CryptoPulse606 (کریپتو پالس)                         ║
