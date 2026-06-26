@@ -1,9 +1,5 @@
-```python
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""
-VIP PLATINUM v36.0 - ULTIMATE PRO
-"""
 
 import os, sys, asyncio, time, json, random, signal, io, re, gc, hashlib, urllib.parse
 import logging
@@ -24,9 +20,6 @@ from telegram.request import HTTPXRequest
 import warnings
 warnings.filterwarnings('ignore')
 
-# ============================================================
-# SILENCE LOGGING
-# ============================================================
 for _lib in ['httpx','httpcore','telegram','telegram.ext','telegram.request',
              'apscheduler','ccxt','urllib3','asyncio','matplotlib','PIL',
              'aiohttp','chardet','openai','groq','mplfinance','ta']:
@@ -45,9 +38,6 @@ _console.addFilter(lambda r: r.name == 'VIP')
 logger.addHandler(_console)
 logger.info("VIP Platinum v36.0 starting...")
 
-# ============================================================
-# AUTO-INSTALL
-# ============================================================
 def _ensure_libs():
     _needed = {
         'matplotlib':'matplotlib','mplfinance':'mplfinance','ta':'ta',
@@ -80,9 +70,6 @@ except:
 load_dotenv()
 TEHRAN_TZ = pytz.timezone('Asia/Tehran')
 
-# ============================================================
-# CONFIG
-# ============================================================
 @dataclass
 class Config:
     token: str = os.getenv("TELEGRAM_BOT_TOKEN", "")
@@ -107,17 +94,13 @@ class Config:
     movers_int: int = 43200
     summary_time: str = "23:00"
     hashtags: List[str] = field(default_factory=lambda: [
-        "#کریپتو","#ارز_دیجیتال","#اخبار","#بیتکوین",
-        "#تحلیل","#تکنیکال","#سیگنال","#VIP_پلاتینیوم"
+        "#کریپتو","#ارز_دیجیتال","#اخبار","#بیتکوین"
     ])
     enable_ai_chat: bool = True
     welcome_text: str = "به ربات VIP پلاتینیوم خوش آمدید"
 
 cfg = Config()
 
-# ============================================================
-# PROCESS LOCK
-# ============================================================
 class ProcessLock:
     _f = "/tmp/vip_platinum.lock"
     @classmethod
@@ -138,9 +121,6 @@ class ProcessLock:
 for sig in [signal.SIGINT, signal.SIGTERM]:
     signal.signal(sig, lambda s,f: (ProcessLock.release(), sys.exit(0)))
 
-# ============================================================
-# PERSIAN DATE
-# ============================================================
 class Persian:
     DAYS = ['دوشنبه','سه‌شنبه','چهارشنبه','پنج‌شنبه','جمعه','شنبه','یکشنبه']
     MONTHS = ['فروردین','اردیبهشت','خرداد','تیر','مرداد','شهریور','مهر','آبان','آذر','دی','بهمن','اسفند']
@@ -166,9 +146,6 @@ class Persian:
 
 p = Persian()
 
-# ============================================================
-# AI ENGINE
-# ============================================================
 class AI:
     GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
     GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent"
@@ -326,9 +303,6 @@ EMA20={ind.get('EMA20',0):.2f} | EMA50={ind.get('EMA50',0):.2f}
 
 ai = AI()
 
-# ============================================================
-# EXCHANGE
-# ============================================================
 class Exchange:
     def __init__(self):
         self._ex = None
@@ -404,9 +378,6 @@ class Exchange:
 
 ex = Exchange()
 
-# ============================================================
-# SMART MONEY
-# ============================================================
 class SMC:
     @staticmethod
     def analyze(df):
@@ -423,9 +394,6 @@ class SMC:
             return {"bos": "صعود" if up else "نزول" if dn else "هیچ", "choch": t, "trend": t, "power": "قوی" if (up or dn) else "ضعیف"}
         except: return {}
 
-# ============================================================
-# INDICATORS
-# ============================================================
 class Indicators:
     @staticmethod
     def calc(df):
@@ -504,9 +472,6 @@ class Indicators:
 
 ind_calc = Indicators()
 
-# ============================================================
-# SIGNAL GENERATOR
-# ============================================================
 class SignalGen:
     @staticmethod
     def generate(ind, price, smc_data=None, mtf=None):
@@ -549,9 +514,6 @@ class SignalGen:
 
 sig_gen = SignalGen()
 
-# ============================================================
-# NEWS FETCHER
-# ============================================================
 class NewsFetcher:
     _cache = {}
     _dur = 7200
@@ -595,9 +557,6 @@ class FearGreed:
                 return v, t
         except: return 50, "خنثی"
 
-# ============================================================
-# DEMO TRADE
-# ============================================================
 class DemoTrade:
     def __init__(self):
         self.balance = 10000
@@ -641,9 +600,6 @@ class DemoTrade:
 
 demo = DemoTrade()
 
-# ============================================================
-# SAFE SEND
-# ============================================================
 async def safe_send(bot, chat, text, markup=None):
     try:
         return await bot.send_message(chat_id=chat, text=text, parse_mode=ParseMode.MARKDOWN,
@@ -654,9 +610,6 @@ async def safe_send(bot, chat, text, markup=None):
             return await bot.send_message(chat_id=chat, text=clean[:4000], reply_markup=markup)
         except: return None
 
-# ============================================================
-# MENU
-# ============================================================
 class Menu:
     @staticmethod
     def main():
@@ -683,9 +636,6 @@ class Menu:
             [InlineKeyboardButton("بازگشت", callback_data="back")],
         ])
 
-# ============================================================
-# MEMBERSHIP CHECK
-# ============================================================
 async def is_member(bot, user_id: int) -> bool:
     try:
         member = await bot.get_chat_member(chat_id=cfg.required_channel, user_id=user_id)
@@ -693,9 +643,6 @@ async def is_member(bot, user_id: int) -> bool:
     except:
         return False
 
-# ============================================================
-# HANDLERS
-# ============================================================
 async def cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     
@@ -780,7 +727,6 @@ async def button_router(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         await q.answer("ابتدا باید در کانال کریپتو پالس عضو شوید!", show_alert=True)
         return
     
-    # PREDICTION
     if d == "prediction":
         await q.answer("دریافت پیش‌بینی...")
         await q.edit_message_text(
@@ -790,7 +736,6 @@ async def button_router(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         )
         ctx.user_data['awaiting_prediction'] = True
     
-    # NEWS
     elif d == "news":
         await q.answer("دریافت اخبار...")
         news = await NewsFetcher.fetch()
@@ -809,7 +754,6 @@ async def button_router(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         else:
             await q.edit_message_text("اخبار در دسترس نیست", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("بازگشت", callback_data="back")]]))
     
-    # CREATE IMAGE
     elif d == "create_image":
         await q.answer("ساخت تصویر...")
         await q.edit_message_text(
@@ -819,7 +763,6 @@ async def button_router(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         )
         ctx.user_data['awaiting_image'] = True
     
-    # AI CHAT
     elif d == "ai_chat":
         await q.answer("شروع چت با AI...")
         await q.edit_message_text(
@@ -829,7 +772,6 @@ async def button_router(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         )
         ctx.user_data['ai_chat'] = True
     
-    # SIGNAL
     elif d == "signal":
         await q.answer("دریافت سیگنال...")
         await q.edit_message_text(
@@ -839,7 +781,6 @@ async def button_router(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         )
         ctx.user_data['awaiting_signal'] = True
     
-    # SETTINGS
     elif d == "settings":
         if user.id != cfg.owner:
             await q.answer("فقط برای سازنده ربات قابل دسترس است!", show_alert=True)
@@ -863,7 +804,6 @@ async def button_router(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 برای تغییر تنظیمات از دکمه‌های زیر استفاده کنید:"""
         await q.edit_message_text(txt, parse_mode=ParseMode.MARKDOWN, reply_markup=Menu.owner_settings())
     
-    # MARKET
     elif d == "market":
         await q.answer("دریافت تحلیل بازار...")
         if not ex.ok: ex.connect()
@@ -892,7 +832,6 @@ async def button_router(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         await q.edit_message_text(txt[:4000], parse_mode=ParseMode.MARKDOWN,
                                  reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("بازگشت", callback_data="back")]]))
     
-    # DEMO TRADE
     elif d == "demo_trade":
         await q.answer("معامله دمو...")
         txt = demo.get_status()
@@ -902,7 +841,6 @@ async def button_router(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
                                  reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("بازگشت", callback_data="back")]]))
         ctx.user_data['demo_mode'] = True
     
-    # MOVERS
     elif d == "movers":
         await q.answer("دریافت بهترین‌ها...")
         if not ex.ok: ex.connect()
@@ -920,7 +858,6 @@ async def button_router(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         await q.edit_message_text(txt, parse_mode=ParseMode.MARKDOWN,
                                  reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("بازگشت", callback_data="back")]]))
     
-    # FEAR & GREED
     elif d == "fear_greed":
         await q.answer("دریافت شاخص ترس و طمع...")
         v, t = await FearGreed.fetch()
@@ -949,7 +886,6 @@ async def button_router(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         await q.edit_message_text(txt[:4000], parse_mode=ParseMode.MARKDOWN,
                                  reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("بازگشت", callback_data="back")]]))
     
-    # OWNER SETTINGS
     elif d == "change_banner":
         if user.id != cfg.owner:
             await q.answer("فقط برای سازنده!", show_alert=True)
@@ -999,7 +935,6 @@ async def button_router(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
                                  reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("بازگشت", callback_data="settings")]]))
         ctx.user_data['removing_symbol'] = True
     
-    # BACK
     elif d == "back":
         caption = f"""VIP PLATINUM v36.0
 
@@ -1024,9 +959,6 @@ async def button_router(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     else:
         await q.answer("")
 
-# ============================================================
-# MESSAGE HANDLER
-# ============================================================
 async def handle_msg(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     text = update.message.text
@@ -1035,14 +967,12 @@ async def handle_msg(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"لطفاً ابتدا در کانال کریپتو پالس عضو شوید:\n@{cfg.required_channel.replace('@','')}\n\nسپس /start را وارد کنید.")
         return
     
-    # AI CHAT
     if ctx.user_data.get('ai_chat', False):
         await update.message.reply_text("در حال پردازش...")
         response = await ai.chat(user.id, text)
         await update.message.reply_text(response, parse_mode=ParseMode.MARKDOWN)
         return
     
-    # PREDICTION
     if ctx.user_data.get('awaiting_prediction', False):
         symbol = text.upper().strip()
         if not symbol.endswith('/USDT'):
@@ -1072,7 +1002,6 @@ async def handle_msg(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         ctx.user_data['awaiting_prediction'] = False
         return
     
-    # SIGNAL
     if ctx.user_data.get('awaiting_signal', False):
         symbol = text.upper().strip()
         if not symbol.endswith('/USDT'):
@@ -1136,15 +1065,12 @@ BB={ind['BB']:.2f} | Vol={ind['VOL']:.1f}x
         ctx.user_data['awaiting_signal'] = False
         return
     
-    # CREATE IMAGE
     if ctx.user_data.get('awaiting_image', False):
         await update.message.reply_text("در حال ساخت تصویر...")
-        # Simple image generation - just return a text message
         await update.message.reply_text(f"تصویر ساخته شده برای:\n{text[:100]}\n\n(قابلیت ساخت تصویر در نسخه کامل فعال خواهد شد)")
         ctx.user_data['awaiting_image'] = False
         return
     
-    # DEMO TRADE
     if ctx.user_data.get('demo_mode', False):
         if text == "وضعیت":
             await update.message.reply_text(demo.get_status(), parse_mode=ParseMode.MARKDOWN)
@@ -1195,7 +1121,6 @@ BB={ind['BB']:.2f} | Vol={ind['VOL']:.1f}x
         await update.message.reply_text("دستور نامعتبر. گزینه‌ها:\nوضعیت\nخرید BTC 1\nفروش BTC 0.5")
         return
     
-    # OWNER SETTINGS
     if user.id == cfg.owner:
         if ctx.user_data.get('changing_banner', False):
             if update.message.photo:
@@ -1237,9 +1162,6 @@ BB={ind['BB']:.2f} | Vol={ind['VOL']:.1f}x
         reply_markup=Menu.main()
     )
 
-# ============================================================
-# AUTO SCHEDULED POSTS
-# ============================================================
 async def scheduled_signal():
     if not ex.ok: ex.connect()
     for sym in cfg.top_symbols[:3]:
@@ -1333,9 +1255,6 @@ async def scheduled_daily_summary():
     
     await safe_send(None, cfg.channel, txt[:4000])
 
-# ============================================================
-# MAIN
-# ============================================================
 async def main():
     if not ProcessLock.acquire(): sys.exit(1)
     if not cfg.token: ProcessLock.release(); return
@@ -1352,7 +1271,6 @@ async def main():
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_msg))
     app.add_handler(MessageHandler(filters.PHOTO, handle_msg))
     
-    # Scheduler
     async def scheduler():
         last_signal = last_movers = last_news = last_summary = 0
         while True:
@@ -1388,6 +1306,3 @@ async def main():
 if __name__ == "__main__":
     try: asyncio.run(main())
     except: ProcessLock.release()
-```
-
-کد کامل
