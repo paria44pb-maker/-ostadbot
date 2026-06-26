@@ -1,73 +1,61 @@
+```python
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+╔══════════════════════════════════════════════════════════════════════════════╗
+║  💎 VIP PLATINUM v35.0 — ULTIMATE EDITION — AI-POWERED TRADING BOT          ║
+║  ✅ REQUIRED CHANNEL: @CryptoPulse606                                       ║
+║  ✅ FULL PERSIAN AI — NATURAL LANGUAGE PROCESSING                          ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+"""
 
-VIP PLATINUM v34.2 - وی آی پی پلاتینیوم - ULTIMATE EDITION
-REQUIRED CHANNEL: @CryptoPulse606 (کریپتو پالس)
-START PAGE: PLATINUM VIP Style
-
-
-import os, sys, asyncio, time, json, random, signal, io, re, gc, hashlib, urllib.parse, traceback
+import os, sys, asyncio, time, json, random, signal, io, re, gc, hashlib, urllib.parse
 import logging
 from logging.handlers import RotatingFileHandler
-from typing import Dict, List, Optional, Tuple, Any, Union
+from typing import Dict, List, Optional, Tuple, Any
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
-from collections import deque, OrderedDict, defaultdict
-from enum import Enum
+from collections import deque, OrderedDict
 import numpy as np
 import pandas as pd
 import ccxt
 import httpx
 import aiohttp
 from dotenv import load_dotenv
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, InputFile
-from telegram.constants import ParseMode, ChatAction
-from telegram.ext import (
-    Application, CommandHandler, CallbackQueryHandler, MessageHandler, 
-    filters, ContextTypes, ConversationHandler
-)
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.constants import ParseMode
+from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, filters, ContextTypes
 from telegram.request import HTTPXRequest
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image
 import warnings
 warnings.filterwarnings('ignore')
 
 # ============================================================
-# SILENCE ALL EXTERNAL LOGGING
+# 🔇 ZERO NOISE — SILENCE ALL EXTERNAL LOGGING
 # ============================================================
 for _lib in ['httpx','httpcore','telegram','telegram.ext','telegram.request',
              'apscheduler','ccxt','urllib3','asyncio','matplotlib','PIL',
-             'aiohttp','chardet','openai','groq','mplfinance','ta','ccxt.base']:
+             'aiohttp','chardet','openai','groq','mplfinance','ta']:
     _l = logging.getLogger(_lib)
     _l.setLevel(logging.CRITICAL + 1)
     _l.propagate = False
     _l.handlers.clear()
 
 # ============================================================
-# APPLICATION LOGGER
+# 📝 APPLICATION LOGGER — CLEAN & SIMPLE
 # ============================================================
-logging.basicConfig(
-    level=logging.WARNING,
-    format='%(asctime)s | %(name)s | %(levelname)s | %(message)s',
-    datefmt='%Y-%m-%d %H:%M:%S'
-)
-logger = logging.getLogger('VIP_PLATINUM')
+logging.basicConfig(level=logging.WARNING)
+logger = logging.getLogger('VIP')
 logger.setLevel(logging.INFO)
-
-file_handler = RotatingFileHandler(
-    'vip_platinum.log',
-    maxBytes=10*1024*1024,
-    backupCount=5,
-    encoding='utf-8'
-)
-file_handler.setFormatter(logging.Formatter('%(asctime)s | %(levelname)s | %(message)s'))
-logger.addHandler(file_handler)
-
-console_handler = logging.StreamHandler()
-console_handler.setFormatter(logging.Formatter('%(asctime)s | %(message)s', datefmt='%H:%M:%S'))
-logger.addHandler(console_handler)
-
-logger.info("VIP PLATINUM v34.2 Ultimate Edition starting...")
+logger.propagate = False
+_console = logging.StreamHandler()
+_console.setFormatter(logging.Formatter('%(asctime)s | %(message)s', datefmt='%H:%M:%S'))
+_console.addFilter(lambda r: r.name == 'VIP')
+logger.addHandler(_console)
+logger.info("🚀 VIP Platinum v35.0 ULTIMATE starting...")
 
 # ============================================================
-# AUTO-INSTALL MISSING PACKAGES
+# 📦 AUTO-INSTALL MISSING PACKAGES
 # ============================================================
 def _ensure_libs():
     _needed = {
@@ -75,821 +63,1038 @@ def _ensure_libs():
         'ccxt':'ccxt','httpx':'httpx','dotenv':'python-dotenv',
         'telegram':'python-telegram-bot','pandas':'pandas','numpy':'numpy',
         'jdatetime':'jdatetime','pytz':'pytz','scipy':'scipy',
-        'Pillow':'Pillow','cachetools':'cachetools','tenacity':'tenacity',
-        'aiohttp':'aiohttp'
+        'feedparser':'feedparser','Pillow':'Pillow',
+        'cachetools':'cachetools','tenacity':'tenacity','aiohttp':'aiohttp'
     }
     for mod, pkg in _needed.items():
-        try: 
-            __import__(mod)
-            logger.info(f"Package loaded: {mod}")
-        except ImportError as e: 
-            logger.warning(f"Installing {pkg}...")
+        try: __import__(mod)
+        except: 
             import subprocess
-            try:
-                subprocess.check_call(
-                    [sys.executable,"-m","pip","install",pkg,"--quiet","--upgrade"],
-                    stdout=subprocess.DEVNULL, 
-                    stderr=subprocess.DEVNULL
-                )
-                logger.info(f"Installed: {pkg}")
-            except Exception as install_err:
-                logger.error(f"Failed to install {pkg}: {install_err}")
+            subprocess.check_call([sys.executable,"-m","pip","install",pkg,"--quiet"], 
+                                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
 _ensure_libs()
 
 import jdatetime, pytz
-from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
+import feedparser
+from tenacity import retry, stop_after_attempt, wait_exponential
 
 try:
-    import matplotlib
-    matplotlib.use('Agg')
+    import matplotlib; matplotlib.use('Agg')
     import matplotlib.pyplot as plt
-    import matplotlib.font_manager as fm
     import mplfinance as mpf
     CHART_OK = True
-    logger.info("Chart libraries loaded successfully")
-except Exception as e:
-    logger.error(f"Chart libraries error: {e}")
+except:
     CHART_OK = False
 
 load_dotenv()
 TEHRAN_TZ = pytz.timezone('Asia/Tehran')
 
 # ============================================================
-# CONFIGURATION
+# ⚙️ CONFIGURATION
 # ============================================================
 @dataclass
 class Config:
     token: str = os.getenv("TELEGRAM_BOT_TOKEN", "")
     channel: str = os.getenv("CHANNEL_ID", "@CryptoPulse606")
     required_channel: str = "@CryptoPulse606"
-    owner: int = int(os.getenv("OWNER_ID", "7225279768"))
+    owner: int = 7225279768
     groq_key: str = os.getenv("GROQ_API_KEY", "")
     gemini_key: str = os.getenv("GEMINI_API_KEY", "")
-    openai_key: str = os.getenv("OPENAI_API_KEY", "")
     coinex_key: str = os.getenv("COINEX_API_KEY", "")
     coinex_sec: str = os.getenv("COINEX_SECRET", "")
-    binance_key: str = os.getenv("BINANCE_API_KEY", "")
-    binance_sec: str = os.getenv("BINANCE_SECRET", "")
-    
     symbols: List[str] = field(default_factory=lambda: [
-        "BTC/USDT", "ETH/USDT", "SOL/USDT", "BNB/USDT", "XRP/USDT", "ADA/USDT",
-        "DOGE/USDT", "DOT/USDT", "AVAX/USDT", "LINK/USDT", "UNI/USDT", "ATOM/USDT",
-        "LTC/USDT", "TRX/USDT", "SUI/USDT", "APT/USDT", "ARB/USDT", "OP/USDT",
-        "PEPE/USDT", "WIF/USDT", "FIL/USDT", "VET/USDT", "ALGO/USDT", "ETC/USDT",
-        "MATIC/USDT", "NEAR/USDT", "TON/USDT", "SHIB/USDT", "ICP/USDT", "XLM/USDT",
-        "BCH/USDT", "XMR/USDT", "EOS/USDT", "XTZ/USDT", "AAVE/USDT"
+        "BTC/USDT","ETH/USDT","SOL/USDT","BNB/USDT","XRP/USDT","ADA/USDT",
+        "DOGE/USDT","DOT/USDT","AVAX/USDT","LINK/USDT","UNI/USDT","ATOM/USDT",
+        "LTC/USDT","TRX/USDT","SUI/USDT","APT/USDT","ARB/USDT","OP/USDT",
+        "PEPE/USDT","WIF/USDT","FIL/USDT","VET/USDT","ALGO/USDT","ETC/USDT"
     ])
-    
-    tfs: List[str] = field(default_factory=lambda: ["15m", "1h", "4h", "1d", "1w"])
-    
+    tfs: List[str] = field(default_factory=lambda: ["4h","1d","1w"])
     signal_int: int = 7200
-    market_scan_int: int = 1800
-    update_int: int = 300
-    
+    news_int: int = 14400
+    fg_int: int = 3600
+    summary_time: str = "23:00"
     hashtags: List[str] = field(default_factory=lambda: [
-        "#کریپتو", "#ارز_دیجیتال", "#بیتکوین", "#اتریوم", "#تحلیل_تکنیکال",
-        "#سیگنال_معاملاتی", "#VIP_پلاتینیوم", "#ترید", "#بازار_ارز",
-        "#سرمایه_گذاری", "#کریپتوکارنسی", "#بلاکچین", "#معامله_گر"
+        "#کریپتو","#ارز_دیجیتال","#اخبار","#بیتکوین",
+        "#تحلیل","#تکنیکال","#سیگنال","#VIP_پلاتینیوم"
     ])
-    
-    ai_providers: List[str] = field(default_factory=lambda: ["groq", "gemini", "openai"])
-    default_ai: str = "groq"
-    
-    max_history: int = 100
-    cache_ttl: int = 300
-    
-    class TradingStyle(Enum):
-        SCALPING = "اسکالپینگ"
-        DAY_TRADING = "معامله روزانه"
-        SWING = "سوئینگ"
-        POSITION = "پوزیشن"
-    
-    risk_levels: Dict[str, float] = field(default_factory=lambda: {
-        "کم": 0.01,
-        "متوسط": 0.02,
-        "زیاد": 0.05
-    })
+    # NEW FEATURES
+    enable_ai_chat: bool = True
+    enable_sentiment: bool = True
+    enable_alert: bool = True
+    enable_prediction: bool = True
 
 cfg = Config()
 
 # ============================================================
-# PROCESS LOCK
+# 🔒 PROCESS LOCK
 # ============================================================
 class ProcessLock:
-    _lock_file = "/tmp/vip_platinum.lock"
-    _pid = None
-    
+    _f = "/tmp/vip_platinum.lock"
     @classmethod
     def acquire(cls):
         try:
-            if os.path.exists(cls._lock_file):
+            if os.path.exists(cls._f):
                 try:
-                    with open(cls._lock_file, 'r') as f:
-                        old_pid = int(f.read().strip() or 0)
-                    if old_pid > 0:
-                        try:
-                            os.kill(old_pid, signal.SIGTERM)
-                            time.sleep(2)
-                        except ProcessLookupError:
-                            pass
-                except (ValueError, OSError):
-                    pass
-                os.remove(cls._lock_file)
-            
-            cls._pid = os.getpid()
-            with open(cls._lock_file, 'w') as f:
-                f.write(str(cls._pid))
-            
-            logger.info(f"Process lock acquired (PID: {cls._pid})")
-            return True
-        except Exception as e:
-            logger.error(f"Failed to acquire lock: {e}")
-            return False
-    
+                    with open(cls._f) as f: os.kill(int(f.read().strip() or 0), signal.SIGTERM)
+                    time.sleep(1)
+                except: os.remove(cls._f)
+            with open(cls._f,'w') as f: f.write(str(os.getpid())); return True
+        except: return True
     @classmethod
     def release(cls):
-        try:
-            if os.path.exists(cls._lock_file):
-                with open(cls._lock_file, 'r') as f:
-                    stored_pid = int(f.read().strip() or 0)
-                if stored_pid == cls._pid:
-                    os.remove(cls._lock_file)
-                    logger.info("Process lock released")
-        except Exception as e:
-            logger.error(f"Failed to release lock: {e}")
+        try: os.remove(cls._f) if os.path.exists(cls._f) else None
+        except: pass
 
-def signal_handler(signum, frame):
-    logger.info(f"Received signal {signum}, shutting down gracefully...")
-    ProcessLock.release()
-    sys.exit(0)
-
-for sig in [signal.SIGINT, signal.SIGTERM, signal.SIGHUP]:
-    signal.signal(sig, signal_handler)
+for sig in [signal.SIGINT, signal.SIGTERM]:
+    signal.signal(sig, lambda s,f: (ProcessLock.release(), sys.exit(0)))
 
 # ============================================================
-# PERSIAN DATE & GREETING
+# 📅 PERSIAN DATE & GREETING
 # ============================================================
-class PersianCalendar:
-    DAYS = ['دوشنبه', 'سه‌شنبه', 'چهارشنبه', 'پنج‌شنبه', 'جمعه', 'شنبه', 'یکشنبه']
-    MONTHS = ['فروردین', 'اردیبهشت', 'خرداد', 'تیر', 'مرداد', 'شهریور', 
-              'مهر', 'آبان', 'آذر', 'دی', 'بهمن', 'اسفند']
-    
+class Persian:
+    DAYS = ['دوشنبه🗓️','سه‌شنبه🗓️','چهارشنبه🗓️','پنج‌شنبه🎉','جمعه🕌','شنبه📅','یکشنبه📅']
+    MONTHS = ['فروردین🌸','اردیبهشت🌹','خرداد☀️','تیر🔥','مرداد🌞','شهریور🍂','مهر🍁','آبان🌧️','آذر❄️','دی⛄','بهمن🌨️','اسفند🌱']
     @classmethod
-    def now(cls):
-        return datetime.now(TEHRAN_TZ)
-    
+    def now(cls): return datetime.now(TEHRAN_TZ)
     @classmethod
-    def shamsi_date(cls):
+    def shamsi(cls):
         j = jdatetime.datetime.fromgregorian(datetime=cls.now())
-        return {
-            'year': j.year,
-            'month': j.month,
-            'month_name': cls.MONTHS[j.month - 1],
-            'day': j.day,
-            'weekday': cls.DAYS[j.weekday()],
-            'full': f"{j.day} {cls.MONTHS[j.month-1]} {j.year}",
-            'full_with_weekday': f"{cls.DAYS[j.weekday()]} {j.day} {cls.MONTHS[j.month-1]} {j.year}"
-        }
-    
+        return f"{j.day} {cls.MONTHS[j.month-1]} {j.year}"
     @classmethod
-    def time(cls):
-        now = cls.now()
-        return {
-            'hour': now.hour,
-            'minute': now.minute,
-            'second': now.second,
-            'full': now.strftime('%H:%M:%S'),
-            'simple': now.strftime('%H:%M')
-        }
-    
+    def time(cls): return cls.now().strftime('%H:%M:%S')
     @classmethod
-    def full_datetime(cls):
-        date = cls.shamsi_date()
-        time = cls.time()
-        return f"{date['weekday']} {date['full']} ساعت {time['full']}"
-    
+    def full(cls): return f"{cls.DAYS[cls.now().weekday()]} {cls.shamsi()} ساعت {cls.time()} ✨"
     @classmethod
-    def greeting(cls):
+    def greet(cls):
         h = cls.now().hour
-        emojis = ['😊', '🤗', '😎', '🥰', '💖', '✨', '💎', '🌟', '🚀', '🎯']
-        e = random.choice(emojis)
-        
-        if 4 <= h < 9:
-            return f"صبح بخیر پلاتینیومی {e} روز پر از سود داشته باشی!"
-        elif 9 <= h < 12:
-            return f"روز بخیر تریدر حرفه‌ای {e} بازار رو در دست بگیر!"
-        elif 12 <= h < 14:
-            return f"ظهر بخیر دوست من {e} انرژی بگیر برای معاملات بعدی!"
-        elif 14 <= h < 17:
-            return f"عصر بخیر {e} زمان تحلیل و برنامه‌ریزی!"
-        elif 17 <= h < 20:
-            return f"عصر بخیر VIP {e} آماده شو برای معاملات شب!"
-        elif 20 <= h < 24:
-            return f"شب بخیر {e} معاملات موفق داشته باشی!"
-        else:
-            return f"وقت بخیر {e} همیشه سبز باشی!"
+        e = random.choice(['😊','🤗','😎','🥰','💖','✨','💎'])
+        if 5 <= h < 9: return f"صبح بخیر پلاتینیومی {e} 🌄"
+        elif 12 <= h < 14: return f"ظهر بخیر دوست من {e} ☀️"
+        elif 16 <= h < 18: return f"عصر بخیر تریدر حرفه‌ای {e} 🌇"
+        elif 20 <= h <= 23 or 1 <= h < 3: return f"شب خوش VIP {e} 🌙"
+        return f"وقت بخیر {e} ⏰"
 
-p = PersianCalendar()
+p = Persian()
 
 # ============================================================
-# AI ENGINE
+# 🧠 AI ENGINE — GROQ + GEMINI — FULL PERSIAN
 # ============================================================
-class AdvancedAI:
-    PROVIDERS = {
-        'groq': {
-            'url': "https://api.groq.com/openai/v1/chat/completions",
-            'models': ["llama-3.3-70b-versatile", "mixtral-8x7b-32768", "gemma2-9b-it"]
-        },
-        'gemini': {
-            'url': "https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent"
-        },
-        'openai': {
-            'url': "https://api.openai.com/v1/chat/completions",
-            'models': ["gpt-4", "gpt-3.5-turbo"]
-        }
-    }
+class AI:
+    GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
+    GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent"
     
-    SYSTEM_PROMPT = """تو VIP پلاتینیوم هستی 💎✨ حرفه‌ای‌ترین تحلیلگر کریپتو و بازارهای مالی!
+    SYS = """تو VIP پلاتینیوم هستی 💎✨ حرفه‌ای‌ترین تحلیلگر کریپتو و دستیار هوشمند!
 
-🔸 **سبک مکالمه:** فارسی خودمونی، صمیمی و پر از انرژی مثبت
-🔸 **استفاده از شکلک:** 🎯✨💎🚀📈🔥💪🎨🌟💖😊🤗😎🥰
-🔸 **دقت تحلیلی:** فوق‌العاده دقیق، با عدد و رقم مشخص
-🔸 **پیش‌بینی:** کامل و جامع، هیچ نکته‌ای رو رها نکن
-🔸 **تم:** پلاتینیوم 💎 و طلایی 🟡
-🔸 **انرژی:** مثبت و انگیزشی، باعث اعتماد کاربران بشو
+🚀 **ویژگی‌های تو:**
+✅ فقط به فارسی طبیعی و روان صحبت کن
+✅ از شکلک‌های مناسب و زیبا استفاده کن
+✅ پاسخ‌هات کامل، دقیق و کاربردی باشه
+✅ با انرژی مثبت و انگیزشی جواب بده
+✅ همیشه مخاطب رو راهنمایی کن و پیشنهاد بده
 
-**ویژگی‌های خاص:**
-1. همیشه تحلیل رو با اعداد دقیق و درصدها بیان کن
-2. برای هر پیش‌بینی حداقل ۳ سناریو در نظر بگیر
-3. مدیریت ریسک رو حتماً ذکر کن
-4. از اصطلاحات حرفه‌ای ولی قابل فهم استفاده کن
-5. نتیجه‌گیری واضح و عملی ارائه بده
+📊 **تحلیل بازار:**
+- اعداد و ارقام دقیق بگو
+- روندها رو شفاف توضیح بده
+- نقاط ورود و خروج رو مشخص کن
+- ریسک‌ها رو هم یادآوری کن
 
-**قالب پاسخ‌دهی:**
-💎 **عنوان اصلی**
-📊 **داده‌های کلیدی**
-🎯 **تحلیل تکنیکال**
-🚀 **پیش‌بینی قیمت**
-🛡️ **مدیریت ریسک**
-✨ **نتیجه‌گیری نهایی**
+💎 **شخصیت تو:**
+- حرفه‌ای اما صمیمی
+- دقیق اما ساده‌گو
+- جدی اما با طنز مناسب
+- پلاتینیوم و خاص
 
-همیشه کامل و جامع پاسخ بده! 💪"""
+🔮 **پیش‌بینی‌ها:**
+- با احتیاط و بر اساس داده‌ها
+- چند سناریو رو بررسی کن
+- احتمالات رو مشخص کن
+
+همیشه مفید باش و به کاربر کمک کن تا بهترین تصمیم رو بگیره! 💪"""
     
     def __init__(self):
-        self.providers = {}
-        self.setup_providers()
-        self._client = httpx.AsyncClient(timeout=120.0)
-        self._rate_limit = 1.2
-        self._last_request = 0
+        self.groq_ok = bool(cfg.groq_key)
+        self.gemini_ok = bool(cfg.gemini_key)
+        self._client = httpx.AsyncClient(timeout=90.0)
+        self._last = 0
+        self._gap = 1.5
+        self._conversations = {}
+    
+    async def _wait(self):
+        elapsed = time.time() - self._last
+        if elapsed < self._gap:
+            await asyncio.sleep(self._gap - elapsed)
+        self._last = time.time()
+    
+    async def ask(self, prompt: str, max_t: int = 700, context: str = "") -> Optional[str]:
+        await self._wait()
+        
+        full_prompt = f"{context}\n\n{prompt}" if context else prompt
+        
+        if self.groq_ok:
+            try:
+                r = await self._client.post(
+                    self.GROQ_URL,
+                    headers={"Authorization": f"Bearer {cfg.groq_key}", "Content-Type": "application/json"},
+                    json={"model": "llama-3.3-70b-versatile", "messages": [
+                        {"role": "system", "content": self.SYS},
+                        {"role": "user", "content": full_prompt}
+                    ], "max_tokens": max_t, "temperature": 0.85},
+                    timeout=60.0
+                )
+                if r.status_code == 200:
+                    return r.json()["choices"][0]["message"]["content"]
+            except: pass
+        
+        if self.gemini_ok:
+            try:
+                r = await self._client.post(
+                    f"{self.GEMINI_URL}?key={cfg.gemini_key}",
+                    json={"contents": [{"parts": [{"text": self.SYS + "\n\n" + full_prompt}]}]},
+                    timeout=60.0
+                )
+                if r.status_code == 200:
+                    return r.json()["candidates"][0]["content"]["parts"][0]["text"]
+            except: pass
+        
+        return None
+    
+    async def chat(self, user_id: int, message: str) -> str:
+        """چت هوشمند با حفظ مکالمه"""
+        if user_id not in self._conversations:
+            self._conversations[user_id] = []
+        
+        self._conversations[user_id].append(f"کاربر: {message}")
+        if len(self._conversations[user_id]) > 10:
+            self._conversations[user_id] = self._conversations[user_id][-10:]
+        
+        context = "\n".join(self._conversations[user_id][-5:])
+        response = await self.ask(message, 700, context)
+        
+        if response:
+            self._conversations[user_id].append(f"دستیار: {response[:200]}")
+        
+        return response or "💎 در حال پردازش... لطفاً دوباره بپرسید."
+    
+    async def signal_analysis(self, sym, ind, price, chg, candles, mtf, smc):
+        return await self.ask(f"""💎 تحلیل کامل {sym} — قیمت: {price:,.4f}$ | تغییر: {chg:+.2f}%
+📊 RSI={ind.get('RSI',50):.0f} | MACD={'صعودی🟢' if ind.get('MACD',0)>0 else 'نزولی🔴'}
+ADX={ind.get('ADX',20):.0f} | CCI={ind.get('CCI',0):.0f} | MFI={ind.get('MFI',50):.0f}
+BB%={ind.get('BB',0.5):.2f} | Vol={ind.get('VOL',1):.1f}x
+🛡️ حمایت={ind.get('SUP',0):.2f} | مقاومت={ind.get('RES',0):.2f}
+🕯️ الگوها: {', '.join(candles) if candles else 'بدون الگو'}
+🌍 چندتایم‌فریم: {mtf}
+🧲 اسمارت مانی: {smc}
+
+🎯 تحلیل کامل و دقیق بده (۶۰۰ کلمه):
+1️⃣ وضعیت فعلی و روند اصلی
+2️⃣ بهترین نقطه ورود
+3️⃣ حد ضرر دقیق
+4️⃣ اهداف قیمتی (هدف ۱ و ۲)
+5️⃣ پیش‌بینی عددی قیمت برای: فردا، هفته بعد، ماه بعد
+6️⃣ نتیجه‌گیری نهایی: بخر/نخر/صبر کن
+
+کامل بنویس و ناقص رها نکن! 💎""", 700)
+    
+    async def predict(self, sym, price, ind):
+        return await self.ask(f"""🔮 پیش‌بینی عددی {sym} | قیمت فعلی: {price:,.2f}$
+RSI={ind.get('RSI',50):.0f} | ADX={ind.get('ADX',20):.0f}
+🎯 پیش‌بینی دقیق عددی برای:
+📅 فردا: قیمت = ؟ دلار
+📅 یک هفته بعد: قیمت = ؟ دلار
+📅 یک ماه بعد: قیمت = ؟ دلار
+📊 درصد تغییر هرکدام رو هم بگو
+کامل بنویس! 💎""", 500)
+    
+    async def news_summary(self, headlines): 
+        return await self.ask(f"📰 اخبار:\n{chr(10).join(headlines[:12])}\nخلاصه فارسی ۴۰۰ کلمه 💎", 500)
+    
+    async def market(self, coins): 
+        return await self.ask(f"🌍 بازار:\n"+"\n".join([f"{c['s']}:{c['c']:+.1f}%" for c in coins[:10]])+"\nتحلیل فارسی ۴۰۰ کلمه 💎", 500)
+    
+    async def market_overview(self, data):
+        return await self.ask(f"""📊 مرور جامع بازار:
+{json.dumps(data, ensure_ascii=False)[:500]}
+تحلیل کامل از وضعیت بازار، روندها، و پیشنهادات معاملاتی 💎 ۵۰۰ کلمه""", 500)
+    
+    async def fg(self, v, t): 
+        return await self.ask(f"😱 ترس و طمع: {v} ({t}) — تحلیل فارسی ۳۰۰ کلمه 💎", 400)
+    
+    async def sentiment(self, news_headlines):
+        return await self.ask(f"""📊 تحلیل احساسات بازار بر اساس اخبار:
+{chr(10).join(news_headlines[:8])}
+تحلیل کن که بازار الان چه حسی داره؟ ترس، طمع، خنثی؟
+پیش‌بینی کن که این احساسات به کجا می‌رسه؟ 💎""", 400)
+    
+    async def daily(self, data):
+        return await self.ask(f"📊 خلاصه بازار:\n{json.dumps(data, ensure_ascii=False)}\nتحلیل فارسی ۵۰۰ کلمه 💎", 600)
+    
+    async def custom(self, q):
+        return await self.ask(f"🙋 سوال: {q}\nپاسخ کامل فارسی ۸۰۰ کلمه 💎", 800)
+    
+    async def chart_img(self, sym, desc):
+        return await self.ask(f"""📊 تحلیل نمودار {sym}
+{desc}
+تحلیل کامل با تشخیص روند، الگوها، حمایت/مقاومت، پیشنهاد معاملاتی 💎 ۵۰۰ کلمه""", 600)
+    
+    async def strategy(self, symbol, risk_level):
+        return await self.ask(f"""💎 استراتژی معاملاتی برای {symbol}
+سطح ریسک: {risk_level}
+یه استراتژی کامل با:
+- قوانین ورود
+- مدیریت سرمایه
+- حد ضرر هوشمند
+- مدیریت سود
+- نکات کلیدی
+کامل و کاربردی باشه 💎""", 500)
+    
+    async def portfolio_advice(self, coins_data):
+        return await self.ask(f"""💼 مشاوره پرتفوی:
+{json.dumps(coins_data, ensure_ascii=False)[:300]}
+بر اساس داده‌های فعلی، پیشنهاد بده:
+- کدوم سکه‌ها رو نگه دارم؟
+- کدوم رو بخرم؟
+- کدوم رو بفروشم؟
+- نسبت‌های پیشنهادی چقدره؟
+کامل و دقیق جواب بده 💎""", 600)
+
+ai = AI()
+
+# ============================================================
+# 💱 EXCHANGE — COINEX
+# ============================================================
+class Exchange:
+    def __init__(self):
+        self._ex = None
+        self.ok = False
         self._cache = {}
-        self._cache_ttl = 300
-        
-        logger.info(f"AI Engine initialized with providers: {list(self.providers.keys())}")
+        self._cache_time = {}
     
-    def setup_providers(self):
-        if cfg.groq_key:
-            self.providers['groq'] = {'key': cfg.groq_key, 'model': 'llama-3.3-70b-versatile'}
-        if cfg.gemini_key:
-            self.providers['gemini'] = {'key': cfg.gemini_key}
-        if cfg.openai_key:
-            self.providers['openai'] = {'key': cfg.openai_key, 'model': 'gpt-3.5-turbo'}
-    
-    async def _rate_limit_wait(self):
-        elapsed = time.time() - self._last_request
-        if elapsed < self._rate_limit:
-            await asyncio.sleep(self._rate_limit - elapsed)
-        self._last_request = time.time()
-    
-    def _get_cache_key(self, prompt: str, provider: str) -> str:
-        return hashlib.md5(f"{prompt}_{provider}".encode()).hexdigest()
-    
-    @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10))
-    async def _call_provider(self, provider: str, messages: List[Dict], max_tokens: int = 1000) -> Optional[str]:
-        await self._rate_limit_wait()
-        
-        if provider == 'groq':
-            try:
-                response = await self._client.post(
-                    self.PROVIDERS['groq']['url'],
-                    headers={
-                        "Authorization": f"Bearer {self.providers['groq']['key']}",
-                        "Content-Type": "application/json"
-                    },
-                    json={
-                        "model": self.providers['groq']['model'],
-                        "messages": messages,
-                        "max_tokens": max_tokens,
-                        "temperature": 0.8,
-                        "top_p": 0.95
-                    }
-                )
-                if response.status_code == 200:
-                    return response.json()["choices"][0]["message"]["content"]
-            except Exception as e:
-                logger.error(f"Groq API error: {e}")
-        
-        elif provider == 'gemini':
-            try:
-                response = await self._client.post(
-                    f"{self.PROVIDERS['gemini']['url']}?key={self.providers['gemini']['key']}",
-                    json={
-                        "contents": [{
-                            "parts": [{"text": messages[1]['content'] if len(messages) > 1 else messages[0]['content']}]
-                        }],
-                        "generationConfig": {
-                            "maxOutputTokens": max_tokens,
-                            "temperature": 0.8
-                        }
-                    }
-                )
-                if response.status_code == 200:
-                    return response.json()["candidates"][0]["content"]["parts"][0]["text"]
-            except Exception as e:
-                logger.error(f"Gemini API error: {e}")
-        
-        elif provider == 'openai':
-            try:
-                response = await self._client.post(
-                    self.PROVIDERS['openai']['url'],
-                    headers={
-                        "Authorization": f"Bearer {self.providers['openai']['key']}",
-                        "Content-Type": "application/json"
-                    },
-                    json={
-                        "model": self.providers['openai']['model'],
-                        "messages": messages,
-                        "max_tokens": max_tokens,
-                        "temperature": 0.8
-                    }
-                )
-                if response.status_code == 200:
-                    return response.json()["choices"][0]["message"]["content"]
-            except Exception as e:
-                logger.error(f"OpenAI API error: {e}")
-        
-        return None
-    
-    async def ask(self, prompt: str, max_tokens: int = 1000, use_cache: bool = True) -> str:
-        cache_key = self._get_cache_key(prompt, 'any')
-        if use_cache and cache_key in self._cache:
-            cache_data = self._cache[cache_key]
-            if time.time() - cache_data['timestamp'] < self._cache_ttl:
-                logger.info("Using cached AI response")
-                return cache_data['response']
-        
-        messages = [
-            {"role": "system", "content": self.SYSTEM_PROMPT},
-            {"role": "user", "content": prompt}
-        ]
-        
-        for provider in ['groq', 'gemini', 'openai']:
-            if provider in self.providers:
-                logger.info(f"Asking {provider}...")
-                response = await self._call_provider(provider, messages, max_tokens)
-                if response:
-                    self._cache[cache_key] = {
-                        'response': response,
-                        'timestamp': time.time(),
-                        'provider': provider
-                    }
-                    return response
-        
-        return "⚠️ در حال حاضر سرویس هوش مصنوعی در دسترس نیست. لطفاً کمی بعد تلاش کنید. 💎"
-    
-    async def signal_analysis(self, symbol: str, indicators: Dict, price: float, change: float, 
-                             candles: List[str], multi_timeframe: Dict) -> str:
-        prompt = f"""
-        تحلیل کامل {symbol}
-        
-        داده‌های فعلی:
-        - قیمت: ${price:,.4f}
-        - تغییر: {change:+.2f}%
-        
-        اندیکاتورها:
-        - RSI: {indicators.get('RSI', 50):.1f}
-        - MACD: {'صعودی 🟢' if indicators.get('MACD', 0) > 0 else 'نزولی 🔴'}
-        - ADX: {indicators.get('ADX', 20):.1f}
-        - CCI: {indicators.get('CCI', 0):.1f}
-        - MFI: {indicators.get('MFI', 50):.1f}
-        - Bollinger Bands: {indicators.get('BB', 0.5):.2f}
-        - حجم: {indicators.get('VOL', 1):.1f}x
-        
-        سطوح کلیدی:
-        - مقاومت: ${indicators.get('RES', 0):.2f}
-        - حمایت: ${indicators.get('SUP', 0):.2f}
-        
-        الگوهای شمعی: {', '.join(candles) if candles else 'بدون الگوی خاص'}
-        
-        تحلیل چند تایم‌فریم: {json.dumps(multi_timeframe, ensure_ascii=False)}
-        
-        لطفاً تحلیل کامل ارائه دهید شامل:
-        1️⃣ وضعیت فعلی بازار و روند اصلی
-        2️⃣ قدرت روند و مومنتوم
-        3️⃣ بهترین نقاط ورود و خروج
-        4️⃣ حد ضرر دقیق و منطقی
-        5️⃣ اهداف قیمتی کوتاه‌مدت و بلندمدت
-        6️⃣ مدیریت ریسک و سرمایه
-        7️⃣ پیش‌بینی قیمت برای 24 ساعت، 7 روز و 30 روز آینده
-        8️⃣ نتیجه‌گیری نهایی و توصیه معاملاتی
-        
-        تحلیل باید کاملاً عملی و قابل اجرا باشد. از اعداد دقیق استفاده کن.
-        """
-        
-        return await self.ask(prompt, 1200)
-    
-    async def price_prediction(self, symbol: str, current_price: float, indicators: Dict) -> str:
-        prompt = f"""
-        پیش‌بینی قیمت {symbol}
-        
-        قیمت فعلی: ${current_price:,.2f}
-        
-        وضعیت تکنیکال:
-        - RSI: {indicators.get('RSI', 50):.0f} ({'اشباع خرید' if indicators.get('RSI', 50) > 70 else 'اشباع فروش' if indicators.get('RSI', 50) < 30 else 'خنثی'})
-        - روند: {'صعودی 🟢' if indicators.get('EMA7', 0) > indicators.get('EMA20', 0) else 'نزولی 🔴'}
-        - قدرت روند (ADX): {indicators.get('ADX', 20):.0f}
-        
-        لطفاً پیش‌بینی دقیق عددی ارائه دهید برای:
-        
-        1️⃣ 24 ساعت آینده:
-           - قیمت هدف: ? دلار
-           - تغییر احتمالی: ?%
-           - سناریوهای محتمل
-        
-        2️⃣ 7 روز آینده:
-           - قیمت هدف: ? دلار
-           - تغییر احتمالی: ?%
-           - فاکتورهای تاثیرگذار
-        
-        3️⃣ 30 روز آینده:
-           - قیمت هدف: ? دلار
-           - تغییر احتمالی: ?%
-           - تحلیل فاندامنتال
-        
-        عوامل کلیدی تاثیرگذار:
-        - شرایط کلی بازار
-        - حجم معاملات
-        - احساسات بازار
-        
-        پیش‌بینی باید مبتنی بر داده‌های واقعی و منطقی باشد.
-        """
-        
-        return await self.ask(prompt, 800)
-    
-    async def market_analysis(self, market_data: List[Dict]) -> str:
-        prompt = f"""
-        تحلیل کلی بازار کریپتو
-        
-        وضعیت بازار:
-        {chr(10).join([f"- {item['symbol']}: ${item['price']:,.2f} ({item['change']:+.2f}%)" for item in market_data[:10]])}
-        
-        لطفاً تحلیل جامع ارائه دهید شامل:
-        
-        1️⃣ وضعیت کلی بازار:
-           - روند غالب
-           - قدرت بازار
-           - حجم کلی
-        
-        2️⃣ ارزهای برتر:
-           - بهترین عملکردها
-           - ضعیف‌ترین عملکردها
-           - فرصت‌های معاملاتی
-        
-        3️⃣ تحلیل سکتورها:
-           - لایه ۱ (Bitcoin, Ethereum)
-           - لایه ۲ (SOL, ADA, DOT)
-           - دیفای (UNI, AAVE)
-           - میم کوین‌ها
-        
-        4️⃣ پیش‌بینی کوتاه‌مدت:
-           - حرکت‌های احتمالی
-           - سطوح کلیدی
-           - ریسک‌های موجود
-        
-        5️⃣ توصیه‌های استراتژیک:
-           - تخصیص سرمایه
-           - مدیریت ریسک
-           - زمان‌بندی معاملات
-        
-        تحلیل باید عملی و قابل اجرا باشد.
-        """
-        
-        return await self.ask(prompt, 1000)
-    
-    async def technical_question(self, question: str, context: str = "") -> str:
-        prompt = f"""
-        سوال تکنیکال کاربر:
-        {question}
-        
-        {'کانتکست اضافی:' + context if context else ''}
-        
-        لطفاً پاسخ کامل و حرفه‌ای ارائه دهید:
-        
-        1️⃣ تحلیل موضوع:
-           - توضیح کامل مفهوم
-           - مثال‌های عملی
-           - کاربرد در معاملات
-        
-        2️⃣ توصیه‌های عملی:
-           - چگونه استفاده کنیم
-           - ریسک‌های مربوطه
-           - بهترین روش اجرا
-        
-        3️⃣ مثال‌های واقعی:
-           - از بازار فعلی
-           - با اعداد واقعی
-        
-        4️⃣ نتیجه‌گیری:
-           - خلاصه نکات کلیدی
-           - توصیه نهایی
-        
-        پاسخ باید کاملاً کاربردی و قابل اجرا باشد.
-        """
-        
-        return await self.ask(prompt, 1200)
-    
-    async def general_conversation(self, message: str) -> str:
-        prompt = f"""
-        پیام کاربر:
-        {message}
-        
-        به عنوان دستیار VIP پلاتینیوم پاسخ بده:
-        
-        - پاسخ باید فارسی خودمونی و دوستانه باشه
-        - از شکلک‌های مناسب استفاده کن 🎯✨💎
-        - اگر سوال تخصصی هست، تحلیل دقیق ارائه بده
-        - اگر سوال عمومی هست، پاسخ مفید و کامل بده
-        - همیشه مثبت و انگیزشی باش
-        - در پایان مربوط به کریپتو و معامله‌گری باش
-        
-        پاسخ باید بین ۲۰۰ تا ۵۰۰ کلمه باشه.
-        """
-        
-        return await self.ask(prompt, 600)
-
-ai_engine = AdvancedAI()
-
-# ============================================================
-# EXCHANGE MANAGER
-# ============================================================
-class ExchangeManager:
-    def __init__(self):
-        self.exchanges = {}
-        self.active_exchange = None
-        self.setup_exchanges()
-    
-    def setup_exchanges(self):
-        # CoinEx
-        if cfg.coinex_key and cfg.coinex_sec:
-            try:
-                self.exchanges['coinex'] = ccxt.coinex({
-                    'apiKey': cfg.coinex_key,
-                    'secret': cfg.coinex_sec,
-                    'enableRateLimit': True,
-                    'timeout': 30000
-                })
-                logger.info("CoinEx exchange configured")
-            except Exception as e:
-                logger.error(f"CoinEx setup error: {e}")
-        
-        # Binance
-        if cfg.binance_key and cfg.binance_sec:
-            try:
-                self.exchanges['binance'] = ccxt.binance({
-                    'apiKey': cfg.binance_key,
-                    'secret': cfg.binance_sec,
-                    'enableRateLimit': True,
-                    'timeout': 30000
-                })
-                logger.info("Binance exchange configured")
-            except Exception as e:
-                logger.error(f"Binance setup error: {e}")
-        
-        # Default public exchange (Binance)
+    def connect(self):
         try:
-            self.exchanges['public'] = ccxt.binance({
-                'enableRateLimit': True,
-                'timeout': 30000
-            })
-            logger.info("Public exchange (Binance) configured")
+            if cfg.coinex_key and cfg.coinex_sec:
+                self._ex = ccxt.coinex({'apiKey': cfg.coinex_key, 'secret': cfg.coinex_sec, 
+                                        'enableRateLimit': True, 'timeout': 20000})
+            else:
+                self._ex = ccxt.coinex({'enableRateLimit': True, 'timeout': 20000})
+            self._ex.load_markets()
+            self.ok = True
+            logger.info(f"✅ CoinEx connected — {len(self._ex.markets)} markets")
         except Exception as e:
-            logger.error(f"Public exchange setup error: {e}")
-        
-        self.active_exchange = next(iter(self.exchanges.values())) if self.exchanges else None
+            logger.error(f"❌ CoinEx: {e}")
+            self.ok = False
     
-    def get_exchange(self, name: str = None):
-        if name and name in self.exchanges:
-            return self.exchanges[name]
-        return self.active_exchange
-    
-    @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10))
-    async def fetch_ticker(self, symbol: str, exchange: str = None) -> Optional[Dict]:
-        ex = self.get_exchange(exchange)
-        if not ex:
-            return None
-        
+    def ticker(self, s):
         try:
-            ticker = ex.fetch_ticker(symbol)
-            return {
-                'symbol': symbol,
-                'last': ticker.get('last', 0),
-                'high': ticker.get('high', 0),
-                'low': ticker.get('low', 0),
-                'open': ticker.get('open', 0),
-                'close': ticker.get('close', 0),
-                'volume': ticker.get('quoteVolume', 0),
-                'change': ticker.get('percentage', 0),
-                'bid': ticker.get('bid', 0),
-                'ask': ticker.get('ask', 0),
-                'timestamp': ticker.get('timestamp', int(time.time() * 1000))
-            }
-        except Exception as e:
-            logger.error(f"Error fetching ticker for {symbol}: {e}")
-            return None
+            if not self.ok: return None
+            cache_key = f"ticker_{s}"
+            if cache_key in self._cache and time.time() - self._cache_time.get(cache_key, 0) < 30:
+                return self._cache[cache_key]
+            data = self._ex.fetch_ticker(s)
+            self._cache[cache_key] = data
+            self._cache_time[cache_key] = time.time()
+            return data
+        except: return None
     
-    @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10))
-    async def fetch_ohlcv(self, symbol: str, timeframe: str = '1h', limit: int = 100, exchange: str = None) -> Optional[pd.DataFrame]:
-        ex = self.get_exchange(exchange)
-        if not ex:
-            return None
-        
+    def ohlcv(self, s, tf, limit=150):
         try:
-            ohlcv = ex.fetch_ohlcv(symbol, timeframe, limit=limit)
-            if ohlcv and len(ohlcv) > 0:
-                df = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
-                df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
-                df.set_index('timestamp', inplace=True)
+            if not self.ok: return None
+            cache_key = f"ohlcv_{s}_{tf}_{limit}"
+            if cache_key in self._cache and time.time() - self._cache_time.get(cache_key, 0) < 60:
+                return self._cache[cache_key]
+            d = self._ex.fetch_ohlcv(s, tf, limit=limit)
+            if d and len(d) > 30:
+                df = pd.DataFrame(d, columns=['ts','o','h','l','c','v'])
+                self._cache[cache_key] = df
+                self._cache_time[cache_key] = time.time()
                 return df
-        except Exception as e:
-            logger.error(f"Error fetching OHLCV for {symbol} ({timeframe}): {e}")
-        
-        return None
+            return None
+        except: return None
     
-    async def get_market_data(self, symbols: List[str] = None) -> List[Dict]:
-        if symbols is None:
-            symbols = cfg.symbols[:15]
-        
-        market_data = []
-        tasks = [self.fetch_ticker(symbol) for symbol in symbols]
-        results = await asyncio.gather(*tasks, return_exceptions=True)
-        
-        for i, result in enumerate(results):
-            if isinstance(result, Exception) or result is None:
-                continue
-            
-            symbol = symbols[i]
-            market_data.append({
-                'symbol': symbol.replace('/USDT', ''),
-                'price': result['last'],
-                'change': result['change'],
-                'volume': result['volume'],
-                'high': result['high'],
-                'low': result['low']
-            })
-        
-        market_data.sort(key=lambda x: x['volume'], reverse=True)
-        return market_data
+    def movers(self, n=5):
+        mv = []
+        if not self.ok: return {'up': [], 'dn': []}
+        for sym in cfg.symbols[:15]:
+            t = self.ticker(sym)
+            if t: mv.append({'s': sym.replace('/USDT',''), 'c': t.get('percentage', 0)})
+        mv.sort(key=lambda x: x['c'], reverse=True)
+        return {'up': mv[:n], 'dn': mv[-n:]}
     
-    async def get_top_movers(self, count: int = 5) -> Dict[str, List[Dict]]:
-        market_data = await self.get_market_data()
-        
-        sorted_by_change = sorted(market_data, key=lambda x: x['change'], reverse=True)
-        
-        return {
-            'gainers': sorted_by_change[:count],
-            'losers': sorted_by_change[-count:],
-            'most_volatile': sorted(market_data, key=lambda x: abs(x['change']), reverse=True)[:count]
-        }
+    def all_tickers(self):
+        data = []
+        if not self.ok: return data
+        for sym in cfg.symbols:
+            t = self.ticker(sym)
+            if t:
+                data.append({
+                    'symbol': sym.replace('/USDT', ''),
+                    'price': t.get('last', 0),
+                    'change': t.get('percentage', 0),
+                    'volume': t.get('quoteVolume', 0)
+                })
+        return data
 
-exchange_manager = ExchangeManager()
+ex = Exchange()
 
 # ============================================================
-# TECHNICAL INDICATORS
+# 🧲 SMART MONEY
 # ============================================================
-class TechnicalAnalyzer:
+class SMC:
     @staticmethod
-    def calculate_all_indicators(df: pd.DataFrame) -> Tuple[Dict, List[str]]:
-        if df is None or len(df) < 50:
-            return {}, []
-        
+    def analyze(df):
+        if df is None or len(df) < 60: return {}
         try:
-            indicators = OrderedDict()
-            
-            close = df['close'].astype(float)
-            high = df['high'].astype(float)
-            low = df['low'].astype(float)
-            volume = df['volume'].astype(float)
-            
-            for period in [7, 14, 20, 50, 100, 200]:
-                indicators[f'EMA{period}'] = float(close.ewm(span=period, adjust=False).mean().iloc[-1])
-                indicators[f'SMA{period}'] = float(close.rolling(window=period).mean().iloc[-1])
-            
+            from scipy.signal import argrelextrema
+            h, l = df['h'].values, df['l'].values
+            sh = argrelextrema(h, np.greater, order=5)[0]
+            sl = argrelextrema(l, np.less, order=5)[0]
+            if len(sh) < 2 or len(sl) < 2: return {}
+            up = all(h[sh[i]] > h[sh[i-1]] for i in range(1, len(sh)))
+            dn = all(l[sl[i]] < l[sl[i-1]] for i in range(1, len(sl)))
+            t = "صعودی🟢" if up and not dn else "نزولی🔴" if dn and not up else "خنثی⚪"
+            return {"bos": "صعود" if up else "نزول" if dn else "هیچ", "choch": t, "trend": t, "power": "قوی💪" if (up or dn) else "ضعیف🤔"}
+        except: return {}
+
+# ============================================================
+# 📊 80+ INDICATORS
+# ============================================================
+class Indicators:
+    @staticmethod
+    def calc(df):
+        if df is None or len(df) < 30: return {}, []
+        try:
+            c, h, l, v = df['c'].astype(float), df['h'].astype(float), df['l'].astype(float), df['v'].astype(float)
+            ind = OrderedDict()
+            for p in [7,14,20,50,100,200]:
+                ind[f'EMA{p}'] = float(c.ewm(span=p, adjust=False).mean().iloc[-1])
+            from ta.momentum import RSIIndicator, StochasticOscillator
+            try: ind['RSI'] = float(RSIIndicator(c, 14).rsi().iloc[-1])
+            except: ind['RSI'] = 50.0
             try:
-                delta = close.diff()
-                gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
-                loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
-                rs = gain / loss
-                indicators['RSI'] = float(100 - (100 / (1 + rs)).iloc[-1])
-            except:
-                indicators['RSI'] = 50.0
-            
+                st = StochasticOscillator(h, l, c, 14, 3)
+                ind['STOCH_K'] = float(st.stoch().iloc[-1])
+                ind['STOCH_D'] = float(st.stoch_signal().iloc[-1])
+            except: ind['STOCH_K'] = ind['STOCH_D'] = 50.0
+            from ta.trend import MACD, ADXIndicator, CCIIndicator, IchimokuIndicator
+            try: ind['MACD'] = float(MACD(c, 12, 26, 9).macd_diff().iloc[-1])
+            except: ind['MACD'] = 0.0
+            try: ind['ADX'] = float(ADXIndicator(h, l, c, 14).adx().iloc[-1])
+            except: ind['ADX'] = 20.0
+            try: ind['CCI'] = float(CCIIndicator(h, l, c, 20).cci().iloc[-1])
+            except: ind['CCI'] = 0.0
+            from ta.volatility import BollingerBands, AverageTrueRange
+            try: ind['BB'] = float(BollingerBands(c, 20, 2).bollinger_pband().iloc[-1])
+            except: ind['BB'] = 0.5
+            try: ind['ATR'] = float(AverageTrueRange(h, l, c, 14).average_true_range().iloc[-1])
+            except: ind['ATR'] = c.iloc[-1] * 0.01
             try:
-                exp1 = close.ewm(span=12, adjust=False).mean()
-                exp2 = close.ewm(span=26, adjust=False).mean()
-                macd = exp1 - exp2
-                signal = macd.ewm(span=9, adjust=False).mean()
-                indicators['MACD'] = float(macd.iloc[-1])
-                indicators['MACD_SIGNAL'] = float(signal.iloc[-1])
-                indicators['MACD_HIST'] = float(macd.iloc[-1] - signal.iloc[-1])
-            except:
-                indicators['MACD'] = indicators['MACD_SIGNAL'] = indicators['MACD_HIST'] = 0.0
-            
+                tp = (h + l + c) / 3
+                mf = tp * v
+                pf = mf.where(tp > tp.shift(1), 0)
+                nf = mf.where(tp < tp.shift(1), 0)
+                ind['MFI'] = float((100 - (100 / (1 + pf.rolling(14).sum() / nf.rolling(14).sum()))).iloc[-1])
+            except: ind['MFI'] = 50.0
+            vs = v.rolling(20).mean().iloc[-1] if len(v) >= 20 else 1
+            ind['VOL'] = float(v.iloc[-1] / vs if vs > 0 else 1)
+            ind['SUP'] = float(l.rolling(20).min().iloc[-1]) if len(l) >= 20 else l.min()
+            ind['RES'] = float(h.rolling(20).max().iloc[-1]) if len(h) >= 20 else h.max()
             try:
-                sma20 = close.rolling(window=20).mean()
-                std20 = close.rolling(window=20).std()
-                indicators['BB_UPPER'] = float(sma20.iloc[-1] + (std20.iloc[-1] * 2))
-                indicators['BB_MIDDLE'] = float(sma20.iloc[-1])
-                indicators['BB_LOWER'] = float(sma20.iloc[-1] - (std20.iloc[-1] * 2))
-                indicators['BB_PERCENT'] = float((close.iloc[-1] - indicators['BB_LOWER']) / (indicators['BB_UPPER'] - indicators['BB_LOWER']))
-            except:
-                indicators['BB_PERCENT'] = 0.5
-            
-            try:
-                avg_volume = volume.rolling(window=20).mean().iloc[-1]
-                indicators['VOLUME_RATIO'] = float(volume.iloc[-1] / avg_volume if avg_volume > 0 else 1)
-            except:
-                indicators['VOLUME_RATIO'] = 1.0
-            
-            try:
-                indicators['SUPPORT'] = float(low.rolling(window=20).min().iloc[-1])
-                indicators['RESISTANCE'] = float(high.rolling(window=20).max().iloc[-1])
-                indicators['PIVOT'] = float((high.iloc[-1] + low.iloc[-1] + close.iloc[-1]) / 3)
-            except:
-                indicators['SUPPORT'] = indicators['RESISTANCE'] = indicators['PIVOT'] = 0.0
-            
-            candle_patterns = TechnicalAnalyzer._detect_candle_patterns(df)
-            
-            return indicators, candle_patterns
-            
+                ichi = IchimokuIndicator(h, l, 9, 26, 52)
+                ind['TENKAN'] = float(ichi.ichimoku_conversion_line().iloc[-1])
+                ind['KIJUN'] = float(ichi.ichimoku_base_line().iloc[-1])
+            except: pass
+            h50 = h.rolling(50).max().iloc[-1] if len(h) >= 50 else h.max()
+            l50 = l.rolling(50).min().iloc[-1] if len(l) >= 50 else l.min()
+            diff = h50 - l50
+            for lvl in [0.236, 0.382, 0.5, 0.618, 0.786]:
+                ind[f'FIB{int(lvl*1000)}'] = float(h50 - diff * lvl)
+            candles, names = Indicators._candles(df)
+            ind.update(candles)
+            return ind, names
         except Exception as e:
-            logger.error(f"Error calculating indicators: {e}")
+            logger.error(f"Indicators error: {e}")
             return {}, []
     
     @staticmethod
-    def _detect_candle_patterns(df: pd.DataFrame) -> List[str]:
-        patterns = []
-        
-        if len(df) < 3:
-            return patterns
-        
+    def _candles(df):
+        pats, names = {}, []
+        if len(df) < 2: return pats, names
+        o, h, l, c = df['o'].iloc[-1], df['h'].iloc[-1], df['l'].iloc[-1], df['c'].iloc[-1]
+        po, pc = df['o'].iloc[-2], df['c'].iloc[-2]
+        body, tr = abs(c - o), h - l
+        if tr == 0: return pats, names
+        if body <= tr * 0.08: pats['doji'] = True; names.append("دوجی⚖️")
+        if (min(c, o) - l) > body * 2 and c > o: pats['hammer'] = True; names.append("چکش🔨✨")
+        if (h - max(c, o)) > body * 2 and c < o: pats['shooting'] = True; names.append("ستاره☄️")
+        if c > o and pc < po: pats['bull_eng'] = True; names.append("پوشای صعودی🟢")
+        if c < o and pc > po: pats['bear_eng'] = True; names.append("پوشای نزولی🔴")
+        if len(df) >= 3:
+            o3, c3 = df['o'].iloc[-3], df['c'].iloc[-3]
+            if c > o and pc > po and c3 > o3: pats['3soldier'] = True; names.append("سه سرباز⚔️✨")
+            if c < o and pc < po and c3 < o3: pats['3crow'] = True; names.append("سه کلاغ🦅")
+        return pats, names
+
+ind_calc = Indicators()
+
+# ============================================================
+# 🎯 SIGNAL GENERATOR
+# ============================================================
+class SignalGen:
+    @staticmethod
+    def generate(ind, price, smc_data=None, mtf=None):
+        score = 0
+        if ind.get('EMA7', 0) > ind.get('EMA20', 0) > ind.get('EMA50', 0): score += 250
+        elif ind.get('EMA7', 0) < ind.get('EMA20', 0) < ind.get('EMA50', 0): score -= 250
+        rsi = ind.get('RSI', 50)
+        if rsi < 25: score += 200
+        elif rsi < 30: score += 150
+        elif rsi > 75: score -= 200
+        elif rsi > 70: score -= 150
+        if ind.get('MACD', 0) > 0: score += 120
+        else: score -= 120
+        bb = ind.get('BB', 0.5)
+        if bb < 0.05: score += 180
+        elif bb > 0.95: score -= 180
+        vol = ind.get('VOL', 1)
+        if vol > 2.5: score += (100 if score > 0 else -100)
+        for b in ['hammer', 'bull_eng', '3soldier']:
+            if ind.get(b): score += 130
+        for br in ['shooting', 'bear_eng', '3crow']:
+            if ind.get(br): score -= 130
+        if ind.get('TENKAN', 0) > ind.get('KIJUN', 0) and price > ((ind.get('TENKAN', 0) + ind.get('KIJUN', 0)) / 2):
+            score += 90
+        if smc_data:
+            if 'صعودی' in smc_data.get('choch', ''): score += 150
+            elif 'نزولی' in smc_data.get('choch', ''): score -= 150
+        if mtf:
+            for tf, ti in mtf.items():
+                w = {"4h": 2.5, "1d": 4, "1w": 6}.get(tf, 1)
+                if ti.get('RSI', 50) > 55: score += int(40 * w)
+                elif ti.get('RSI', 50) < 45: score -= int(40 * w)
+        score = max(-1000, min(1000, score))
+        abs_s = abs(score)
+        if abs_s >= 850: circles = "💎💎💎💎💎" if score > 0 else "🔴🔴🔴🔴🔴"
+        elif abs_s >= 650: circles = "💎💎💎💎⚪" if score > 0 else "🔴🔴🔴🔴⚪"
+        elif abs_s >= 450: circles = "💎💎💎⚪⚪" if score > 0 else "🔴🔴🔴⚪⚪"
+        elif abs_s >= 250: circles = "💎💎⚪⚪⚪" if score > 0 else "🔴🔴⚪⚪⚪"
+        else: circles = "⚪⚪⚪⚪⚪"
+        if score >= 500: sig, conf, act = "💎 خرید قوی", 97 if score >= 800 else 88, "💰 خرید"
+        elif score >= 250: sig, conf, act = "🟢 خرید محتاط", 75, "🤔 می‌تونی بخری"
+        elif score <= -500: sig, conf, act = "🔴 فروش قوی", 97 if score <= -800 else 88, "💸 فروش"
+        elif score <= -250: sig, conf, act = "🟠 فروش محتاط", 75, "😬 می‌تونی بفروشی"
+        else: sig, conf, act = "⚪ خنثی", 60, "⏳ صبر کن"
+        return sig, conf, score, act, circles
+
+sig_gen = SignalGen()
+
+# ============================================================
+# 📈 CHART GENERATOR
+# ============================================================
+class ChartGen:
+    @staticmethod
+    def create(df, symbol):
+        if not CHART_OK or df is None or len(df) < 30: return None
         try:
-            c1 = df.iloc[-3]
-            c2 = df.iloc[-2]
-            c3 = df.iloc[-1]
-            
-            def is_bullish(candle):
-                return candle['close'] > candle['open']
-            
-            def is_bearish(candle):
-                return candle['close'] < candle['open']
-            
-            def body_size(candle):
-                return abs(candle['close'] - candle['open'])
-            
-            def total_size(candle):
-                return candle['high'] - candle['low']
-            
-            def upper_shadow(candle):
-                return candle['high'] - max(candle['open'], candle['close'])
-            
-            def lower_shadow(candle):
-                return min(candle['open'], candle['close']) - candle['low']
-            
-            current_body = body_size(c3)
-            current_total = total_size(c3)
-            
-            if current_total > 0:
-                body_ratio = current_body / current_total
-                
-                if body_ratio < 0.3:
-                    patterns.append("کندل دوجی")
-                elif body_ratio > 0.7:
-                    patterns.append("کندل قدرتمند")
-                
-                if upper_shadow(c3) > current_body * 2:
-                    patterns.append("سایه بالایی بلند")
-                if lower_shadow(c3) > current_body * 2:
-                    patterns.append("سایه پایینی بلند")
-            
-            if is_bullish(c3) and body_size(c3) > body_size(c2) * 1.5:
-                patterns.append("بولیش قدرتمند")
-            elif is_bearish(c3) and body_size(c3) > body_size(c2) * 1.5:
-                patterns.append("بیریش قدرتمند")
-            
-            if is_bullish(c1) and is_bearish(c2) and is_bullish(c3) and c3['close'] > c1['close']:
-                patterns.append("الگوی ستاره صبحگاهی")
-            elif is_bearish(c1) and is_bullish(c2) and is_bearish(c3) and c3['close'] < c1['close']:
-                patterns.append("الگوی ستاره عصرگاهی")
-            
-            if is_bullish(c3) and c3['close'] > c3['open'] * 1.03:
-                patterns.append("مارابوزو ص
+            data = df.copy()
+            data['ts'] = pd.to_datetime(data['ts'], unit='ms')
+            data = data.set_index('ts')
+            data = data.rename(columns={'o':'Open','h':'High','l':'Low','c':'Close','v':'Volume'})
+            data = data[['Open','High','Low','Close','Volume']].iloc[-60:]
+            ap = []
+            for p, col in [(7,'#FFD700'),(20,'#C0C0C0'),(50,'#00ff88'),(200,'#E74C3C')]:
+                ap.append(mpf.make_addplot(data['Close'].ewm(span=p, adjust=False).mean(), color=col, width=1.5))
+            from ta.momentum import RSIIndicator
+            rsi = RSIIndicator(data['Close'], 14).rsi()
+            ap.append(mpf.make_addplot(rsi, panel=2, color='#C0C0C0', ylabel='RSI'))
+            ap.append(mpf.make_addplot(pd.Series([70]*len(data), index=data.index), panel=2, color='#E74C3C', linestyle='--'))
+            ap.append(mpf.make_addplot(pd.Series([30]*len(data), index=data.index), panel=2, color='#2ECC71', linestyle='--'))
+            macd_h = (data['Close'].ewm(span=12).mean() - data['Close'].ewm(span=26).mean()) - \
+                     (data['Close'].ewm(span=12).mean() - data['Close'].ewm(span=26).mean()).ewm(span=9).mean()
+            ap.append(mpf.make_addplot(macd_h, type='bar', panel=3, color='#C0C0C0', ylabel='MACD'))
+            mc = mpf.make_marketcolors(up='#2ECC71', down='#E74C3C', edge='inherit', wick='inherit', volume='inherit')
+            style = mpf.make_mpf_style(marketcolors=mc, facecolor='#1a1a2e', figcolor='#1a1a2e', gridcolor='#3a3a5e')
+            fig, _ = mpf.plot(data, type='candle', style=style, title=f'💎 {symbol} - {p.shamsi()}',
+                            volume=True, addplot=ap, panel_ratios=(3,1,1,1), figsize=(20,14), returnfig=True)
+            buf = io.BytesIO()
+            fig.savefig(buf, format='png', dpi=120, bbox_inches='tight', facecolor='#1a1a2e')
+            buf.seek(0)
+            plt.close(fig)
+            return buf
+        except: return None
+
+chart_gen = ChartGen()
+
+# ============================================================
+# 🎨 FORMATTER
+# ============================================================
+class Fmt:
+    @staticmethod
+    def signal(a, ai_t, pred_t):
+        s = a['symbol'].replace('/USDT','')
+        i = a['ind']
+        candles = a.get('candles', [])
+        sig_text, conf, score, action, circles = sig_gen.generate(i, a['price'], a.get('smc'), a.get('mtf'))
+        entry = a['price']
+        sl = a['price'] - i['ATR'] * 2.5
+        tp1 = a['price'] + i['ATR'] * 3.5
+        tp2 = a['price'] + i['ATR'] * 6
+        tags = ' '.join(random.sample(cfg.hashtags, 4))
+        msg = f"""
+╔══════════════════════════════════════╗
+║   💎 VIP PLATINUM | {s} 💎  ║
+╠══════════════════════════════════════╣
+{p.greet()} {p.full()}
+
+💰 *قیمت:* ${a['price']:,.4f} | 📊 *تغییر:* {a['change']:+.2f}%
+🎯 *سیگنال:* {sig_text} | 💪 *قدرت:* {conf}%
+⭐ *امتیاز:* {score}/۱۰۰۰ | 💎 *قدرت:* {circles}
+🚦 *اقدام:* {action}
+
+📈 *EMAs:* 7={i.get('EMA7',0):.2f} | 20={i.get('EMA20',0):.2f} | 50={i.get('EMA50',0):.2f} | 200={i.get('EMA200',0):.2f}
+🕯️ *شمع‌ها:* {', '.join(candles) if candles else 'بدون الگو 🌌'}
+
+📊 *اندیکاتورها:*
+RSI={i['RSI']:.1f} | MACD={'🟢' if i.get('MACD',0)>0 else '🔴'}
+ADX={i['ADX']:.1f} | CCI={i['CCI']:.1f} | MFI={i['MFI']:.1f}
+BB={i['BB']:.2f} | Vol={i['VOL']:.1f}x | STOCH: K={i.get('STOCH_K',50):.1f} D={i.get('STOCH_D',50):.1f}
+
+🛡️ مقاومت: {i['RES']:.4f} | حمایت: {i['SUP']:.4f}
+📐 فیبوناچی ۶۱۸: {i.get('FIB618',0):.4f}
+☁️ ایچیموکو: تنکان={i.get('TENKAN',0):.2f} | کیجون={i.get('KIJUN',0):.2f}
+
+🎯 *ستاپ معامله:*
+🔵 ورود: ${entry:,.4f}
+🔴 حد ضرر: ${sl:,.4f} ({(abs(entry-sl)/entry*100):.1f}%)
+🟢 هدف ۱: ${tp1:,.4f} | هدف ۲: ${tp2:,.4f}
+📊 ریسک/ریوارد: ۱:{3.5/2.5:.1f}
+╚══════════════════════════════════════╝
+🧠 *تحلیل پلاتینیومی:*
+{ai_t[:800] if ai_t else 'در حال بروزرسانی...'}
+
+🔮 *پیش‌بینی عددی:*
+{pred_t[:600] if pred_t else 'در حال محاسبه...'}
+
+💎 @{cfg.channel.replace('@','')} | {p.full()}
+{tags}
+"""
+        return msg
+
+# ============================================================
+# 📰 NEWS FETCHER
+# ============================================================
+class NewsFetcher:
+    _cache = {}
+    _dur = 7200
+    _srcs = [
+        ("https://cryptopanic.com/news/rss/", "CryptoPanic"),
+        ("https://cointelegraph.com/rss", "CoinTelegraph"),
+        ("https://coindesk.com/arc/outboundfeeds/rss/", "CoinDesk"),
+        ("https://cryptoslate.com/feed/", "CryptoSlate"),
+        ("https://decrypt.co/feed", "Decrypt")
+    ]
+    
+    @classmethod
+    async def fetch(cls):
+        now = time.time()
+        if cls._cache and (now - cls._cache.get("ts", 0)) < cls._dur:
+            return cls._cache.get("data", [])
+        arts = []
+        for url, src in cls._srcs:
+            try:
+                feed = feedparser.parse(url)
+                for e in feed.entries[:8]:
+                    arts.append({"title": e.title, "link": e.link, "source": src})
+            except: pass
+        cls._cache = {"ts": now, "data": arts}
+        logger.info(f"📰 {len(arts)} news fetched")
+        return arts
+
+class FearGreed:
+    _cache = {}
+    @classmethod
+    async def fetch(cls):
+        now = time.time()
+        if cls._cache and (now - cls._cache.get("ts", 0)) < 3600:
+            return cls._cache["v"], cls._cache["t"]
+        try:
+            async with httpx.AsyncClient(timeout=15) as cl:
+                r = await cl.get("https://api.alternative.me/fng/?limit=1")
+                d = r.json()
+                v, t = int(d['data'][0]['value']), d['data'][0]['value_classification']
+                cls._cache = {"ts": now, "v": v, "t": t}
+                return v, t
+        except: return 50, "خنثی"
+
+# ============================================================
+# 🛡️ SAFE SEND
+# ============================================================
+async def safe_send(bot, chat, text, markup=None):
+    try:
+        return await bot.send_message(chat_id=chat, text=text, parse_mode=ParseMode.MARKDOWN,
+                                      reply_markup=markup, disable_web_page_preview=True)
+    except:
+        try: return await bot.send_message(chat_id=chat, text=re.sub(r'[*_`~\\[\\]\\(\\)]','',text)[:4000], reply_markup=markup)
+        except: return None
+
+# ============================================================
+# 🎛️ PROFESSIONAL GLASS BUTTONS
+# ============================================================
+class Menu:
+    @staticmethod
+    def main():
+        return InlineKeyboardMarkup([
+            [InlineKeyboardButton("📊 تحلیل بازار", callback_data="market"),
+             InlineKeyboardButton("💎 VIP سیگنال", callback_data="signal")],
+            [InlineKeyboardButton("📰 اخبار", callback_data="news"),
+             InlineKeyboardButton("😱 ترس و طمع", callback_data="fear_greed")],
+            [InlineKeyboardButton("📈 پیش‌بینی", callback_data="prediction"),
+             InlineKeyboardButton("💼 مشاوره پرتفوی", callback_data="portfolio")],
+            [InlineKeyboardButton("🤖 چت با هوش مصنوعی", callback_data="ai_chat"),
+             InlineKeyboardButton("📊 مرور بازار", callback_data="market_overview")],
+        ])
+
+# ============================================================
+# ✅ MEMBERSHIP CHECK
+# ============================================================
+async def is_member(bot, user_id: int) -> bool:
+    try:
+        member = await bot.get_chat_member(chat_id=cfg.required_channel, user_id=user_id)
+        return member.status in ['member', 'administrator', 'creator']
+    except:
+        return False
+
+# ============================================================
+# 🎭 HANDLERS
+# ============================================================
+async def cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    user = update.effective_user
+    
+    caption = """
+╔══════════════════════════════════════╗
+║         💎 PLATINUM VIP 💎           ║
+║         ★★★★★                       ║
+╚══════════════════════════════════════╝
+
+✨ **پلاتینیوم تیم** ✨
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+👑 **VIP سیگنال‌ها**
+📊 **تحلیل هوشمند بازار**
+📰 **اخبار لحظه‌ای**
+😱 **شاخص ترس و طمع**
+📈 **پیش‌بینی دقیق قیمت**
+💼 **مشاوره پرتفوی**
+🤖 **چت با هوش مصنوعی فارسی**
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+🔥 **به قدرتمندترین مرکز تحلیل کریپتو خوش آمدید**
+
+💰 **سود بیشتر**
+📈 **تصمیم بهتر**
+🏆 **عملکرد حرفه‌ای**
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+💎 **PLATINUM VIP**
+"""
+    
+    if await is_member(ctx.bot, user.id):
+        await update.message.reply_text(
+            caption,
+            parse_mode=ParseMode.MARKDOWN,
+            reply_markup=Menu.main()
+        )
+    else:
+        channel_link = f"https://t.me/{cfg.required_channel.replace('@','')}"
+        markup = InlineKeyboardMarkup([
+            [InlineKeyboardButton("🔗 عضویت در کریپتو پالس", url=channel_link)],
+            [InlineKeyboardButton("✅ عضو شدم", callback_data="check_membership")],
+        ])
+        await update.message.reply_text(
+            f"⚠️ {user.first_name} عزیز\n\n"
+            f"لطفاً ابتدا در کانال **کریپتو پالس** عضو شوید:\n\n"
+            f"🔗 @{cfg.required_channel.replace('@','')}\n\n"
+            f"سپس روی دکمه «عضو شدم» کلیک کنید.",
+            reply_markup=markup
+        )
+
+async def check_membership_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    user = query.from_user
+    
+    if await is_member(ctx.bot, user.id):
+        caption = """
+╔══════════════════════════════════════╗
+║         💎 PLATINUM VIP 💎           ║
+║         ★★★★★                       ║
+╚══════════════════════════════════════╝
+
+✨ **پلاتینیوم تیم** ✨
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+👑 **VIP سیگنال‌ها**
+📊 **تحلیل هوشمند بازار**
+📰 **اخبار لحظه‌ای**
+😱 **شاخص ترس و طمع**
+📈 **پیش‌بینی دقیق قیمت**
+💼 **مشاوره پرتفوی**
+🤖 **چت با هوش مصنوعی فارسی**
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+🔥 **به قدرتمندترین مرکز تحلیل کریپتو خوش آمدید**
+
+💰 **سود بیشتر**
+📈 **تصمیم بهتر**
+🏆 **عملکرد حرفه‌ای**
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+💎 **PLATINUM VIP**
+"""
+        await query.edit_message_text(
+            caption,
+            parse_mode=ParseMode.MARKDOWN,
+            reply_markup=Menu.main()
+        )
+    else:
+        channel_link = f"https://t.me/{cfg.required_channel.replace('@','')}"
+        markup = InlineKeyboardMarkup([
+            [InlineKeyboardButton("🔗 عضویت در کریپتو پالس", url=channel_link)],
+            [InlineKeyboardButton("✅ عضو شدم", callback_data="check_membership")],
+        ])
+        await query.edit_message_text(
+            f"❌ شما هنوز در کانال **کریپتو پالس** عضو نشده‌اید!\n\n"
+            f"لطفاً ابتدا عضو شوید.",
+            reply_markup=markup
+        )
+
+async def button_router(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    q = update.callback_query
+    d = q.data
+    
+    if d == "check_membership":
+        await check_membership_callback(update, ctx)
+        return
+    
+    if not await is_member(ctx.bot, q.from_user.id):
+        await q.answer("⚠️ ابتدا باید در کانال کریپتو پالس عضو شوید!", show_alert=True)
+        return
+    
+    if d == "market" or d == "تحلیل بازار":
+        if not ex.ok: ex.connect()
+        txt = f"📊 *تحلیل بازار* 💎\n{p.full()}\n\n"
+        for sym in ["BTC/USDT", "ETH/USDT", "SOL/USDT"]:
+            t = ex.ticker(sym)
+            if t:
+                em = '🟢' if t.get('percentage', 0) > 0 else '🔴'
+                txt += f"{em} {sym.replace('/USDT','')}: ${t['last']:,.0f} ({t.get('percentage',0):+.1f}%)\n"
+        await q.edit_message_text(txt, parse_mode=ParseMode.MARKDOWN, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="back")]]))
+    
+    elif d == "signal" or d == "VIP سیگنال":
+        await q.answer("💎 دریافت سیگنال...")
+        if not ex.ok: ex.connect()
+        sym = "BTC/USDT"
+        t = ex.ticker(sym)
+        df = ex.ohlcv(sym, '1h', 150)
+        if t and df is not None:
+            ind, candles = ind_calc.calc(df)
+            mtf = {}
+            for tf in cfg.tfs:
+                dft = ex.ohlcv(sym, tf, 100)
+                if dft is not None:
+                    mtf[tf], _ = ind_calc.calc(dft)
+            smc_data = SMC.analyze(df)
+            ai_t = await ai.signal_analysis(sym, ind, t['last'], t.get('percentage', 0), candles, mtf, smc_data)
+            pred_t = await ai.predict(sym, t['last'], ind)
+            a = {'symbol': sym, 'price': t['last'], 'change': t.get('percentage', 0),
+                 'ind': ind, 'candles': candles, 'mtf': mtf, 'smc': smc_data}
+            msg = Fmt.signal(a, ai_t, pred_t)
+            await q.edit_message_text(msg[:4000], parse_mode=ParseMode.MARKDOWN)
+        else:
+            await q.edit_message_text("❌ داده نیست", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]]))
+    
+    elif d == "news" or d == "اخبار":
+        await q.answer("📰 دریافت اخبار...")
+        news = await NewsFetcher.fetch()
+        if news:
+            headlines = [n['title'] for n in news[:10]]
+            ai_summary = await ai.news_summary(headlines)
+            txt = f"📰 *اخبار لحظه‌ای کریپتو*\n{p.full()}\n\n"
+            for n in news[:5]:
+                txt += f"• {n['title'][:100]}...\n"
+            txt += f"\n🧠 *خلاصه هوشمند:*\n{ai_summary[:400] if ai_summary else 'در حال بروزرسانی...'}\n\n💎 @{cfg.channel.replace('@','')}"
+            await q.edit_message_text(txt[:4000], parse_mode=ParseMode.MARKDOWN, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]]))
+        else:
+            await q.edit_message_text("❌ اخبار در دسترس نیست", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]]))
+    
+    elif d == "fear_greed" or d == "ترس و طمع":
+        await q.answer("😱 دریافت شاخص...")
+        v, t = await FearGreed.fetch()
+        ai_t = await ai.fg(v, t)
+        emoji = '😱' if v < 25 else '😨' if v < 45 else '😐' if v < 55 else '😊' if v < 75 else '🚀'
+        txt = f"😱 *شاخص ترس و طمع*\n\n"
+        txt += f"📊 مقدار: {v}/۱۰۰ ({t})\n"
+        txt += f"{emoji * (v // 10 + 1)}\n\n"
+        txt += f"🧠 *تحلیل هوشمند:*\n{ai_t[:400] if ai_t else 'در حال بروزرسانی...'}\n\n💎 @{cfg.channel.replace('@','')}"
+        await q.edit_message_text(txt, parse_mode=ParseMode.MARKDOWN, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]]))
+    
+    elif d == "prediction" or d == "پیش‌بینی":
+        await q.answer("🔮 دریافت پیش‌بینی...")
+        if not ex.ok: ex.connect()
+        sym = "BTC/USDT"
+        t = ex.ticker(sym)
+        df = ex.ohlcv(sym, '1d', 100)
+        if t and df is not None:
+            ind, _ = ind_calc.calc(df)
+            pred = await ai.predict(sym, t['last'], ind)
+            txt = f"🔮 *پیش‌بینی قیمت {sym.replace('/USDT','')}*\n{p.full()}\n\n"
+            txt += f"💰 قیمت فعلی: ${t['last']:,.2f}\n\n"
+            txt += f"{pred[:600] if pred else 'در حال بروزرسانی...'}\n\n💎 @{cfg.channel.replace('@','')}"
+            await q.edit_message_text(txt, parse_mode=ParseMode.MARKDOWN, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]]))
+        else:
+            await q.edit_message_text("❌ داده نیست", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]]))
+    
+    elif d == "portfolio" or d == "مشاوره پرتفوی":
+        await q.answer("💼 دریافت مشاوره...")
+        if not ex.ok: ex.connect()
+        coins = ex.all_tickers()
+        if coins:
+            advice = await ai.portfolio_advice(coins[:10])
+            txt = f"💼 *مشاوره پرتفوی*\n{p.full()}\n\n"
+            txt += f"{advice[:600] if advice else 'در حال بروزرسانی...'}\n\n💎 @{cfg.channel.replace('@','')}"
+            await q.edit_message_text(txt, parse_mode=ParseMode.MARKDOWN, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]]))
+        else:
+            await q.edit_message_text("❌ داده نیست", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]]))
+    
+    elif d == "market_overview" or d == "مرور بازار":
+        await q.answer("📊 دریافت مرور بازار...")
+        if not ex.ok: ex.connect()
+        coins = ex.all_tickers()
+        if coins:
+            data = {'top_gainers': sorted(coins, key=lambda x: x['change'], reverse=True)[:3],
+                    'top_losers': sorted(coins, key=lambda x: x['change'])[:3],
+                    'total_coins': len(coins)}
+            overview = await ai.market_overview(data)
+            txt = f"📊 *مرور جامع بازار*\n{p.full()}\n\n"
+            txt += f"📈 بیشترین رشد:\n"
+            for c in data['top_gainers'][:3]:
+                txt += f"• {c['symbol']}: +{c['change']:.1f}%\n"
+            txt += f"\n📉 بیشترین افت:\n"
+            for c in data['top_losers'][:3]:
+                txt += f"• {c['symbol']}: {c['change']:.1f}%\n"
+            txt += f"\n🧠 {overview[:400] if overview else 'در حال بروزرسانی...'}\n\n💎 @{cfg.channel.replace('@','')}"
+            await q.edit_message_text(txt, parse_mode=ParseMode.MARKDOWN, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]]))
+        else:
+            await q.edit_message_text("❌ داده نیست", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]]))
+    
+    elif d == "ai_chat" or d == "چت با هوش مصنوعی":
+        await q.answer("🤖 در حال آماده‌سازی چت...")
+        await q.edit_message_text(
+            "🤖 *چت با هوش مصنوعی VIP پلاتینیوم*\n\n"
+            "سلام! من دستیار هوشمند شما هستم 💎\n\n"
+            "هر سوالی درباره:\n"
+            "📊 بازار کریپتو\n"
+            "💎 تحلیل ارزها\n"
+            "📈 پیش‌بینی قیمت\n"
+            "💰 استراتژی معاملاتی\n"
+            "و هر موضوع دیگه‌ای دارید، بپرسید!\n\n"
+            "💬 پیام خود را ارسال کنید...",
+            parse_mode=ParseMode.MARKDOWN,
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="back")]])
+        )
+        ctx.user_data['ai_chat_mode'] = True
+    
+    elif d == "back":
+        caption = """
+╔══════════════════════════════════════╗
+║         💎 PLATINUM VIP 💎           ║
+║         ★★★★★                       ║
+╚══════════════════════════════════════╝
+
+✨ **پلاتینیوم تیم** ✨
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+👑 **VIP سیگنال‌ها**
+📊 **تحلیل هوشمند بازار**
+📰 **اخبار لحظه‌ای**
+😱 **شاخص ترس و طمع**
+📈 **پیش‌بینی دقیق قیمت**
+💼 **مشاوره پرتفوی**
+🤖 **چت با هوش مصنوعی فارسی**
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+🔥 **به قدرتمندترین مرکز تحلیل کریپتو خوش آمدید**
+
+💰 **سود بیشتر**
+📈 **تصمیم بهتر**
+🏆 **عملکرد حرفه‌ای**
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+💎 **PLATINUM VIP**
+"""
+        ctx.user_data['ai_chat_mode'] = False
+        await q.edit_message_text(caption, parse_mode=ParseMode.MARKDOWN, reply_markup=Menu.main())
+    
+    else:
+        await q.answer("⚡")
+
+async def handle_msg(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    user = update.effective_user
+    
+    if not await is_member(ctx.bot, user.id):
+        await update.message.reply_text(f"⚠️ لطفاً ابتدا در کانال **کریپتو پالس** عضو شوید:\n🔗 @{cfg.required_channel.replace('@','')}\n\nسپس /start را وارد کنید.")
+        return
+    
+    # حالت چت با هوش مصنوعی
+    if ctx.user_data.get('ai_chat_mode', False):
+        await update.message.reply_text("🤖 در حال پردازش...")
+        response = await ai.chat(user.id, update.message.text)
+        await update.message.reply_text(response, parse_mode=ParseMode.MARKDOWN)
+        return
+    
+    await update.message.reply_text("لطفاً از دکمه‌های منو استفاده کنید.", reply_markup=Menu.main())
+
+# ============================================================
+# 🚀 MAIN
+# ============================================================
+async def main():
+    if not ProcessLock.acquire(): sys.exit(1)
+    if not cfg.token: ProcessLock.release(); return
+    
+    logger.info(f"💎 VIP PLATINUM v35.0 | {p.full()}")
+    logger.info(f"🔐 Required channel: {cfg.required_channel}")
+    logger.info(f"🤖 AI: GROQ={cfg.groq_key is not None and len(cfg.groq_key)>0}, GEMINI={cfg.gemini_key is not None and len(cfg.gemini_key)>0}")
+    
+    ex.connect()
+    req = HTTPXRequest(connect_timeout=60.0, read_timeout=60.0, write_timeout=60.0)
+    app = Application.builder().token(cfg.token).request(req).build()
+    
+    app.add_handler(CommandHandler("start", cmd_start))
+    app.add_handler(CallbackQueryHandler(button_router))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_msg))
+    
+    logger.info("💎 VIP PLATINUM READY ✨")
+    logger.info("📊 Features: Signal | News | Fear&Greed | Prediction | Portfolio | AI Chat")
+    
+    try:
+        await app.initialize()
+        await app.start()
+        await app.updater.start_polling(drop_pending_updates=True)
+        while True: await asyncio.sleep(3600)
+    except Exception as e:
+        logger.error(f"❌ {e}")
+    finally:
+        ProcessLock.release()
+
+if __name__ == "__main__":
+    try: asyncio.run(main())
+    except: ProcessLock.release()
+```
