@@ -1,10 +1,9 @@
-# VI
+
 ╔══════════════════════════════════════════════════════════════════════════════╗
 ║  💎 VIP PLATINUM v34.2 — وی آی پی پلاتینیوم — ULTIMATE EDITION              ║
 ║  ✅ REQUIRED CHANNEL: @CryptoPulse606 (کریپتو پالس)                         ║
 ║  ✅ START PAGE: PLATINUM VIP Style                                          ║
 ╚══════════════════════════════════════════════════════════════════════════════╝
-"""
 
 import os, sys, asyncio, time, json, random, signal, io, re, gc, hashlib, urllib.parse, traceback
 import logging
