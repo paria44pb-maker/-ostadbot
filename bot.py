@@ -1,9 +1,8 @@
 
-╔══════════════════════════════════════════════════════════════════════════════╗
-║  💎 VIP PLATINUM v34.2 — وی آی پی پلاتینیوم — ULTIMATE EDITION              ║
-║  ✅ REQUIRED CHANNEL: @CryptoPulse606 (کریپتو پالس)                         ║
-║  ✅ START PAGE: PLATINUM VIP Style                                          ║
-╚══════════════════════════════════════════════════════════════════════════════╝
+VIP PLATINUM v34.2 - وی آی پی پلاتینیوم - ULTIMATE EDITION
+REQUIRED CHANNEL: @CryptoPulse606 (کریپتو پالس)
+START PAGE: PLATINUM VIP Style
+
 
 import os, sys, asyncio, time, json, random, signal, io, re, gc, hashlib, urllib.parse, traceback
 import logging
@@ -31,7 +30,7 @@ import warnings
 warnings.filterwarnings('ignore')
 
 # ============================================================
-# 🔇 ZERO NOISE — SILENCE ALL EXTERNAL LOGGING
+# SILENCE ALL EXTERNAL LOGGING
 # ============================================================
 for _lib in ['httpx','httpcore','telegram','telegram.ext','telegram.request',
              'apscheduler','ccxt','urllib3','asyncio','matplotlib','PIL',
@@ -42,7 +41,7 @@ for _lib in ['httpx','httpcore','telegram','telegram.ext','telegram.request',
     _l.handlers.clear()
 
 # ============================================================
-# 📝 APPLICATION LOGGER — CLEAN & SIMPLE
+# APPLICATION LOGGER
 # ============================================================
 logging.basicConfig(
     level=logging.WARNING,
@@ -52,25 +51,23 @@ logging.basicConfig(
 logger = logging.getLogger('VIP_PLATINUM')
 logger.setLevel(logging.INFO)
 
-# File handler for logs
 file_handler = RotatingFileHandler(
     'vip_platinum.log',
-    maxBytes=10*1024*1024,  # 10 MB
+    maxBytes=10*1024*1024,
     backupCount=5,
     encoding='utf-8'
 )
 file_handler.setFormatter(logging.Formatter('%(asctime)s | %(levelname)s | %(message)s'))
 logger.addHandler(file_handler)
 
-# Console handler
 console_handler = logging.StreamHandler()
 console_handler.setFormatter(logging.Formatter('%(asctime)s | %(message)s', datefmt='%H:%M:%S'))
 logger.addHandler(console_handler)
 
-logger.info("🚀 VIP PLATINUM v34.2 Ultimate Edition starting...")
+logger.info("VIP PLATINUM v34.2 Ultimate Edition starting...")
 
 # ============================================================
-# 📦 AUTO-INSTALL MISSING PACKAGES
+# AUTO-INSTALL MISSING PACKAGES
 # ============================================================
 def _ensure_libs():
     _needed = {
@@ -78,16 +75,15 @@ def _ensure_libs():
         'ccxt':'ccxt','httpx':'httpx','dotenv':'python-dotenv',
         'telegram':'python-telegram-bot','pandas':'pandas','numpy':'numpy',
         'jdatetime':'jdatetime','pytz':'pytz','scipy':'scipy',
-        'feedparser':'feedparser','Pillow':'Pillow','requests':'requests',
-        'cachetools':'cachetools','tenacity':'tenacity','aiohttp':'aiohttp',
-        'beautifulsoup4':'beautifulsoup4','lxml':'lxml','yfinance':'yfinance'
+        'Pillow':'Pillow','cachetools':'cachetools','tenacity':'tenacity',
+        'aiohttp':'aiohttp'
     }
     for mod, pkg in _needed.items():
         try: 
             __import__(mod)
-            logger.info(f"✅ Package loaded: {mod}")
+            logger.info(f"Package loaded: {mod}")
         except ImportError as e: 
-            logger.warning(f"⚠️ Installing {pkg}...")
+            logger.warning(f"Installing {pkg}...")
             import subprocess
             try:
                 subprocess.check_call(
@@ -95,18 +91,14 @@ def _ensure_libs():
                     stdout=subprocess.DEVNULL, 
                     stderr=subprocess.DEVNULL
                 )
-                logger.info(f"✅ Installed: {pkg}")
+                logger.info(f"Installed: {pkg}")
             except Exception as install_err:
-                logger.error(f"❌ Failed to install {pkg}: {install_err}")
+                logger.error(f"Failed to install {pkg}: {install_err}")
 
 _ensure_libs()
 
 import jdatetime, pytz
-import feedparser
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
-import requests
-from bs4 import BeautifulSoup
-import yfinance as yf
 
 try:
     import matplotlib
@@ -115,16 +107,16 @@ try:
     import matplotlib.font_manager as fm
     import mplfinance as mpf
     CHART_OK = True
-    logger.info("✅ Chart libraries loaded successfully")
+    logger.info("Chart libraries loaded successfully")
 except Exception as e:
-    logger.error(f"❌ Chart libraries error: {e}")
+    logger.error(f"Chart libraries error: {e}")
     CHART_OK = False
 
 load_dotenv()
 TEHRAN_TZ = pytz.timezone('Asia/Tehran')
 
 # ============================================================
-# ⚙️ ENHANCED CONFIGURATION
+# CONFIGURATION
 # ============================================================
 @dataclass
 class Config:
@@ -145,20 +137,20 @@ class Config:
         "DOGE/USDT", "DOT/USDT", "AVAX/USDT", "LINK/USDT", "UNI/USDT", "ATOM/USDT",
         "LTC/USDT", "TRX/USDT", "SUI/USDT", "APT/USDT", "ARB/USDT", "OP/USDT",
         "PEPE/USDT", "WIF/USDT", "FIL/USDT", "VET/USDT", "ALGO/USDT", "ETC/USDT",
-        "MATIC/USDT", "NEAR/USDT", "TON/USDT", "SHIB/USDT", "ICP/USDT", "XLM/USDT"
+        "MATIC/USDT", "NEAR/USDT", "TON/USDT", "SHIB/USDT", "ICP/USDT", "XLM/USDT",
+        "BCH/USDT", "XMR/USDT", "EOS/USDT", "XTZ/USDT", "AAVE/USDT"
     ])
     
     tfs: List[str] = field(default_factory=lambda: ["15m", "1h", "4h", "1d", "1w"])
+    
     signal_int: int = 7200
-    news_int: int = 14400
-    fg_int: int = 3600
-    whale_int: int = 5400
-    summary_time: str = "23:00"
+    market_scan_int: int = 1800
+    update_int: int = 300
     
     hashtags: List[str] = field(default_factory=lambda: [
-        "#کریپتو", "#ارز_دیجیتال", "#اخبار", "#بیتکوین", "#اتریوم",
-        "#تحلیل", "#تکنیکال", "#سیگنال", "#VIP_پلاتینیوم", "#معامله",
-        "#ترید", "#بازار", "#سرمایه_گذاری", "#کریپتوکارنسی", "#بلاکچین"
+        "#کریپتو", "#ارز_دیجیتال", "#بیتکوین", "#اتریوم", "#تحلیل_تکنیکال",
+        "#سیگنال_معاملاتی", "#VIP_پلاتینیوم", "#ترید", "#بازار_ارز",
+        "#سرمایه_گذاری", "#کریپتوکارنسی", "#بلاکچین", "#معامله_گر"
     ])
     
     ai_providers: List[str] = field(default_factory=lambda: ["groq", "gemini", "openai"])
@@ -174,15 +166,15 @@ class Config:
         POSITION = "پوزیشن"
     
     risk_levels: Dict[str, float] = field(default_factory=lambda: {
-        "low": 0.01,
-        "medium": 0.02,
-        "high": 0.05
+        "کم": 0.01,
+        "متوسط": 0.02,
+        "زیاد": 0.05
     })
 
 cfg = Config()
 
 # ============================================================
-# 🔒 ENHANCED PROCESS LOCK
+# PROCESS LOCK
 # ============================================================
 class ProcessLock:
     _lock_file = "/tmp/vip_platinum.lock"
@@ -209,10 +201,10 @@ class ProcessLock:
             with open(cls._lock_file, 'w') as f:
                 f.write(str(cls._pid))
             
-            logger.info(f"🔒 Process lock acquired (PID: {cls._pid})")
+            logger.info(f"Process lock acquired (PID: {cls._pid})")
             return True
         except Exception as e:
-            logger.error(f"❌ Failed to acquire lock: {e}")
+            logger.error(f"Failed to acquire lock: {e}")
             return False
     
     @classmethod
@@ -223,12 +215,12 @@ class ProcessLock:
                     stored_pid = int(f.read().strip() or 0)
                 if stored_pid == cls._pid:
                     os.remove(cls._lock_file)
-                    logger.info("🔓 Process lock released")
+                    logger.info("Process lock released")
         except Exception as e:
-            logger.error(f"❌ Failed to release lock: {e}")
+            logger.error(f"Failed to release lock: {e}")
 
 def signal_handler(signum, frame):
-    logger.info(f"⚠️ Received signal {signum}, shutting down gracefully...")
+    logger.info(f"Received signal {signum}, shutting down gracefully...")
     ProcessLock.release()
     sys.exit(0)
 
@@ -236,13 +228,12 @@ for sig in [signal.SIGINT, signal.SIGTERM, signal.SIGHUP]:
     signal.signal(sig, signal_handler)
 
 # ============================================================
-# 📅 ENHANCED PERSIAN DATE & GREETING
+# PERSIAN DATE & GREETING
 # ============================================================
 class PersianCalendar:
-    DAYS = ['دوشنبه🗓️', 'سه‌شنبه🗓️', 'چهارشنبه🗓️', 'پنج‌شنبه🎉', 'جمعه🕌', 'شنبه📅', 'یکشنبه📅']
-    MONTHS = ['فروردین🌸', 'اردیبهشت🌹', 'خرداد☀️', 'تیر🔥', 'مرداد🌞', 'شهریور🍂', 
-              'مهر🍁', 'آبان🌧️', 'آذر❄️', 'دی⛄', 'بهمن🌨️', 'اسفند🌱']
-    SEASONS = ['بهار🌷', 'تابستان☀️', 'پاییز🍁', 'زمستان❄️']
+    DAYS = ['دوشنبه', 'سه‌شنبه', 'چهارشنبه', 'پنج‌شنبه', 'جمعه', 'شنبه', 'یکشنبه']
+    MONTHS = ['فروردین', 'اردیبهشت', 'خرداد', 'تیر', 'مرداد', 'شهریور', 
+              'مهر', 'آبان', 'آذر', 'دی', 'بهمن', 'اسفند']
     
     @classmethod
     def now(cls):
@@ -251,14 +242,12 @@ class PersianCalendar:
     @classmethod
     def shamsi_date(cls):
         j = jdatetime.datetime.fromgregorian(datetime=cls.now())
-        season = cls.SEASONS[(j.month - 1) // 3]
         return {
             'year': j.year,
             'month': j.month,
             'month_name': cls.MONTHS[j.month - 1],
             'day': j.day,
             'weekday': cls.DAYS[j.weekday()],
-            'season': season,
             'full': f"{j.day} {cls.MONTHS[j.month-1]} {j.year}",
             'full_with_weekday': f"{cls.DAYS[j.weekday()]} {j.day} {cls.MONTHS[j.month-1]} {j.year}"
         }
@@ -278,7 +267,7 @@ class PersianCalendar:
     def full_datetime(cls):
         date = cls.shamsi_date()
         time = cls.time()
-        return f"{date['weekday']} {date['full']} ساعت {time['full']} ✨"
+        return f"{date['weekday']} {date['full']} ساعت {time['full']}"
     
     @classmethod
     def greeting(cls):
@@ -287,160 +276,24 @@ class PersianCalendar:
         e = random.choice(emojis)
         
         if 4 <= h < 9:
-            return f"صبح بخیر پلاتینیومی {e} 🌄 روز پر از سود داشته باشی!"
+            return f"صبح بخیر پلاتینیومی {e} روز پر از سود داشته باشی!"
         elif 9 <= h < 12:
-            return f"روز بخیر تریدر حرفه‌ای {e} ☀️ بازار رو در دست بگیر!"
+            return f"روز بخیر تریدر حرفه‌ای {e} بازار رو در دست بگیر!"
         elif 12 <= h < 14:
-            return f"ظهر بخیر دوست من {e} 🍽️ انرژی بگیر برای معاملات بعدی!"
+            return f"ظهر بخیر دوست من {e} انرژی بگیر برای معاملات بعدی!"
         elif 14 <= h < 17:
-            return f"عصر بخیر {e} 🌇 زمان تحلیل و برنامه‌ریزی!"
+            return f"عصر بخیر {e} زمان تحلیل و برنامه‌ریزی!"
         elif 17 <= h < 20:
-            return f"عصر بخیر VIP {e} 🌆 آماده شو برای معاملات شب!"
+            return f"عصر بخیر VIP {e} آماده شو برای معاملات شب!"
         elif 20 <= h < 24:
-            return f"شب بخیر {e} 🌙 معاملات موفق داشته باشی!"
+            return f"شب بخیر {e} معاملات موفق داشته باشی!"
         else:
-            return f"وقت بخیر {e} ⏰ همیشه سبز باشی!"
-    
-    @classmethod
-    def moon_phase(cls):
-        j = jdatetime.datetime.fromgregorian(datetime=cls.now())
-        day = j.day
-        if 1 <= day <= 7:
-            return "هلال اول 🌒"
-        elif 8 <= day <= 14:
-            return "بدر کامل 🌕"
-        elif 15 <= day <= 21:
-            return "هلال آخر 🌘"
-        else:
-            return "ماه تاریک 🌑"
+            return f"وقت بخیر {e} همیشه سبز باشی!"
 
 p = PersianCalendar()
 
 # ============================================================
-# 🎨 ENHANCED AI IMAGE GENERATOR
-# ============================================================
-class AIImageGenerator:
-    URL = "https://image.pollinations.ai/prompt/"
-    STYLES = [
-        "professional candlestick chart with glowing green candles, dark theme, futuristic, 8K ultra detailed",
-        "futuristic trading dashboard with holographic price display, platinum accents, cyberpunk, 8K",
-        "abstract financial data visualization, purple and gold waves, digital art, 8K",
-        "professional market analysis interface, multiple monitors, modern office, cinematic lighting, 8K",
-        "digital blockchain network with glowing nodes, blue and gold, neon lights, 8K",
-        "futuristic data center with crypto price displays, neon accents, sci-fi, 8K",
-        "professional trading desk with platinum details, green market indicators, luxury, 8K",
-        "abstract price action chart, geometric patterns, gold and silver, modern art, 8K",
-        "modern financial district skyline with holographic crypto symbols, night view, 8K",
-        "professional analytics dashboard, multiple charts, dark elegant theme, sophisticated, 8K",
-        "cryptocurrency concept art, digital coins floating in space, cosmic background, 8K",
-        "trading floor with advanced technology, real-time data streams, futuristic, 8K"
-    ]
-    
-    THEMES = {
-        'bullish': ['green', 'emerald', 'growth', 'rising', 'profit', 'success'],
-        'bearish': ['red', 'crimson', 'falling', 'caution', 'warning', 'danger'],
-        'neutral': ['blue', 'purple', 'balanced', 'stable', 'calm', 'waiting']
-    }
-    
-    def __init__(self):
-        self._used = deque(maxlen=100)
-        self._counter = 0
-        self._cache = {}
-    
-    async def generate(self, prompt: str, width: int = 1024, height: int = 1024, style: str = None) -> Optional[bytes]:
-        cache_key = hashlib.md5(f"{prompt}_{width}_{height}_{style}".encode()).hexdigest()
-        
-        if cache_key in self._cache:
-            if time.time() - self._cache[cache_key]['timestamp'] < 3600:
-                logger.info(f"🎨 Using cached image for: {prompt[:50]}...")
-                return self._cache[cache_key]['data']
-        
-        selected_style = style or random.choice(self.STYLES)
-        seed = random.randint(10000, 99999)
-        timestamp = int(time.time() * 1000)
-        
-        full_prompt = f"{prompt}, {selected_style}, masterpiece, ultra detailed, 8K resolution, seed:{seed}_{timestamp}"
-        
-        try:
-            encoded_prompt = urllib.parse.quote(full_prompt[:950])
-            url = f"{self.URL}{encoded_prompt}?width={width}&height={height}&nologo=true&seed={seed}&model=flux"
-            
-            async with aiohttp.ClientSession() as session:
-                async with session.get(url, timeout=aiohttp.ClientTimeout(total=90)) as response:
-                    if response.status == 200:
-                        image_data = await response.read()
-                        
-                        # Cache the image
-                        self._cache[cache_key] = {
-                            'data': image_data,
-                            'timestamp': time.time(),
-                            'prompt': prompt
-                        }
-                        
-                        self._counter += 1
-                        logger.info(f"🎨 Generated image #{self._counter}: {prompt[:50]}...")
-                        return image_data
-                    else:
-                        logger.error(f"❌ Image generation failed with status: {response.status}")
-        except Exception as e:
-            logger.error(f"❌ Image generation error: {e}")
-        
-        return None
-    
-    async def for_signal(self, symbol: str, trend: str, indicators: Dict) -> Optional[bytes]:
-        theme = 'bullish' if 'صعودی' in trend else 'bearish' if 'نزولی' in trend else 'neutral'
-        theme_words = random.sample(self.THEMES[theme], 2)
-        
-        prompt = f"""
-        Professional cryptocurrency trading chart for {symbol},
-        {trend} market trend,
-        {', '.join(theme_words)} color scheme,
-        showing candlestick patterns and technical indicators,
-        futuristic trading interface,
-        platinum and gold accents,
-        digital art, ultra detailed, 8K resolution
-        """
-        
-        return await self.generate(prompt, 1200, 800)
-    
-    async def for_news(self, headline: str) -> Optional[bytes]:
-        prompt = f"""
-        Cryptocurrency news visualization: {headline},
-        professional financial news background,
-        digital newspaper with crypto symbols,
-        modern design, platinum theme,
-        ultra detailed, 8K resolution
-        """
-        
-        return await self.generate(prompt, 1200, 600)
-    
-    async def for_market_summary(self, market_data: Dict) -> Optional[bytes]:
-        prompt = f"""
-        Cryptocurrency market summary dashboard,
-        showing multiple coins and price movements,
-        professional trading terminal,
-        real-time data visualization,
-        platinum and blue color scheme,
-        futuristic interface, 8K resolution
-        """
-        
-        return await self.generate(prompt, 1200, 900)
-    
-    async def custom_chart(self, symbol: str, timeframe: str, analysis: str) -> Optional[bytes]:
-        prompt = f"""
-        Technical analysis chart for {symbol} on {timeframe} timeframe,
-        {analysis},
-        professional trading chart with indicators,
-        detailed price action visualization,
-        platinum VIP style, ultra detailed, 8K resolution
-        """
-        
-        return await self.generate(prompt, 1400, 900)
-
-ai_image = AIImageGenerator()
-
-# ============================================================
-# 🧠 ENHANCED AI ENGINE — MULTI-PROVIDER
+# AI ENGINE
 # ============================================================
 class AdvancedAI:
     PROVIDERS = {
@@ -487,12 +340,12 @@ class AdvancedAI:
         self.providers = {}
         self.setup_providers()
         self._client = httpx.AsyncClient(timeout=120.0)
-        self._rate_limit = 1.2  # seconds between requests
+        self._rate_limit = 1.2
         self._last_request = 0
         self._cache = {}
-        self._cache_ttl = 300  # 5 minutes
+        self._cache_ttl = 300
         
-        logger.info(f"🤖 AI Engine initialized with providers: {list(self.providers.keys())}")
+        logger.info(f"AI Engine initialized with providers: {list(self.providers.keys())}")
     
     def setup_providers(self):
         if cfg.groq_key:
@@ -534,7 +387,7 @@ class AdvancedAI:
                 if response.status_code == 200:
                     return response.json()["choices"][0]["message"]["content"]
             except Exception as e:
-                logger.error(f"❌ Groq API error: {e}")
+                logger.error(f"Groq API error: {e}")
         
         elif provider == 'gemini':
             try:
@@ -553,7 +406,7 @@ class AdvancedAI:
                 if response.status_code == 200:
                     return response.json()["candidates"][0]["content"]["parts"][0]["text"]
             except Exception as e:
-                logger.error(f"❌ Gemini API error: {e}")
+                logger.error(f"Gemini API error: {e}")
         
         elif provider == 'openai':
             try:
@@ -573,17 +426,16 @@ class AdvancedAI:
                 if response.status_code == 200:
                     return response.json()["choices"][0]["message"]["content"]
             except Exception as e:
-                logger.error(f"❌ OpenAI API error: {e}")
+                logger.error(f"OpenAI API error: {e}")
         
         return None
     
     async def ask(self, prompt: str, max_tokens: int = 1000, use_cache: bool = True) -> str:
-        # Try cache first
         cache_key = self._get_cache_key(prompt, 'any')
         if use_cache and cache_key in self._cache:
             cache_data = self._cache[cache_key]
             if time.time() - cache_data['timestamp'] < self._cache_ttl:
-                logger.info("💾 Using cached AI response")
+                logger.info("Using cached AI response")
                 return cache_data['response']
         
         messages = [
@@ -591,13 +443,11 @@ class AdvancedAI:
             {"role": "user", "content": prompt}
         ]
         
-        # Try providers in order
         for provider in ['groq', 'gemini', 'openai']:
             if provider in self.providers:
-                logger.info(f"🤖 Asking {provider}...")
+                logger.info(f"Asking {provider}...")
                 response = await self._call_provider(provider, messages, max_tokens)
                 if response:
-                    # Cache the response
                     self._cache[cache_key] = {
                         'response': response,
                         'timestamp': time.time(),
@@ -605,19 +455,18 @@ class AdvancedAI:
                     }
                     return response
         
-        # Fallback response
         return "⚠️ در حال حاضر سرویس هوش مصنوعی در دسترس نیست. لطفاً کمی بعد تلاش کنید. 💎"
     
     async def signal_analysis(self, symbol: str, indicators: Dict, price: float, change: float, 
-                             candles: List[str], multi_timeframe: Dict, smart_money: Dict) -> str:
+                             candles: List[str], multi_timeframe: Dict) -> str:
         prompt = f"""
-        💎 **تحلیل کامل {symbol}**
+        تحلیل کامل {symbol}
         
-        📊 **داده‌های فعلی:**
+        داده‌های فعلی:
         - قیمت: ${price:,.4f}
         - تغییر: {change:+.2f}%
         
-        📈 **اندیکاتورها:**
+        اندیکاتورها:
         - RSI: {indicators.get('RSI', 50):.1f}
         - MACD: {'صعودی 🟢' if indicators.get('MACD', 0) > 0 else 'نزولی 🔴'}
         - ADX: {indicators.get('ADX', 20):.1f}
@@ -626,17 +475,15 @@ class AdvancedAI:
         - Bollinger Bands: {indicators.get('BB', 0.5):.2f}
         - حجم: {indicators.get('VOL', 1):.1f}x
         
-        🛡️ **سطوح کلیدی:**
+        سطوح کلیدی:
         - مقاومت: ${indicators.get('RES', 0):.2f}
         - حمایت: ${indicators.get('SUP', 0):.2f}
         
-        🕯️ **الگوهای شمعی:** {', '.join(candles) if candles else 'بدون الگوی خاص'}
+        الگوهای شمعی: {', '.join(candles) if candles else 'بدون الگوی خاص'}
         
-        🌍 **تحلیل چند تایم‌فریم:** {multi_timeframe}
+        تحلیل چند تایم‌فریم: {json.dumps(multi_timeframe, ensure_ascii=False)}
         
-        🧲 **تحلیل اسمارت مانی:** {smart_money}
-        
-        🎯 **لطفاً تحلیل کامل ارائه دهید شامل:**
+        لطفاً تحلیل کامل ارائه دهید شامل:
         1️⃣ وضعیت فعلی بازار و روند اصلی
         2️⃣ قدرت روند و مومنتوم
         3️⃣ بهترین نقاط ورود و خروج
@@ -653,35 +500,34 @@ class AdvancedAI:
     
     async def price_prediction(self, symbol: str, current_price: float, indicators: Dict) -> str:
         prompt = f"""
-        🔮 **پیش‌بینی قیمت {symbol}**
+        پیش‌بینی قیمت {symbol}
         
-        💰 قیمت فعلی: ${current_price:,.2f}
+        قیمت فعلی: ${current_price:,.2f}
         
-        📊 وضعیت تکنیکال:
+        وضعیت تکنیکال:
         - RSI: {indicators.get('RSI', 50):.0f} ({'اشباع خرید' if indicators.get('RSI', 50) > 70 else 'اشباع فروش' if indicators.get('RSI', 50) < 30 else 'خنثی'})
         - روند: {'صعودی 🟢' if indicators.get('EMA7', 0) > indicators.get('EMA20', 0) else 'نزولی 🔴'}
         - قدرت روند (ADX): {indicators.get('ADX', 20):.0f}
         
-        🎯 **لطفاً پیش‌بینی دقیق عددی ارائه دهید برای:**
+        لطفاً پیش‌بینی دقیق عددی ارائه دهید برای:
         
-        1️⃣ **24 ساعت آینده:**
+        1️⃣ 24 ساعت آینده:
            - قیمت هدف: ? دلار
            - تغییر احتمالی: ?%
            - سناریوهای محتمل
         
-        2️⃣ **7 روز آینده:**
+        2️⃣ 7 روز آینده:
            - قیمت هدف: ? دلار
            - تغییر احتمالی: ?%
            - فاکتورهای تاثیرگذار
         
-        3️⃣ **30 روز آینده:**
+        3️⃣ 30 روز آینده:
            - قیمت هدف: ? دلار
            - تغییر احتمالی: ?%
            - تحلیل فاندامنتال
         
-        🔍 **عوامل کلیدی تاثیرگذار:**
+        عوامل کلیدی تاثیرگذار:
         - شرایط کلی بازار
-        - اخبار و رویدادها
         - حجم معاملات
         - احساسات بازار
         
@@ -692,35 +538,35 @@ class AdvancedAI:
     
     async def market_analysis(self, market_data: List[Dict]) -> str:
         prompt = f"""
-        🌍 **تحلیل کلی بازار کریپتو**
+        تحلیل کلی بازار کریپتو
         
-        📈 **وضعیت بازار:**
+        وضعیت بازار:
         {chr(10).join([f"- {item['symbol']}: ${item['price']:,.2f} ({item['change']:+.2f}%)" for item in market_data[:10]])}
         
-        🎯 **لطفاً تحلیل جامع ارائه دهید شامل:**
+        لطفاً تحلیل جامع ارائه دهید شامل:
         
-        1️⃣ **وضعیت کلی بازار:**
+        1️⃣ وضعیت کلی بازار:
            - روند غالب
            - قدرت بازار
            - حجم کلی
         
-        2️⃣ **ارزهای برتر:**
+        2️⃣ ارزهای برتر:
            - بهترین عملکردها
            - ضعیف‌ترین عملکردها
            - فرصت‌های معاملاتی
         
-        3️⃣ **تحلیل سکتورها:**
+        3️⃣ تحلیل سکتورها:
            - لایه ۱ (Bitcoin, Ethereum)
            - لایه ۲ (SOL, ADA, DOT)
            - دیفای (UNI, AAVE)
            - میم کوین‌ها
         
-        4️⃣ **پیش‌بینی کوتاه‌مدت:**
+        4️⃣ پیش‌بینی کوتاه‌مدت:
            - حرکت‌های احتمالی
            - سطوح کلیدی
            - ریسک‌های موجود
         
-        5️⃣ **توصیه‌های استراتژیک:**
+        5️⃣ توصیه‌های استراتژیک:
            - تخصیص سرمایه
            - مدیریت ریسک
            - زمان‌بندی معاملات
@@ -730,64 +576,30 @@ class AdvancedAI:
         
         return await self.ask(prompt, 1000)
     
-    async def news_analysis(self, headlines: List[Dict]) -> str:
-        prompt = f"""
-        📰 **تحلیل اخبار کریپتو**
-        
-        🔥 **آخرین اخبار:**
-        {chr(10).join([f"- {item['title']} ({item['source']})" for item in headlines[:8]])}
-        
-        🎯 **لطفاً تحلیل ارائه دهید شامل:**
-        
-        1️⃣ **تاثیر اخبار بر بازار:**
-           - اخبار مثبت
-           - اخبار منفی
-           - اخبار خنثی
-        
-        2️⃣ **تاثیر بر ارزهای خاص:**
-           - Bitcoin
-           - Ethereum
-           - سایر آلت‌کوین‌ها
-        
-        3️⃣ **واکنش بازار:**
-           - واکنش کوتاه‌مدت
-           - تاثیر بلندمدت
-           - فرصت‌های معاملاتی
-        
-        4️⃣ **توصیه‌های معاملاتی:**
-           - پوزیشن‌گیری
-           - مدیریت ریسک
-           - زمان‌بندی
-        
-        تحلیل باید مبتنی بر واقعیت و منطقی باشد.
-        """
-        
-        return await self.ask(prompt, 900)
-    
     async def technical_question(self, question: str, context: str = "") -> str:
         prompt = f"""
-        🤔 **سوال تکنیکال کاربر:**
+        سوال تکنیکال کاربر:
         {question}
         
-        {'📋 **کانتکست اضافی:**' + context if context else ''}
+        {'کانتکست اضافی:' + context if context else ''}
         
-        🎯 **لطفاً پاسخ کامل و حرفه‌ای ارائه دهید:**
+        لطفاً پاسخ کامل و حرفه‌ای ارائه دهید:
         
-        1️⃣ **تحلیل موضوع:**
+        1️⃣ تحلیل موضوع:
            - توضیح کامل مفهوم
            - مثال‌های عملی
            - کاربرد در معاملات
         
-        2️⃣ **توصیه‌های عملی:**
+        2️⃣ توصیه‌های عملی:
            - چگونه استفاده کنیم
            - ریسک‌های مربوطه
            - بهترین روش اجرا
         
-        3️⃣ **مثال‌های واقعی:**
+        3️⃣ مثال‌های واقعی:
            - از بازار فعلی
            - با اعداد واقعی
         
-        4️⃣ **نتیجه‌گیری:**
+        4️⃣ نتیجه‌گیری:
            - خلاصه نکات کلیدی
            - توصیه نهایی
         
@@ -798,10 +610,10 @@ class AdvancedAI:
     
     async def general_conversation(self, message: str) -> str:
         prompt = f"""
-        💬 **پیام کاربر:**
+        پیام کاربر:
         {message}
         
-        🎯 **به عنوان دستیار VIP پلاتینیوم پاسخ بده:**
+        به عنوان دستیار VIP پلاتینیوم پاسخ بده:
         
         - پاسخ باید فارسی خودمونی و دوستانه باشه
         - از شکلک‌های مناسب استفاده کن 🎯✨💎
@@ -818,7 +630,7 @@ class AdvancedAI:
 ai_engine = AdvancedAI()
 
 # ============================================================
-# 💱 ENHANCED EXCHANGE MANAGER
+# EXCHANGE MANAGER
 # ============================================================
 class ExchangeManager:
     def __init__(self):
@@ -836,9 +648,9 @@ class ExchangeManager:
                     'enableRateLimit': True,
                     'timeout': 30000
                 })
-                logger.info("✅ CoinEx exchange configured")
+                logger.info("CoinEx exchange configured")
             except Exception as e:
-                logger.error(f"❌ CoinEx setup error: {e}")
+                logger.error(f"CoinEx setup error: {e}")
         
         # Binance
         if cfg.binance_key and cfg.binance_sec:
@@ -849,21 +661,20 @@ class ExchangeManager:
                     'enableRateLimit': True,
                     'timeout': 30000
                 })
-                logger.info("✅ Binance exchange configured")
+                logger.info("Binance exchange configured")
             except Exception as e:
-                logger.error(f"❌ Binance setup error: {e}")
+                logger.error(f"Binance setup error: {e}")
         
-        # Default public exchange
+        # Default public exchange (Binance)
         try:
             self.exchanges['public'] = ccxt.binance({
                 'enableRateLimit': True,
                 'timeout': 30000
             })
-            logger.info("✅ Public exchange (Binance) configured")
+            logger.info("Public exchange (Binance) configured")
         except Exception as e:
-            logger.error(f"❌ Public exchange setup error: {e}")
+            logger.error(f"Public exchange setup error: {e}")
         
-        # Set active exchange
         self.active_exchange = next(iter(self.exchanges.values())) if self.exchanges else None
     
     def get_exchange(self, name: str = None):
@@ -871,6 +682,7 @@ class ExchangeManager:
             return self.exchanges[name]
         return self.active_exchange
     
+    @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10))
     async def fetch_ticker(self, symbol: str, exchange: str = None) -> Optional[Dict]:
         ex = self.get_exchange(exchange)
         if not ex:
@@ -879,4 +691,205 @@ class ExchangeManager:
         try:
             ticker = ex.fetch_ticker(symbol)
             return {
-                'symbol
+                'symbol': symbol,
+                'last': ticker.get('last', 0),
+                'high': ticker.get('high', 0),
+                'low': ticker.get('low', 0),
+                'open': ticker.get('open', 0),
+                'close': ticker.get('close', 0),
+                'volume': ticker.get('quoteVolume', 0),
+                'change': ticker.get('percentage', 0),
+                'bid': ticker.get('bid', 0),
+                'ask': ticker.get('ask', 0),
+                'timestamp': ticker.get('timestamp', int(time.time() * 1000))
+            }
+        except Exception as e:
+            logger.error(f"Error fetching ticker for {symbol}: {e}")
+            return None
+    
+    @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10))
+    async def fetch_ohlcv(self, symbol: str, timeframe: str = '1h', limit: int = 100, exchange: str = None) -> Optional[pd.DataFrame]:
+        ex = self.get_exchange(exchange)
+        if not ex:
+            return None
+        
+        try:
+            ohlcv = ex.fetch_ohlcv(symbol, timeframe, limit=limit)
+            if ohlcv and len(ohlcv) > 0:
+                df = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
+                df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
+                df.set_index('timestamp', inplace=True)
+                return df
+        except Exception as e:
+            logger.error(f"Error fetching OHLCV for {symbol} ({timeframe}): {e}")
+        
+        return None
+    
+    async def get_market_data(self, symbols: List[str] = None) -> List[Dict]:
+        if symbols is None:
+            symbols = cfg.symbols[:15]
+        
+        market_data = []
+        tasks = [self.fetch_ticker(symbol) for symbol in symbols]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        
+        for i, result in enumerate(results):
+            if isinstance(result, Exception) or result is None:
+                continue
+            
+            symbol = symbols[i]
+            market_data.append({
+                'symbol': symbol.replace('/USDT', ''),
+                'price': result['last'],
+                'change': result['change'],
+                'volume': result['volume'],
+                'high': result['high'],
+                'low': result['low']
+            })
+        
+        market_data.sort(key=lambda x: x['volume'], reverse=True)
+        return market_data
+    
+    async def get_top_movers(self, count: int = 5) -> Dict[str, List[Dict]]:
+        market_data = await self.get_market_data()
+        
+        sorted_by_change = sorted(market_data, key=lambda x: x['change'], reverse=True)
+        
+        return {
+            'gainers': sorted_by_change[:count],
+            'losers': sorted_by_change[-count:],
+            'most_volatile': sorted(market_data, key=lambda x: abs(x['change']), reverse=True)[:count]
+        }
+
+exchange_manager = ExchangeManager()
+
+# ============================================================
+# TECHNICAL INDICATORS
+# ============================================================
+class TechnicalAnalyzer:
+    @staticmethod
+    def calculate_all_indicators(df: pd.DataFrame) -> Tuple[Dict, List[str]]:
+        if df is None or len(df) < 50:
+            return {}, []
+        
+        try:
+            indicators = OrderedDict()
+            
+            close = df['close'].astype(float)
+            high = df['high'].astype(float)
+            low = df['low'].astype(float)
+            volume = df['volume'].astype(float)
+            
+            for period in [7, 14, 20, 50, 100, 200]:
+                indicators[f'EMA{period}'] = float(close.ewm(span=period, adjust=False).mean().iloc[-1])
+                indicators[f'SMA{period}'] = float(close.rolling(window=period).mean().iloc[-1])
+            
+            try:
+                delta = close.diff()
+                gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
+                loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
+                rs = gain / loss
+                indicators['RSI'] = float(100 - (100 / (1 + rs)).iloc[-1])
+            except:
+                indicators['RSI'] = 50.0
+            
+            try:
+                exp1 = close.ewm(span=12, adjust=False).mean()
+                exp2 = close.ewm(span=26, adjust=False).mean()
+                macd = exp1 - exp2
+                signal = macd.ewm(span=9, adjust=False).mean()
+                indicators['MACD'] = float(macd.iloc[-1])
+                indicators['MACD_SIGNAL'] = float(signal.iloc[-1])
+                indicators['MACD_HIST'] = float(macd.iloc[-1] - signal.iloc[-1])
+            except:
+                indicators['MACD'] = indicators['MACD_SIGNAL'] = indicators['MACD_HIST'] = 0.0
+            
+            try:
+                sma20 = close.rolling(window=20).mean()
+                std20 = close.rolling(window=20).std()
+                indicators['BB_UPPER'] = float(sma20.iloc[-1] + (std20.iloc[-1] * 2))
+                indicators['BB_MIDDLE'] = float(sma20.iloc[-1])
+                indicators['BB_LOWER'] = float(sma20.iloc[-1] - (std20.iloc[-1] * 2))
+                indicators['BB_PERCENT'] = float((close.iloc[-1] - indicators['BB_LOWER']) / (indicators['BB_UPPER'] - indicators['BB_LOWER']))
+            except:
+                indicators['BB_PERCENT'] = 0.5
+            
+            try:
+                avg_volume = volume.rolling(window=20).mean().iloc[-1]
+                indicators['VOLUME_RATIO'] = float(volume.iloc[-1] / avg_volume if avg_volume > 0 else 1)
+            except:
+                indicators['VOLUME_RATIO'] = 1.0
+            
+            try:
+                indicators['SUPPORT'] = float(low.rolling(window=20).min().iloc[-1])
+                indicators['RESISTANCE'] = float(high.rolling(window=20).max().iloc[-1])
+                indicators['PIVOT'] = float((high.iloc[-1] + low.iloc[-1] + close.iloc[-1]) / 3)
+            except:
+                indicators['SUPPORT'] = indicators['RESISTANCE'] = indicators['PIVOT'] = 0.0
+            
+            candle_patterns = TechnicalAnalyzer._detect_candle_patterns(df)
+            
+            return indicators, candle_patterns
+            
+        except Exception as e:
+            logger.error(f"Error calculating indicators: {e}")
+            return {}, []
+    
+    @staticmethod
+    def _detect_candle_patterns(df: pd.DataFrame) -> List[str]:
+        patterns = []
+        
+        if len(df) < 3:
+            return patterns
+        
+        try:
+            c1 = df.iloc[-3]
+            c2 = df.iloc[-2]
+            c3 = df.iloc[-1]
+            
+            def is_bullish(candle):
+                return candle['close'] > candle['open']
+            
+            def is_bearish(candle):
+                return candle['close'] < candle['open']
+            
+            def body_size(candle):
+                return abs(candle['close'] - candle['open'])
+            
+            def total_size(candle):
+                return candle['high'] - candle['low']
+            
+            def upper_shadow(candle):
+                return candle['high'] - max(candle['open'], candle['close'])
+            
+            def lower_shadow(candle):
+                return min(candle['open'], candle['close']) - candle['low']
+            
+            current_body = body_size(c3)
+            current_total = total_size(c3)
+            
+            if current_total > 0:
+                body_ratio = current_body / current_total
+                
+                if body_ratio < 0.3:
+                    patterns.append("کندل دوجی")
+                elif body_ratio > 0.7:
+                    patterns.append("کندل قدرتمند")
+                
+                if upper_shadow(c3) > current_body * 2:
+                    patterns.append("سایه بالایی بلند")
+                if lower_shadow(c3) > current_body * 2:
+                    patterns.append("سایه پایینی بلند")
+            
+            if is_bullish(c3) and body_size(c3) > body_size(c2) * 1.5:
+                patterns.append("بولیش قدرتمند")
+            elif is_bearish(c3) and body_size(c3) > body_size(c2) * 1.5:
+                patterns.append("بیریش قدرتمند")
+            
+            if is_bullish(c1) and is_bearish(c2) and is_bullish(c3) and c3['close'] > c1['close']:
+                patterns.append("الگوی ستاره صبحگاهی")
+            elif is_bearish(c1) and is_bullish(c2) and is_bearish(c3) and c3['close'] < c1['close']:
+                patterns.append("الگوی ستاره عصرگاهی")
+            
+            if is_bullish(c3) and c3['close'] > c3['open'] * 1.03:
+                patterns.append("مارابوزو ص
