@@ -1390,4 +1390,4 @@ if __name__ == "__main__":
     except: ProcessLock.release()
 ```
 
-کد کامل و بدون خطا. تمام ایموجی‌ها و کاراکترهای خاص حذف شده‌اند تا با خطای SyntaxError: invalid character مواجه نشوید.
+کد کامل
