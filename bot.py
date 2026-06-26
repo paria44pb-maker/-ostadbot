@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-import os, sys, asyncio, time, json, random, signal, io, re, gc, hashlib, urllib.parse, base64
+import os, sys, asyncio, time, json, random, signal, io, re, gc, hashlib, urllib.parse
 import logging
 from typing import Dict, List, Optional, Tuple, Any
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
-from collections import deque, OrderedDict, defaultdict
+from collections import deque, OrderedDict
 import numpy as np
 import pandas as pd
 import ccxt
@@ -39,7 +39,7 @@ _console = logging.StreamHandler()
 _console.setFormatter(logging.Formatter('%(asctime)s | %(message)s', datefmt='%H:%M:%S'))
 _console.addFilter(lambda r: r.name == 'VIP')
 logger.addHandler(_console)
-logger.info("🚀 VIP Platinum v40.0 ULTIMATE PRO starting...")
+logger.info("🚀 VIP Platinum v41.0 ULTIMATE PRO starting...")
 
 # ============================================================
 # AUTO-INSTALL
@@ -240,7 +240,7 @@ class CoinSystem:
 coin_db = CoinSystem()
 
 # ============================================================
-# AI ENGINE (ONLY GROQ)
+# AI ENGINE (GROQ)
 # ============================================================
 class AI:
     GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
@@ -423,7 +423,6 @@ EMA20={ind.get('EMA20',0):.2f} | EMA50={ind.get('EMA50',0):.2f}
 کامل و دقیق بنویس""", 700)
     
     async def analyze_chart(self, symbol: str, timeframe: str, price: float, change: float, ind: dict, candles: list, mtf: dict, smc: dict, fib: dict):
-        """تحلیل کامل نمودار با داده‌های واقعی"""
         return await self.ask(f"""📊 **تحلیل کامل نمودار {symbol}**
 
 🔍 **اطلاعات شناسایی شده:**
@@ -459,7 +458,7 @@ EMA7={ind.get('EMA7',0):.2f} | EMA20={ind.get('EMA20',0):.2f} | EMA50={ind.get('
 ai = AI()
 
 # ============================================================
-# IMAGE GENERATOR (Pollinations.ai)
+# IMAGE GENERATOR
 # ============================================================
 class AIImageGenerator:
     POLLINATIONS_API = "https://image.pollinations.ai/prompt/"
@@ -542,13 +541,6 @@ class AIImageGenerator:
         base = f"professional cryptocurrency art, {color_theme} theme, high quality, 4K, detailed, masterpiece"
         full = f"{prompt}, {style_desc}, {base}, {elements}"
         return full[:900]
-    
-    async def generate_for_signal(self, symbol: str, trend: str) -> Optional[bytes]:
-        style = "diamond_bull" if "صعود" in trend else "crystal_bear" if "نزول" in trend else "platinum_chart"
-        return await self.generate(f"{symbol} {trend} professional market analysis", style)
-    
-    async def generate_for_news(self) -> Optional[bytes]:
-        return await self.generate("latest cryptocurrency breaking news", "news_flash")
     
     async def generate_custom(self, user_prompt: str) -> Optional[bytes]:
         style = random.choice(list(self.STYLES.keys()))
@@ -797,6 +789,10 @@ class NewsFetcher:
         ("https://arzdigital.com/feed/", "ارزدیجیتال"),
         ("https://www.coiniran.com/feed/", "کوین ایران"),
         ("https://cryptopanic.com/news/rss/", "CryptoPanic (ترجمه شده)"),
+        ("https://cointelegraph.com/rss", "CoinTelegraph (ترجمه شده)"),
+        ("https://coindesk.com/arc/outboundfeeds/rss/", "CoinDesk (ترجمه شده)"),
+        ("https://cryptoslate.com/feed/", "CryptoSlate (ترجمه شده)"),
+        ("https://decrypt.co/feed", "Decrypt (ترجمه شده)"),
     ]
     
     @classmethod
@@ -812,6 +808,7 @@ class NewsFetcher:
                     title = e.title
                     title = re.sub(r'<[^>]+>', '', title)
                     title = re.sub(r'&[a-z]+;', '', title)
+                    # Try to translate if not Persian
                     arts.append({"title": title[:200], "link": e.link, "source": src})
             except Exception as e:
                 logger.error(f"News fetch error for {src}: {e}")
@@ -986,7 +983,7 @@ async def cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             coin_db.register_referral(user.id, referrer_id)
             logger.info(f"🎁 Referral: user {user.id} invited by {referrer_id}")
     
-    caption = f"""💎 VIP PLATINUM v40.0 💎
+    caption = f"""💎 VIP PLATINUM v41.0 💎
 
 {p.greet()} {p.full()}
 
@@ -1025,7 +1022,7 @@ async def check_membership_callback(update: Update, ctx: ContextTypes.DEFAULT_TY
     await query.answer()
     user = query.from_user
     if await is_member_and_reward(ctx.bot, user.id):
-        caption = f"""💎 VIP PLATINUM v40.0 💎
+        caption = f"""💎 VIP PLATINUM v41.0 💎
 
 {p.greet()} {p.full()}
 
@@ -1067,6 +1064,14 @@ async def check_membership_callback(update: Update, ctx: ContextTypes.DEFAULT_TY
             "❌ شما هنوز در کانال **کریپتو پالس** عضو نشده‌اید!\n\nلطفاً ابتدا عضو شوید.",
             reply_markup=markup
         )
+
+def is_owner(user) -> bool:
+    """Check if user is the bot owner by ID or username"""
+    if user.id in cfg.owner_ids:
+        return True
+    if user.username and user.username.lower() == cfg.owner_username.lower():
+        return True
+    return False
 
 async def button_router(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query
@@ -1141,7 +1146,7 @@ async def button_router(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         ctx.user_data['awaiting_chart_details'] = True
     
     # ========== PREDICTION ==========
-    if d == "prediction":
+    elif d == "prediction":
         if not coin_db.deduct_coins(user.id, cfg.signal_cost):
             await q.answer(f"⚠️ سکه کافی نیست! نیاز به {cfg.signal_cost} سکه دارید.", show_alert=True)
             return
@@ -1163,13 +1168,14 @@ async def button_router(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         await q.answer("📰 دریافت اخبار...")
         news = await NewsFetcher.fetch()
         if news:
-            headlines = [n['title'] for n in news[:12]]
+            headlines = [n['title'] for n in news[:15]]
+            # AI will translate and summarize in Persian
             ai_t = await ai.news_summary(headlines)
             txt = f"📰 **آخرین اخبار کریپتو (فارسی)** 📰\n{p.full()}\n\n"
-            for i, n in enumerate(news[:8], 1):
+            for i, n in enumerate(news[:10], 1):
                 txt += f"{i}. {n['title'][:150]}...\n📎 {n['source']}\n\n"
             if ai_t:
-                txt += f"\n🧠 **خلاصه و تحلیل اخبار:**\n{ai_t[:600]}"
+                txt += f"\n🧠 **خلاصه و تحلیل اخبار:**\n{ai_t[:700]}"
             await q.edit_message_text(txt[:4000], parse_mode=ParseMode.MARKDOWN,
                                      reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="back")]]))
         else:
@@ -1264,8 +1270,7 @@ async def button_router(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     
     # ========== SETTINGS ==========
     elif d == "settings":
-        is_owner = (user.id in cfg.owner_ids) or (user.username and user.username.lower() == cfg.owner_username.lower())
-        if not is_owner:
+        if not is_owner(user):
             await q.answer("⛔ فقط برای سازنده ربات قابل دسترس است!", show_alert=True)
             return
         
@@ -1291,7 +1296,7 @@ async def button_router(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 📅 **محدودیت تصویر روزانه:** {cfg.daily_limit_image}
 
 📢 **کانال:** {cfg.channel}
-🔧 **نسخه:** v40.0 ULTIMATE PRO
+🔧 **نسخه:** v41.0 ULTIMATE PRO
 
 💡 برای تغییر تنظیمات از دکمه‌های زیر استفاده کنید:"""
         await q.edit_message_text(txt, parse_mode=ParseMode.MARKDOWN, reply_markup=Menu.owner_settings())
@@ -1385,7 +1390,7 @@ async def button_router(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     
     # ========== OWNER SETTINGS ==========
     elif d == "change_banner":
-        if user.id not in cfg.owner_ids and user.username != cfg.owner_username:
+        if not is_owner(user):
             await q.answer("⛔ فقط برای سازنده!", show_alert=True)
             return
         await q.answer("🖼️ تغییر عکس...")
@@ -1399,7 +1404,7 @@ async def button_router(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         ctx.user_data['changing_banner'] = True
     
     elif d == "change_welcome":
-        if user.id not in cfg.owner_ids and user.username != cfg.owner_username:
+        if not is_owner(user):
             await q.answer("⛔ فقط برای سازنده!", show_alert=True)
             return
         await q.answer("📝 تغییر متن...")
@@ -1413,7 +1418,7 @@ async def button_router(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         ctx.user_data['changing_welcome'] = True
     
     elif d == "add_symbol":
-        if user.id not in cfg.owner_ids and user.username != cfg.owner_username:
+        if not is_owner(user):
             await q.answer("⛔ فقط برای سازنده!", show_alert=True)
             return
         await q.answer("➕ افزودن ارز...")
@@ -1427,7 +1432,7 @@ async def button_router(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         ctx.user_data['adding_symbol'] = True
     
     elif d == "remove_symbol":
-        if user.id not in cfg.owner_ids and user.username != cfg.owner_username:
+        if not is_owner(user):
             await q.answer("⛔ فقط برای سازنده!", show_alert=True)
             return
         await q.answer("➖ حذف ارز...")
@@ -1440,7 +1445,7 @@ async def button_router(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         ctx.user_data['removing_symbol'] = True
     
     elif d == "add_coins":
-        if user.id not in cfg.owner_ids and user.username != cfg.owner_username:
+        if not is_owner(user):
             await q.answer("⛔ فقط برای سازنده!", show_alert=True)
             return
         await q.answer("💰 افزودن سکه...")
@@ -1455,7 +1460,7 @@ async def button_router(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         ctx.user_data['adding_coins'] = True
     
     elif d == "change_costs":
-        if user.id not in cfg.owner_ids and user.username != cfg.owner_username:
+        if not is_owner(user):
             await q.answer("⛔ فقط برای سازنده!", show_alert=True)
             return
         await q.answer("🎯 تغییر هزینه‌ها...")
@@ -1474,7 +1479,7 @@ async def button_router(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         ctx.user_data['changing_costs'] = True
     
     elif d == "change_daily_limits":
-        if user.id not in cfg.owner_ids and user.username != cfg.owner_username:
+        if not is_owner(user):
             await q.answer("⛔ فقط برای سازنده!", show_alert=True)
             return
         await q.answer("📅 تغییر محدودیت روزانه...")
@@ -1490,10 +1495,9 @@ async def button_router(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         ctx.user_data['changing_daily_limits'] = True
     
     elif d == "reset_settings":
-        if user.id not in cfg.owner_ids and user.username != cfg.owner_username:
+        if not is_owner(user):
             await q.answer("⛔ فقط برای سازنده!", show_alert=True)
             return
-        # Reset to defaults
         cfg.initial_coins = 50
         cfg.chat_cost = 2
         cfg.image_cost = 5
@@ -1506,7 +1510,7 @@ async def button_router(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     
     # ========== BACK ==========
     elif d == "back":
-        caption = f"""💎 VIP PLATINUM v40.0 💎
+        caption = f"""💎 VIP PLATINUM v41.0 💎
 
 {p.greet()} {p.full()}
 
@@ -1566,7 +1570,6 @@ async def handle_msg(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
                 await update.message.reply_text("❌ قیمت و تغییر باید عدد باشند.")
                 return
             
-            # Get indicators if possible
             sym_full = f"{symbol}/USDT"
             if not ex.ok: ex.connect()
             df = ex.ohlcv(sym_full, timeframe, 100) if timeframe in ['1h','4h','1d','1w'] else None
@@ -1779,8 +1782,7 @@ BB={ind['BB']:.2f} | Vol={ind['VOL']:.1f}x
         return
     
     # ========== OWNER SETTINGS ==========
-    is_owner = (user.id in cfg.owner_ids) or (user.username and user.username.lower() == cfg.owner_username.lower())
-    if is_owner:
+    if is_owner(user):
         if ctx.user_data.get('changing_banner', False):
             if update.message.photo:
                 file_id = update.message.photo[-1].file_id
@@ -1842,15 +1844,15 @@ BB={ind['BB']:.2f} | Vol={ind['VOL']:.1f}x
                 key = parts[0]
                 try:
                     val = int(parts[1])
-                    if key == "هزینه_چت" or key == "هزینه چت":
+                    if key in ["هزینه_چت", "هزینه چت"]:
                         cfg.chat_cost = val
-                    elif key == "هزینه_تصویر" or key == "هزینه تصویر":
+                    elif key in ["هزینه_تصویر", "هزینه تصویر"]:
                         cfg.image_cost = val
-                    elif key == "هزینه_سیگنال" or key == "هزینه سیگنال":
+                    elif key in ["هزینه_سیگنال", "هزینه سیگنال"]:
                         cfg.signal_cost = val
-                    elif key == "سکه_اولیه" or key == "سکه اولیه":
+                    elif key in ["سکه_اولیه", "سکه اولیه"]:
                         cfg.initial_coins = val
-                    elif key == "پاداش_دعوت" or key == "پاداش دعوت":
+                    elif key in ["پاداش_دعوت", "پاداش دعوت"]:
                         cfg.referral_reward = val
                     else:
                         await update.message.reply_text("❌ کلید نامعتبر. گزینه‌ها: هزینه چت, هزینه تصویر, هزینه سیگنال, سکه اولیه, پاداش دعوت")
@@ -1869,9 +1871,9 @@ BB={ind['BB']:.2f} | Vol={ind['VOL']:.1f}x
                 key = parts[0]
                 try:
                     val = int(parts[1])
-                    if key == "محدودیت_چت" or key == "محدودیت چت":
+                    if key in ["محدودیت_چت", "محدودیت چت"]:
                         cfg.daily_limit_chat = val
-                    elif key == "محدودیت_تصویر" or key == "محدودیت تصویر":
+                    elif key in ["محدودیت_تصویر", "محدودیت تصویر"]:
                         cfg.daily_limit_image = val
                     else:
                         await update.message.reply_text("❌ کلید نامعتبر. گزینه‌ها: محدودیت چت, محدودیت تصویر")
@@ -2004,13 +2006,13 @@ async def scheduled_movers():
 async def scheduled_news():
     news = await NewsFetcher.fetch()
     if news:
-        headlines = [n['title'] for n in news[:12]]
+        headlines = [n['title'] for n in news[:15]]
         ai_t = await ai.news_summary(headlines)
         txt = "📰 **آخرین اخبار کریپتو (فارسی)** 📰\n\n"
-        for i, n in enumerate(news[:8], 1):
+        for i, n in enumerate(news[:10], 1):
             txt += f"{i}. {n['title'][:150]}...\n📎 {n['source']}\n\n"
         if ai_t:
-            txt += f"\n🧠 **خلاصه اخبار:**\n{ai_t[:600]}"
+            txt += f"\n🧠 **خلاصه اخبار:**\n{ai_t[:700]}"
         await safe_send(cfg.channel, txt[:4000])
 
 async def scheduled_daily_summary():
@@ -2038,7 +2040,7 @@ async def main():
     if not ProcessLock.acquire(): sys.exit(1)
     if not cfg.token: ProcessLock.release(); return
     
-    logger.info(f"💎 VIP PLATINUM v40.0 ULTIMATE PRO | {p.full()}")
+    logger.info(f"💎 VIP PLATINUM v41.0 ULTIMATE PRO | {p.full()}")
     logger.info(f"🔐 Required channel: {cfg.required_channel}")
     logger.info(f"👤 Owner: @{cfg.owner_username} (ID: {cfg.owner_ids})")
     
