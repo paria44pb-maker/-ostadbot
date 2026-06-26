@@ -4,7 +4,7 @@
 import os, sys, asyncio, time, json, random, signal, io, re, gc, hashlib, urllib.parse
 import logging
 from typing import Dict, List, Optional, Tuple, Any
-from dataclasses import dataclass, field, asdict
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from collections import deque, OrderedDict, defaultdict
 import numpy as np
@@ -39,7 +39,7 @@ _console = logging.StreamHandler()
 _console.setFormatter(logging.Formatter('%(asctime)s | %(message)s', datefmt='%H:%M:%S'))
 _console.addFilter(lambda r: r.name == 'VIP')
 logger.addHandler(_console)
-logger.info("🚀 VIP Platinum v38.0 ULTIMATE PRO starting...")
+logger.info("🚀 VIP Platinum v39.0 ULTIMATE PRO starting...")
 
 # ============================================================
 # AUTO-INSTALL
@@ -84,7 +84,9 @@ class Config:
     token: str = os.getenv("TELEGRAM_BOT_TOKEN", "")
     channel: str = os.getenv("CHANNEL_ID", "@CryptoPulse606")
     required_channel: str = "@CryptoPulse606"
-    owner_ids: List[int] = field(default_factory=lambda: [7225279768])  # Will add @Amir92aa ID later
+    owner_username: str = "Amir92aa"
+    owner_phone: str = "00989141406155"
+    owner_ids: List[int] = field(default_factory=lambda: [7225279768])  # known owner ID
     groq_key: str = os.getenv("GROQ_API_KEY", "")
     gemini_key: str = os.getenv("GEMINI_API_KEY", "")
     coinex_key: str = os.getenv("COINEX_API_KEY", "")
@@ -116,6 +118,7 @@ class Config:
     chat_cost: int = 2
     image_cost: int = 5
     signal_cost: int = 1
+    referral_reward: int = 10  # coins for both referrer and new user
 
 cfg = Config()
 
@@ -171,12 +174,14 @@ class Persian:
 p = Persian()
 
 # ============================================================
-# COIN SYSTEM (in-memory with persistence)
+# COIN SYSTEM (with referral)
 # ============================================================
 class CoinSystem:
-    def __init__(self, data_file="user_coins.json"):
+    def __init__(self, data_file="user_coins.json", referral_file="referrals.json"):
         self.data_file = data_file
+        self.referral_file = referral_file
         self.coins = {}
+        self.referrals = {}  # {user_id: referrer_id}
         self.load()
     
     def load(self):
@@ -186,11 +191,19 @@ class CoinSystem:
                     self.coins = json.load(f)
         except:
             self.coins = {}
+        try:
+            if os.path.exists(self.referral_file):
+                with open(self.referral_file, 'r') as f:
+                    self.referrals = json.load(f)
+        except:
+            self.referrals = {}
     
     def save(self):
         try:
             with open(self.data_file, 'w') as f:
                 json.dump(self.coins, f)
+            with open(self.referral_file, 'w') as f:
+                json.dump(self.referrals, f)
         except:
             pass
     
@@ -209,6 +222,24 @@ class CoinSystem:
             self.save()
             return True
         return False
+    
+    def register_referral(self, new_user_id: int, referrer_id: int):
+        """Register that new_user was invited by referrer"""
+        nu = str(new_user_id)
+        if nu in self.referrals:
+            return False  # already registered
+        self.referrals[nu] = str(referrer_id)
+        # Give rewards
+        self.add_coins(new_user_id, cfg.referral_reward)
+        self.add_coins(referrer_id, cfg.referral_reward)
+        self.save()
+        return True
+    
+    def get_referrer(self, user_id: int) -> Optional[int]:
+        uid = str(user_id)
+        if uid in self.referrals:
+            return int(self.referrals[uid])
+        return None
 
 coin_db = CoinSystem()
 
@@ -218,7 +249,6 @@ coin_db = CoinSystem()
 class AI:
     GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
     GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent"
-    IMAGE_GEN_URL = "http://sdxl-artist.railway.internal:8000/generate/"
     
     SYS = """تو VIP پلاتینیوم هستی، حرفه‌ای‌ترین تحلیلگر کریپتو و دستیار هوشمند.
 فقط به فارسی طبیعی و روان صحبت کن.
@@ -290,23 +320,6 @@ class AI:
             self._conversations[user_id].append(f"دستیار: {response[:200]}")
         return response or "در حال پردازش... لطفاً دوباره بپرسید."
     
-    async def generate_image(self, prompt: str) -> Optional[bytes]:
-        try:
-            # Add Persian style enhancement
-            enhanced_prompt = f"{prompt}، سبک حرفه‌ای و زیبا، با کیفیت بالا"
-            payload = {"prompt": enhanced_prompt}
-            async with self._client as client:
-                resp = await client.post(self.IMAGE_GEN_URL, json=payload, timeout=120.0)
-                if resp.status_code == 200:
-                    return resp.content
-                else:
-                    logger.error(f"Image gen error: {resp.status_code}")
-                    return None
-        except Exception as e:
-            logger.error(f"Image gen exception: {e}")
-            return None
-    
-    # Advanced prediction with full technical analysis
     async def advanced_prediction(self, symbol, price, ind, candles, mtf, fib_levels, smc):
         return await self.ask(f"""🔮 پیش‌بینی دقیق قیمت {symbol} — قیمت فعلی: {price:,.2f}$
 
@@ -427,7 +440,123 @@ EMA20={ind.get('EMA20',0):.2f} | EMA50={ind.get('EMA50',0):.2f}
 ai = AI()
 
 # ============================================================
-# EXCHANGE
+# IMAGE GENERATOR (using Pollinations.ai)
+# ============================================================
+class AIImageGenerator:
+    """🎨 تولید تصاویر یونیک با هوش مصنوعی Pollinations.ai"""
+    
+    POLLINATIONS_API = "https://image.pollinations.ai/prompt/"
+    
+    STYLES = {
+        "platinum_chart": "luxurious platinum and silver trading chart, elegant financial theme, dark background, 4K, platinum particles",
+        "diamond_bull": "diamond bull with platinum horns, green energy aura, charging through crypto market, epic, 8K",
+        "crystal_bear": "crystal ice bear with platinum claws, dramatic crypto market scene, 4K",
+        "golden_whale": "magnificent golden whale swimming in platinum ocean, magical, epic, 8K",
+        "news_flash": "breaking news hologram with platinum headlines, futuristic newsroom, 4K",
+        "moon_rocket": "platinum rocket with Bitcoin logo flying to the moon, diamond stars, 4K",
+        "abstract_crypto": "abstract platinum crypto art, blockchain network, futuristic geometry, 4K",
+        "trading_floor": "professional trading floor with holographic displays, platinum theme, 4K",
+        "market_surge": "green arrow breaking through platinum ceiling, crypto coins rising, 4K",
+        "market_drop": "red arrow falling through platinum floor, dramatic scene, 4K",
+        "ai_analysis": "AI robot analyzing platinum charts, futuristic professional theme, 4K",
+        "global_crypto": "world map with platinum cryptocurrency connections, digital theme, 4K",
+        "defi_world": "DeFi ecosystem with platinum connections, professional visualization, 4K",
+        "nft_showcase": "NFT art gallery with platinum frames, digital artwork, 4K",
+        "blockchain_city": "futuristic blockchain city with platinum buildings, 4K",
+        "crystal_ball": "crystal ball showing crypto future, platinum base, mystical, 4K"
+    }
+    
+    COLOR_THEMES = [
+        "platinum and silver", "diamond and gold", "crystal and blue",
+        "platinum and emerald", "silver and sapphire", "diamond and ruby",
+        "platinum and amethyst", "crystal and gold", "silver and jade"
+    ]
+    
+    def __init__(self):
+        self.enabled = True
+        self.generation_count = 0
+        self.used_prompts = deque(maxlen=200)
+        self.used_styles = deque(maxlen=30)
+        self.used_themes = deque(maxlen=15)
+    
+    async def generate(self, prompt: str, style: str = None, width: int = 1024, height: int = 1024) -> Optional[bytes]:
+        """🎨 تولید تصویر یونیک (هر بار متفاوت)"""
+        
+        # انتخاب سبک تصادفی
+        if not style:
+            available_styles = [s for s in self.STYLES.keys() if s not in self.used_styles]
+            if not available_styles:
+                available_styles = list(self.STYLES.keys())
+            style = random.choice(available_styles)
+        
+        # انتخاب تم رنگی تصادفی
+        available_themes = [t for t in self.COLOR_THEMES if t not in self.used_themes]
+        if not available_themes:
+            available_themes = self.COLOR_THEMES
+        color_theme = random.choice(available_themes)
+        
+        # عناصر یونیک برای جلوگیری از تکرار
+        unique_elements = [
+            f"unique_seed_{random.randint(10000, 99999)}",
+            f"variation_{random.choice('ABCDEFGHIJ')}_{random.randint(1, 1000)}",
+            f"style_variant_{random.randint(1, 500)}",
+            f"color_shift_{random.random():.4f}",
+            f"pattern_offset_{random.randint(0, 720)}",
+            f"time_stamp_{int(time.time() * 1000)}"
+        ]
+        
+        # ساخت پرامپت نهایی
+        final_prompt = self._build_prompt(prompt, style, color_theme, unique_elements)
+        
+        # جلوگیری از تکرار پرامپت
+        prompt_hash = hashlib.md5(final_prompt.encode()).hexdigest()
+        if prompt_hash in self.used_prompts:
+            final_prompt += f" extra_unique_{time.time_ns()}"
+        
+        self.used_prompts.append(prompt_hash)
+        self.used_styles.append(style)
+        self.used_themes.append(color_theme)
+        
+        try:
+            encoded_prompt = urllib.parse.quote(final_prompt)
+            url = f"{self.POLLINATIONS_API}{encoded_prompt}?width={width}&height={height}&nologo=true&seed={random.randint(1, 999999)}"
+            
+            async with aiohttp.ClientSession() as session:
+                async with session.get(url, timeout=aiohttp.ClientTimeout(total=90)) as response:
+                    if response.status == 200:
+                        self.generation_count += 1
+                        logger.info(f"🎨 تصویر #{self.generation_count} | استایل: {style} | تم: {color_theme}")
+                        return await response.read()
+        except Exception as e:
+            logger.error(f"🎨 خطا: {e}")
+        return None
+    
+    def _build_prompt(self, prompt: str, style: str, color_theme: str, unique_elements: List[str]) -> str:
+        """ساخت پرامپت کامل با جزئیات"""
+        style_desc = self.STYLES.get(style, self.STYLES["platinum_chart"])
+        elements = " | ".join(random.sample(unique_elements, random.randint(3, 5)))
+        base = f"professional cryptocurrency art, {color_theme} theme, high quality, 4K, detailed, masterpiece"
+        full = f"{prompt}, {style_desc}, {base}, {elements}"
+        return full[:900]  # محدودیت طول پرامپت
+    
+    async def generate_for_signal(self, symbol: str, trend: str) -> Optional[bytes]:
+        """تولید تصویر برای سیگنال معاملاتی"""
+        style = "diamond_bull" if "صعود" in trend else "crystal_bear" if "نزول" in trend else "platinum_chart"
+        return await self.generate(f"{symbol} {trend} professional market analysis", style)
+    
+    async def generate_for_news(self) -> Optional[bytes]:
+        """تولید تصویر برای اخبار"""
+        return await self.generate("latest cryptocurrency breaking news", "news_flash")
+    
+    async def generate_custom(self, user_prompt: str) -> Optional[bytes]:
+        """تولید تصویر سفارشی بر اساس درخواست کاربر"""
+        style = random.choice(list(self.STYLES.keys()))
+        return await self.generate(user_prompt, style)
+
+img_gen = AIImageGenerator()
+
+# ============================================================
+# EXCHANGE (CoinEx)
 # ============================================================
 class Exchange:
     def __init__(self):
@@ -651,19 +780,19 @@ class SignalGen:
 sig_gen = SignalGen()
 
 # ============================================================
-# NEWS FETCHER (Persian friendly)
+# NEWS FETCHER (Fully Persian)
 # ============================================================
 class NewsFetcher:
     _cache = {}
     _dur = 7200
     _srcs = [
+        ("https://arzdigital.com/feed/", "ارزدیجیتال"),
+        ("https://www.coiniran.com/feed/", "کوین ایران"),
         ("https://cryptopanic.com/news/rss/", "CryptoPanic"),
         ("https://cointelegraph.com/rss", "CoinTelegraph"),
         ("https://coindesk.com/arc/outboundfeeds/rss/", "CoinDesk"),
         ("https://cryptoslate.com/feed/", "CryptoSlate"),
         ("https://decrypt.co/feed", "Decrypt"),
-        ("https://arzdigital.com/feed/", "ارزدیجیتال"),
-        ("https://www.coiniran.com/feed/", "کوین ایران"),
     ]
     
     @classmethod
@@ -676,7 +805,9 @@ class NewsFetcher:
             try:
                 feed = feedparser.parse(url)
                 for e in feed.entries[:8]:
-                    arts.append({"title": e.title, "link": e.link, "source": src})
+                    title = e.title
+                    # If title is not Persian, we keep it but AI will translate later
+                    arts.append({"title": title, "link": e.link, "source": src})
             except: pass
         cls._cache = {"ts": now, "data": arts}
         logger.info(f"📰 News fetched: {len(arts)}")
@@ -785,7 +916,8 @@ class Menu:
              InlineKeyboardButton("💰 معامله دمو", callback_data="demo_trade")],
             [InlineKeyboardButton("📈 بهترین‌ها", callback_data="movers"),
              InlineKeyboardButton("😱 ترس و طمع", callback_data="fear_greed")],
-            [InlineKeyboardButton("🪙 موجودی سکه", callback_data="balance")],
+            [InlineKeyboardButton("🪙 موجودی سکه", callback_data="balance"),
+             InlineKeyboardButton("🎁 دعوت از دوستان", callback_data="referral")],
         ])
     
     @staticmethod
@@ -820,6 +952,15 @@ async def is_member_and_reward(bot, user_id: int) -> bool:
 # ============================================================
 async def cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
+    # Check if there's a referrer in the start parameter (e.g., /start?ref=123)
+    args = ctx.args
+    referrer_id = None
+    if args and args[0].startswith('ref='):
+        try:
+            referrer_id = int(args[0].split('=')[1])
+        except:
+            pass
+
     if not await is_member_and_reward(ctx.bot, user.id):
         channel_link = f"https://t.me/{cfg.required_channel.replace('@','')}"
         markup = InlineKeyboardMarkup([
@@ -832,7 +973,13 @@ async def cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         )
         return
     
-    caption = f"""💎 VIP PLATINUM v38.0 💎
+    # Handle referral
+    if referrer_id and referrer_id != user.id:
+        if coin_db.get_referrer(user.id) is None:
+            coin_db.register_referral(user.id, referrer_id)
+            logger.info(f"🎁 Referral: user {user.id} invited by {referrer_id}")
+    
+    caption = f"""💎 VIP PLATINUM v39.0 💎
 
 {p.greet()} {p.full()}
 
@@ -847,6 +994,7 @@ async def cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 💰 معامله دمو (بدون ریسک)
 📈 بهترین و بدترین ارزها
 😱 شاخص ترس و طمع
+🎁 دعوت از دوستان و دریافت سکه
 
 🪙 **سکه‌های شما:** {coin_db.get_balance(user.id)}
 💡 هر سکه = ۱ استفاده از خدمات
@@ -869,7 +1017,7 @@ async def check_membership_callback(update: Update, ctx: ContextTypes.DEFAULT_TY
     await query.answer()
     user = query.from_user
     if await is_member_and_reward(ctx.bot, user.id):
-        caption = f"""💎 VIP PLATINUM v38.0 💎
+        caption = f"""💎 VIP PLATINUM v39.0 💎
 
 {p.greet()} {p.full()}
 
@@ -884,6 +1032,7 @@ async def check_membership_callback(update: Update, ctx: ContextTypes.DEFAULT_TY
 💰 معامله دمو (بدون ریسک)
 📈 بهترین و بدترین ارزها
 😱 شاخص ترس و طمع
+🎁 دعوت از دوستان و دریافت سکه
 
 🪙 **سکه‌های شما:** {coin_db.get_balance(user.id)}
 💡 هر سکه = ۱ استفاده از خدمات
@@ -929,9 +1078,37 @@ async def button_router(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         await q.answer(f"🪙 موجودی سکه شما: {bal}", show_alert=True)
         return
     
+    # ========== REFERRAL ==========
+    if d == "referral":
+        bot_username = (await ctx.bot.get_me()).username
+        ref_link = f"https://t.me/{bot_username}?start=ref={user.id}"
+        txt = f"""🎁 **سیستم دعوت دوستان** 🎁
+
+با دعوت دوستان خود به ربات، سکه دریافت کنید!
+برای هر دوست جدیدی که با لینک دعوت شما عضو شود، **هر دو شما {cfg.referral_reward} سکه** دریافت می‌کنید.
+
+🔗 **لینک دعوت شما:**
+`{ref_link}`
+
+📤 این لینک را برای دوستان خود ارسال کنید.
+
+🪙 **سکه‌های شما:** {coin_db.get_balance(user.id)}
+"""
+        await q.edit_message_text(txt, parse_mode=ParseMode.MARKDOWN,
+                                 reply_markup=InlineKeyboardMarkup([
+                                     [InlineKeyboardButton("📋 کپی لینک", callback_data="copy_link")],
+                                     [InlineKeyboardButton("🔙 بازگشت", callback_data="back")]
+                                 ]))
+        return
+    
+    if d == "copy_link":
+        bot_username = (await ctx.bot.get_me()).username
+        ref_link = f"https://t.me/{bot_username}?start=ref={user.id}"
+        await q.answer(f"✅ لینک کپی شد: {ref_link}", show_alert=True)
+        return
+    
     # ========== PREDICTION (ADVANCED) ==========
     if d == "prediction":
-        # Check coins
         if not coin_db.deduct_coins(user.id, cfg.signal_cost):
             await q.answer(f"⚠️ سکه کافی نیست! نیاز به {cfg.signal_cost} سکه دارید.", show_alert=True)
             return
@@ -954,12 +1131,13 @@ async def button_router(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         news = await NewsFetcher.fetch()
         if news:
             headlines = [n['title'] for n in news[:12]]
+            # AI will summarize in Persian
             ai_t = await ai.news_summary(headlines)
-            txt = f"📰 **آخرین اخبار کریپتو** 📰\n\n"
+            txt = f"📰 **آخرین اخبار کریپتو (فارسی)** 📰\n\n"
             for i, n in enumerate(news[:8], 1):
                 txt += f"{i}. {n['title'][:150]}...\n📎 {n['source']}\n\n"
             if ai_t:
-                txt += f"\n🧠 **خلاصه و تحلیل اخبار:**\n{ai_t[:600]}"
+                txt += f"\n🧠 **خلاصه و تحلیل اخبار (فارسی):**\n{ai_t[:600]}"
             await q.edit_message_text(txt[:4000], parse_mode=ParseMode.MARKDOWN,
                                      reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="back")]]))
         else:
@@ -1054,13 +1232,16 @@ async def button_router(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     
     # ========== SETTINGS ==========
     elif d == "settings":
-        if user.id not in cfg.owner_ids:
+        # Check if user is owner: by ID or username or phone (we check owner_ids and username)
+        is_owner = (user.id in cfg.owner_ids) or (user.username and user.username.lower() == cfg.owner_username.lower())
+        if not is_owner:
             await q.answer("⛔ فقط برای سازنده ربات قابل دسترس است!", show_alert=True)
             return
         
         txt = f"""⚙️ **تنظیمات پلاتینیوم** ⚙️
 
-👤 **سازنده:** {cfg.owner_ids}
+👤 **سازنده:** @{cfg.owner_username} (ID: {cfg.owner_ids})
+📱 **شماره:** {cfg.owner_phone}
 🤖 **چت AI:** {'فعال' if cfg.enable_ai_chat else 'غیرفعال'}
 💎 **سیگنال‌ها:** فعال
 📰 **اخبار:** فعال
@@ -1074,9 +1255,10 @@ async def button_router(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 💸 **هزینه چت:** {cfg.chat_cost} سکه
 🎨 **هزینه تصویر:** {cfg.image_cost} سکه
 💎 **هزینه سیگنال:** {cfg.signal_cost} سکه
+🎁 **پاداش دعوت:** {cfg.referral_reward} سکه
 
 📢 **کانال:** {cfg.channel}
-🔧 **نسخه:** v38.0 ULTIMATE PRO
+🔧 **نسخه:** v39.0 ULTIMATE PRO
 
 💡 برای تغییر تنظیمات از دکمه‌های زیر استفاده کنید:"""
         await q.edit_message_text(txt, parse_mode=ParseMode.MARKDOWN, reply_markup=Menu.owner_settings())
@@ -1167,7 +1349,7 @@ async def button_router(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     
     # ========== OWNER SETTINGS ==========
     elif d == "change_banner":
-        if user.id not in cfg.owner_ids:
+        if user.id not in cfg.owner_ids and user.username != cfg.owner_username:
             await q.answer("⛔ فقط برای سازنده!", show_alert=True)
             return
         await q.answer("🖼️ تغییر عکس...")
@@ -1181,7 +1363,7 @@ async def button_router(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         ctx.user_data['changing_banner'] = True
     
     elif d == "change_welcome":
-        if user.id not in cfg.owner_ids:
+        if user.id not in cfg.owner_ids and user.username != cfg.owner_username:
             await q.answer("⛔ فقط برای سازنده!", show_alert=True)
             return
         await q.answer("📝 تغییر متن...")
@@ -1195,7 +1377,7 @@ async def button_router(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         ctx.user_data['changing_welcome'] = True
     
     elif d == "add_symbol":
-        if user.id not in cfg.owner_ids:
+        if user.id not in cfg.owner_ids and user.username != cfg.owner_username:
             await q.answer("⛔ فقط برای سازنده!", show_alert=True)
             return
         await q.answer("➕ افزودن ارز...")
@@ -1209,7 +1391,7 @@ async def button_router(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         ctx.user_data['adding_symbol'] = True
     
     elif d == "remove_symbol":
-        if user.id not in cfg.owner_ids:
+        if user.id not in cfg.owner_ids and user.username != cfg.owner_username:
             await q.answer("⛔ فقط برای سازنده!", show_alert=True)
             return
         await q.answer("➖ حذف ارز...")
@@ -1222,7 +1404,7 @@ async def button_router(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         ctx.user_data['removing_symbol'] = True
     
     elif d == "add_coins":
-        if user.id not in cfg.owner_ids:
+        if user.id not in cfg.owner_ids and user.username != cfg.owner_username:
             await q.answer("⛔ فقط برای سازنده!", show_alert=True)
             return
         await q.answer("💰 افزودن سکه...")
@@ -1238,7 +1420,7 @@ async def button_router(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     
     # ========== BACK ==========
     elif d == "back":
-        caption = f"""💎 VIP PLATINUM v38.0 💎
+        caption = f"""💎 VIP PLATINUM v39.0 💎
 
 {p.greet()} {p.full()}
 
@@ -1253,6 +1435,7 @@ async def button_router(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 💰 معامله دمو (بدون ریسک)
 📈 بهترین و بدترین ارزها
 😱 شاخص ترس و طمع
+🎁 دعوت از دوستان و دریافت سکه
 
 🪙 **سکه‌های شما:** {coin_db.get_balance(user.id)}
 💡 هر سکه = ۱ استفاده از خدمات
@@ -1405,7 +1588,7 @@ BB={ind['BB']:.2f} | Vol={ind['VOL']:.1f}x
     # ========== CREATE IMAGE ==========
     if ctx.user_data.get('awaiting_image', False):
         await update.message.reply_text("🎨 در حال ساخت تصویر... لطفاً صبر کنید.")
-        img_bytes = await ai.generate_image(text)
+        img_bytes = await img_gen.generate_custom(text)
         if img_bytes:
             await update.message.reply_photo(photo=img_bytes, caption=f"🎨 تصویر ساخته شده برای:\n{text[:200]}")
         else:
@@ -1465,7 +1648,8 @@ BB={ind['BB']:.2f} | Vol={ind['VOL']:.1f}x
         return
     
     # ========== OWNER SETTINGS ==========
-    if user.id in cfg.owner_ids:
+    is_owner = (user.id in cfg.owner_ids) or (user.username and user.username.lower() == cfg.owner_username.lower())
+    if is_owner:
         if ctx.user_data.get('changing_banner', False):
             if update.message.photo:
                 file_id = update.message.photo[-1].file_id
@@ -1507,7 +1691,6 @@ BB={ind['BB']:.2f} | Vol={ind['VOL']:.1f}x
             return
         
         if ctx.user_data.get('adding_coins', False):
-            # Format: "افزودن سکه [user_id] [amount]"
             parts = text.split()
             if len(parts) == 3 and parts[0] == "افزودن" and parts[1] == "سکه":
                 try:
@@ -1644,11 +1827,11 @@ async def scheduled_news():
     if news:
         headlines = [n['title'] for n in news[:12]]
         ai_t = await ai.news_summary(headlines)
-        txt = "📰 **آخرین اخبار کریپتو** 📰\n\n"
+        txt = "📰 **آخرین اخبار کریپتو (فارسی)** 📰\n\n"
         for i, n in enumerate(news[:8], 1):
             txt += f"{i}. {n['title'][:150]}...\n📎 {n['source']}\n\n"
         if ai_t:
-            txt += f"\n🧠 **خلاصه اخبار:**\n{ai_t[:600]}"
+            txt += f"\n🧠 **خلاصه اخبار (فارسی):**\n{ai_t[:600]}"
         await safe_send(cfg.channel, txt[:4000])
 
 async def scheduled_daily_summary():
@@ -1676,21 +1859,9 @@ async def main():
     if not ProcessLock.acquire(): sys.exit(1)
     if not cfg.token: ProcessLock.release(); return
     
-    # Add @Amir92aa to owner_ids by fetching its ID
-    try:
-        # We'll get the chat ID for @Amir92aa dynamically when the bot starts
-        # Since we don't have a bot instance yet, we'll do it later in the app
-        # For now, we add the numeric ID manually if known, or we'll fetch when possible
-        # The user said "09141406155" is a phone number, but we can't use that directly.
-        # We'll rely on the numeric ID 7225279768 and also allow the bot to add any user who uses /settings
-        # and has the username @Amir92aa. We can check in settings handler.
-        pass
-    except:
-        pass
-    
-    logger.info(f"💎 VIP PLATINUM v38.0 ULTIMATE PRO | {p.full()}")
+    logger.info(f"💎 VIP PLATINUM v39.0 ULTIMATE PRO | {p.full()}")
     logger.info(f"🔐 Required channel: {cfg.required_channel}")
-    logger.info(f"👤 Owners: {cfg.owner_ids}")
+    logger.info(f"👤 Owner: @{cfg.owner_username} (ID: {cfg.owner_ids})")
     
     ex.connect()
     req = HTTPXRequest(connect_timeout=60.0, read_timeout=60.0, write_timeout=60.0)
