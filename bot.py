@@ -240,7 +240,7 @@ class CoinSystem:
 coin_db = CoinSystem()
 
 # ============================================================
-# AI ENGINE (ONLY GROQ - removed Gemini)
+# AI ENGINE (ONLY GROQ)
 # ============================================================
 class AI:
     GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
@@ -422,28 +422,35 @@ EMA20={ind.get('EMA20',0):.2f} | EMA50={ind.get('EMA50',0):.2f}
 
 کامل و دقیق بنویس""", 700)
     
-    async def analyze_chart_image(self, symbol: str, timeframe: str, price_data: str, indicators: str) -> str:
-        """تحلیل کامل نمودار ارسالی با تشخیص ارز، تایم فریم، تحلیل تکنیکال و فاندامنتال"""
-        return await self.ask(f"""📊 **تحلیل کامل نمودار ارسالی**
+    async def analyze_chart(self, symbol: str, timeframe: str, price: float, change: float, ind: dict, candles: list, mtf: dict, smc: dict, fib: dict):
+        """تحلیل کامل نمودار با داده‌های واقعی"""
+        return await self.ask(f"""📊 **تحلیل کامل نمودار {symbol}**
 
-🔍 **تشخیص داده‌شده:**
+🔍 **اطلاعات شناسایی شده:**
 - ارز: {symbol}
 - تایم فریم: {timeframe}
+- قیمت فعلی: ${price:,.2f}
+- تغییر: {change:+.2f}%
 
-📈 **داده‌های قیمتی:**
-{price_data}
-
-📊 **اندیکاتورها و اسیلاتورها:**
-{indicators}
+📈 **داده‌های تکنیکال:**
+RSI={ind.get('RSI',50):.0f} | MACD={'صعودی' if ind.get('MACD',0)>0 else 'نزولی'}
+ADX={ind.get('ADX',20):.0f} | CCI={ind.get('CCI',0):.0f} | MFI={ind.get('MFI',50):.0f}
+BB%={ind.get('BB',0.5):.2f} | Vol={ind.get('VOL',1):.1f}x
+EMA7={ind.get('EMA7',0):.2f} | EMA20={ind.get('EMA20',0):.2f} | EMA50={ind.get('EMA50',0):.2f}
+حمایت={ind.get('SUP',0):.4f} | مقاومت={ind.get('RES',0):.4f}
+فیبوناچی: 236={fib.get('FIB236',0):.4f} | 382={fib.get('FIB382',0):.4f} | 618={fib.get('FIB618',0):.4f}
+الگوهای شمعی: {', '.join(candles) if candles else 'بدون الگو'}
+چندتایم‌فریم: {mtf}
+اسمارت مانی: {smc}
 
 🎯 **تحلیل کامل مورد نیاز:**
 
 1️⃣ **تشخیص روند اصلی:** صعودی، نزولی، خنثی
-2️⃣ **پرایس اکشن:** الگوهای شمعی، سطوح حمایت و مقاومت
+2️⃣ **پرایس اکشن:** تحلیل دقیق سطوح حمایت و مقاومت، الگوهای قیمتی
 3️⃣ **تحلیل تکنیکال:** اندیکاتورها، اسیلاتورها، میانگین‌ها
-4️⃣ **تحلیل فیبوناچی:** سطوح کلیدی فیبوناچی
+4️⃣ **تحلیل فیبوناچی:** سطوح کلیدی و بازگشتی
 5️⃣ **تحلیل فاندامنتال:** اخبار و رویدادهای مرتبط با این ارز
-6️⃣ **پیش‌بینی قیمت:** کوتاه‌مدت، میان‌مدت، بلندمدت
+6️⃣ **پیش‌بینی قیمت:** کوتاه‌مدت، میان‌مدت، بلندمدت با ذکر اعداد
 7️⃣ **نقاط ورود و خروج:** دقیق با حد ضرر و اهداف
 8️⃣ **نتیجه‌گیری نهایی:** بخریم، بفروشیم، صبر کنیم؟
 
@@ -601,7 +608,6 @@ class Exchange:
         except: return None
     
     def movers(self, n=20):
-        """Get top gainers and losers with accurate data"""
         mv = []
         if not self.ok: return {'up': [], 'dn': []}
         for sym in cfg.symbols:
@@ -782,7 +788,7 @@ class SignalGen:
 sig_gen = SignalGen()
 
 # ============================================================
-# NEWS FETCHER (Persian sources only)
+# NEWS FETCHER (Persian sources)
 # ============================================================
 class NewsFetcher:
     _cache = {}
@@ -803,7 +809,6 @@ class NewsFetcher:
             try:
                 feed = feedparser.parse(url)
                 for e in feed.entries[:10]:
-                    # Clean title - remove HTML entities
                     title = e.title
                     title = re.sub(r'<[^>]+>', '', title)
                     title = re.sub(r'&[a-z]+;', '', title)
@@ -930,7 +935,10 @@ class Menu:
             [InlineKeyboardButton("➕ افزودن ارز", callback_data="add_symbol"),
              InlineKeyboardButton("➖ حذف ارز", callback_data="remove_symbol")],
             [InlineKeyboardButton("💰 افزودن سکه به کاربر", callback_data="add_coins"),
-             [InlineKeyboardButton("🔙 بازگشت", callback_data="back")]],
+             InlineKeyboardButton("🎯 تغییر هزینه‌ها", callback_data="change_costs")],
+            [InlineKeyboardButton("📅 تغییر محدودیت روزانه", callback_data="change_daily_limits"),
+             InlineKeyboardButton("🔄 بازنشانی تنظیمات", callback_data="reset_settings")],
+            [InlineKeyboardButton("🔙 بازگشت", callback_data="back")],
         ])
 
 # ============================================================
@@ -947,21 +955,6 @@ async def is_member_and_reward(bot, user_id: int) -> bool:
         return False
     except:
         return False
-
-# ============================================================
-# CHART ANALYSIS FUNCTION
-# ============================================================
-async def analyze_chart_from_image(file_bytes: bytes) -> str:
-    """تحلیل نمودار از روی تصویر با استفاده از AI و تشخیص هوشمند"""
-    try:
-        # Try to identify symbol and timeframe from image or user input
-        # Since we can't actually read the image with OCR, we'll ask the user
-        # But we can use AI to analyze if we provide price data
-        # We'll implement a smarter approach with user input
-        return await ai.analyze_chart_image("نامشخص", "نامشخص", "داده‌های قیمتی از تصویر استخراج نشد", "داده‌های اندیکاتور موجود نیست")
-    except Exception as e:
-        logger.error(f"Chart analysis error: {e}")
-        return "❌ خطا در تحلیل نمودار. لطفاً دوباره تلاش کنید."
 
 # ============================================================
 # HANDLERS
@@ -1125,22 +1118,27 @@ async def button_router(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     
     # ========== CHART ANALYSIS ==========
     if d == "chart_analysis":
+        if not coin_db.deduct_coins(user.id, cfg.signal_cost):
+            await q.answer(f"⚠️ سکه کافی نیست! نیاز به {cfg.signal_cost} سکه دارید.", show_alert=True)
+            return
         await q.answer("📊 تحلیل نمودار...")
         await q.edit_message_text(
             "📊 **تحلیل نمودار با هوش مصنوعی** 📊\n\n"
-            "لطفاً عکس نمودار را به صورت فایل (عکس) ارسال کنید.\n\n"
-            "🔹 ربات به‌طور خودکار:\n"
-            "- ارز را تشخیص می‌دهد\n"
-            "- تایم فریم را تشخیص می‌دهد\n"
-            "- تحلیل تکنیکال کامل انجام می‌دهد\n"
-            "- فیبوناچی و اسیلاتورها را بررسی می‌کند\n"
-            "- پیش‌بینی قیمت ارائه می‌دهد\n"
-            "- نقاط ورود و خروج را مشخص می‌کند\n\n"
-            f"💸 هزینه: {cfg.signal_cost} سکه",
+            "لطفاً اطلاعات زیر را وارد کنید (هر کدام در یک خط):\n"
+            "1️⃣ **نام ارز** (مثلاً BTC)\n"
+            "2️⃣ **تایم فریم** (مثلاً 4h یا 1d)\n"
+            "3️⃣ **قیمت فعلی** (عدد)\n"
+            "4️⃣ **تغییر قیمت (درصد)** (عدد با علامت + یا -)\n\n"
+            "مثال:\n"
+            "`BTC`\n"
+            "`4h`\n"
+            "`45000`\n"
+            "`+2.5`\n\n"
+            "💡 پس از ارسال این اطلاعات، تحلیل کامل دریافت می‌کنید.",
             parse_mode=ParseMode.MARKDOWN,
             reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="back")]])
         )
-        ctx.user_data['awaiting_chart'] = True
+        ctx.user_data['awaiting_chart_details'] = True
     
     # ========== PREDICTION ==========
     if d == "prediction":
@@ -1289,6 +1287,8 @@ async def button_router(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 🎨 **هزینه تصویر:** {cfg.image_cost} سکه
 💎 **هزینه سیگنال:** {cfg.signal_cost} سکه
 🎁 **پاداش دعوت:** {cfg.referral_reward} سکه
+📅 **محدودیت چت روزانه:** {cfg.daily_limit_chat}
+📅 **محدودیت تصویر روزانه:** {cfg.daily_limit_image}
 
 📢 **کانال:** {cfg.channel}
 🔧 **نسخه:** v40.0 ULTIMATE PRO
@@ -1333,7 +1333,7 @@ async def button_router(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
                                  reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="back")]]))
         ctx.user_data['demo_mode'] = True
     
-    # ========== MOVERS (accurate) ==========
+    # ========== MOVERS ==========
     elif d == "movers":
         await q.answer("📈 دریافت بهترین‌ها...")
         if not ex.ok: ex.connect()
@@ -1385,8 +1385,7 @@ async def button_router(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     
     # ========== OWNER SETTINGS ==========
     elif d == "change_banner":
-        is_owner = (user.id in cfg.owner_ids) or (user.username and user.username.lower() == cfg.owner_username.lower())
-        if not is_owner:
+        if user.id not in cfg.owner_ids and user.username != cfg.owner_username:
             await q.answer("⛔ فقط برای سازنده!", show_alert=True)
             return
         await q.answer("🖼️ تغییر عکس...")
@@ -1400,8 +1399,7 @@ async def button_router(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         ctx.user_data['changing_banner'] = True
     
     elif d == "change_welcome":
-        is_owner = (user.id in cfg.owner_ids) or (user.username and user.username.lower() == cfg.owner_username.lower())
-        if not is_owner:
+        if user.id not in cfg.owner_ids and user.username != cfg.owner_username:
             await q.answer("⛔ فقط برای سازنده!", show_alert=True)
             return
         await q.answer("📝 تغییر متن...")
@@ -1415,8 +1413,7 @@ async def button_router(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         ctx.user_data['changing_welcome'] = True
     
     elif d == "add_symbol":
-        is_owner = (user.id in cfg.owner_ids) or (user.username and user.username.lower() == cfg.owner_username.lower())
-        if not is_owner:
+        if user.id not in cfg.owner_ids and user.username != cfg.owner_username:
             await q.answer("⛔ فقط برای سازنده!", show_alert=True)
             return
         await q.answer("➕ افزودن ارز...")
@@ -1430,8 +1427,7 @@ async def button_router(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         ctx.user_data['adding_symbol'] = True
     
     elif d == "remove_symbol":
-        is_owner = (user.id in cfg.owner_ids) or (user.username and user.username.lower() == cfg.owner_username.lower())
-        if not is_owner:
+        if user.id not in cfg.owner_ids and user.username != cfg.owner_username:
             await q.answer("⛔ فقط برای سازنده!", show_alert=True)
             return
         await q.answer("➖ حذف ارز...")
@@ -1444,8 +1440,7 @@ async def button_router(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         ctx.user_data['removing_symbol'] = True
     
     elif d == "add_coins":
-        is_owner = (user.id in cfg.owner_ids) or (user.username and user.username.lower() == cfg.owner_username.lower())
-        if not is_owner:
+        if user.id not in cfg.owner_ids and user.username != cfg.owner_username:
             await q.answer("⛔ فقط برای سازنده!", show_alert=True)
             return
         await q.answer("💰 افزودن سکه...")
@@ -1458,6 +1453,56 @@ async def button_router(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="settings")]])
         )
         ctx.user_data['adding_coins'] = True
+    
+    elif d == "change_costs":
+        if user.id not in cfg.owner_ids and user.username != cfg.owner_username:
+            await q.answer("⛔ فقط برای سازنده!", show_alert=True)
+            return
+        await q.answer("🎯 تغییر هزینه‌ها...")
+        await q.edit_message_text(
+            "🎯 **تغییر هزینه‌ها (سکه)** 🎯\n\n"
+            "لطفاً مقادیر جدید را به صورت زیر ارسال کنید:\n"
+            "`هزینه چت [عدد]`\n"
+            "`هزینه تصویر [عدد]`\n"
+            "`هزینه سیگنال [عدد]`\n"
+            "`سکه اولیه [عدد]`\n"
+            "`پاداش دعوت [عدد]`\n\n"
+            "مثال: `هزینه چت 3`",
+            parse_mode=ParseMode.MARKDOWN,
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="settings")]])
+        )
+        ctx.user_data['changing_costs'] = True
+    
+    elif d == "change_daily_limits":
+        if user.id not in cfg.owner_ids and user.username != cfg.owner_username:
+            await q.answer("⛔ فقط برای سازنده!", show_alert=True)
+            return
+        await q.answer("📅 تغییر محدودیت روزانه...")
+        await q.edit_message_text(
+            "📅 **تغییر محدودیت روزانه** 📅\n\n"
+            "لطفاً مقادیر جدید را به صورت زیر ارسال کنید:\n"
+            "`محدودیت چت [عدد]`\n"
+            "`محدودیت تصویر [عدد]`\n\n"
+            "مثال: `محدودیت چت 15`",
+            parse_mode=ParseMode.MARKDOWN,
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="settings")]])
+        )
+        ctx.user_data['changing_daily_limits'] = True
+    
+    elif d == "reset_settings":
+        if user.id not in cfg.owner_ids and user.username != cfg.owner_username:
+            await q.answer("⛔ فقط برای سازنده!", show_alert=True)
+            return
+        # Reset to defaults
+        cfg.initial_coins = 50
+        cfg.chat_cost = 2
+        cfg.image_cost = 5
+        cfg.signal_cost = 1
+        cfg.referral_reward = 10
+        cfg.daily_limit_chat = 10
+        cfg.daily_limit_image = 5
+        await q.answer("✅ تنظیمات به حالت اولیه بازنشانی شد!", show_alert=True)
+        await q.edit_message_text("✅ تنظیمات با موفقیت به حالت اولیه بازگشت.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="settings")]]))
     
     # ========== BACK ==========
     elif d == "back":
@@ -1508,88 +1553,56 @@ async def handle_msg(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"⚠️ لطفاً ابتدا در کانال **کریپتو پالس** عضو شوید:\n@{cfg.required_channel.replace('@','')}\n\nسپس /start را وارد کنید.")
         return
     
-    # ========== CHART ANALYSIS ==========
-    if ctx.user_data.get('awaiting_chart', False):
-        if update.message.photo:
-            if not coin_db.deduct_coins(user.id, cfg.signal_cost):
-                await update.message.reply_text(f"⚠️ سکه کافی نیست! نیاز به {cfg.signal_cost} سکه دارید.")
-                return
-            await update.message.reply_text("📊 در حال تحلیل نمودار... لطفاً صبر کنید.")
-            
-            # Get the photo file
-            photo = update.message.photo[-1]
-            file = await photo.get_file()
-            file_bytes = await file.download_as_bytearray()
-            
-            # Here we would use AI to analyze the chart
-            # Since we can't actually read the image with OCR, we ask user for details
-            await update.message.reply_text(
-                "📊 **تحلیل نمودار** 📊\n\n"
-                "لطفاً اطلاعات زیر را وارد کنید:\n"
-                "1️⃣ نام ارز (مثلاً BTC یا ETH)\n"
-                "2️⃣ تایم فریم (مثلاً 4h یا 1d)\n"
-                "3️⃣ قیمت فعلی\n"
-                "4️⃣ تغییر قیمت (درصد)\n\n"
-                "مثال: `BTC 4h 45000 +2.5`\n\n"
-                "💡 پس از ارسال این اطلاعات، تحلیل کامل دریافت می‌کنید."
-            )
-            ctx.user_data['awaiting_chart_details'] = True
-            ctx.user_data['chart_image'] = file_bytes
-            return
-        else:
-            await update.message.reply_text("❌ لطفاً یک عکس از نمودار ارسال کنید.")
-            return
-    
+    # ========== CHART DETAILS ==========
     if ctx.user_data.get('awaiting_chart_details', False):
-        parts = text.split()
-        if len(parts) >= 4:
-            symbol = parts[0].upper()
-            timeframe = parts[1]
-            price = parts[2]
-            change = parts[3]
+        lines = text.strip().split('\n')
+        if len(lines) >= 4:
+            symbol = lines[0].strip().upper()
+            timeframe = lines[1].strip()
+            try:
+                price = float(lines[2].strip())
+                change = float(lines[3].strip().replace('%', ''))
+            except ValueError:
+                await update.message.reply_text("❌ قیمت و تغییر باید عدد باشند.")
+                return
             
             # Get indicators if possible
             sym_full = f"{symbol}/USDT"
             if not ex.ok: ex.connect()
             df = ex.ohlcv(sym_full, timeframe, 100) if timeframe in ['1h','4h','1d','1w'] else None
+            ind = {}
+            candles = []
+            mtf = {}
+            smc = {}
+            fib = {}
             if df is not None:
                 ind, candles = ind_calc.calc(df)
-                ind_text = f"""RSI={ind.get('RSI',50):.0f}
-MACD={'صعودی' if ind.get('MACD',0)>0 else 'نزولی'}
-ADX={ind.get('ADX',20):.0f}
-CCI={ind.get('CCI',0):.0f}
-MFI={ind.get('MFI',50):.0f}
-BB%={ind.get('BB',0.5):.2f}
-Vol={ind.get('VOL',1):.1f}x
-EMA7={ind.get('EMA7',0):.2f}
-EMA20={ind.get('EMA20',0):.2f}
-EMA50={ind.get('EMA50',0):.2f}
-حمایت={ind.get('SUP',0):.4f}
-مقاومت={ind.get('RES',0):.4f}
-فیبوناچی 618={ind.get('FIB618',0):.4f}
-الگوها={', '.join(candles) if candles else 'بدون الگو'}"""
-            else:
-                ind_text = "داده‌های اندیکاتور در دسترس نیست"
+                mtf_data = {}
+                for tf in ['1h','4h','1d']:
+                    dft = ex.ohlcv(sym_full, tf, 100)
+                    if dft is not None:
+                        mtf_data[tf], _ = ind_calc.calc(dft)
+                mtf = mtf_data
+                smc = SMC.analyze(df)
+                fib = {k: v for k, v in ind.items() if k.startswith('FIB')}
             
-            analysis = await ai.analyze_chart_image(symbol, timeframe, f"قیمت: ${price} | تغییر: {change}%", ind_text)
+            analysis = await ai.analyze_chart(symbol, timeframe, price, change, ind, candles, mtf, smc, fib)
             
             msg = f"""📊 **تحلیل کامل نمودار {symbol}** 📊
 {p.full()}
 
 🪙 **ارز:** {symbol}
 ⏰ **تایم فریم:** {timeframe}
-💰 **قیمت فعلی:** ${price}
-📊 **تغییر:** {change}%
+💰 **قیمت فعلی:** ${price:,.2f}
+📊 **تغییر:** {change:+.2f}%
 
 {analysis if analysis else '❌ تحلیل در دسترس نیست'}
 
 💎 @{cfg.channel.replace('@','')}"""
             await update.message.reply_text(msg[:4000], parse_mode=ParseMode.MARKDOWN)
         else:
-            await update.message.reply_text("❌ فرمت صحیح: `BTC 4h 45000 +2.5`")
-        
+            await update.message.reply_text("❌ لطفاً اطلاعات را در ۴ خط جداگانه وارد کنید:\nنام ارز\nتایم فریم\nقیمت\nتغییر")
         ctx.user_data['awaiting_chart_details'] = False
-        ctx.user_data['chart_image'] = None
         return
     
     # ========== AI CHAT ==========
@@ -1816,11 +1829,59 @@ BB={ind['BB']:.2f} | Vol={ind['VOL']:.1f}x
                     amount = int(parts[1])
                     coin_db.add_coins(target_id, amount)
                     await update.message.reply_text(f"✅ {amount} سکه به کاربر {target_id} اضافه شد.")
-                except Exception as e:
-                    await update.message.reply_text(f"❌ خطا: {e}\nفرمت صحیح: `افزودن سکه 123456789 50`")
+                except:
+                    await update.message.reply_text("❌ فرمت صحیح: `افزودن سکه 123456789 50`")
             else:
                 await update.message.reply_text("❌ فرمت صحیح: `افزودن سکه 123456789 50`")
             ctx.user_data['adding_coins'] = False
+            return
+        
+        if ctx.user_data.get('changing_costs', False):
+            parts = text.split()
+            if len(parts) == 2:
+                key = parts[0]
+                try:
+                    val = int(parts[1])
+                    if key == "هزینه_چت" or key == "هزینه چت":
+                        cfg.chat_cost = val
+                    elif key == "هزینه_تصویر" or key == "هزینه تصویر":
+                        cfg.image_cost = val
+                    elif key == "هزینه_سیگنال" or key == "هزینه سیگنال":
+                        cfg.signal_cost = val
+                    elif key == "سکه_اولیه" or key == "سکه اولیه":
+                        cfg.initial_coins = val
+                    elif key == "پاداش_دعوت" or key == "پاداش دعوت":
+                        cfg.referral_reward = val
+                    else:
+                        await update.message.reply_text("❌ کلید نامعتبر. گزینه‌ها: هزینه چت, هزینه تصویر, هزینه سیگنال, سکه اولیه, پاداش دعوت")
+                        return
+                    await update.message.reply_text(f"✅ {key} به {val} تغییر کرد.")
+                except ValueError:
+                    await update.message.reply_text("❌ مقدار باید عدد باشد.")
+            else:
+                await update.message.reply_text("❌ فرمت: `هزینه چت 3`")
+            ctx.user_data['changing_costs'] = False
+            return
+        
+        if ctx.user_data.get('changing_daily_limits', False):
+            parts = text.split()
+            if len(parts) == 2:
+                key = parts[0]
+                try:
+                    val = int(parts[1])
+                    if key == "محدودیت_چت" or key == "محدودیت چت":
+                        cfg.daily_limit_chat = val
+                    elif key == "محدودیت_تصویر" or key == "محدودیت تصویر":
+                        cfg.daily_limit_image = val
+                    else:
+                        await update.message.reply_text("❌ کلید نامعتبر. گزینه‌ها: محدودیت چت, محدودیت تصویر")
+                        return
+                    await update.message.reply_text(f"✅ {key} به {val} تغییر کرد.")
+                except ValueError:
+                    await update.message.reply_text("❌ مقدار باید عدد باشد.")
+            else:
+                await update.message.reply_text("❌ فرمت: `محدودیت چت 15`")
+            ctx.user_data['changing_daily_limits'] = False
             return
     
     # ========== DEFAULT ==========
