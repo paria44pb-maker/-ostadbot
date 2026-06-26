@@ -13,13 +13,16 @@ import ccxt
 import httpx
 import aiohttp
 from dotenv import load_dotenv
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, InputMediaPhoto
 from telegram.constants import ParseMode
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, filters, ContextTypes
 from telegram.request import HTTPXRequest
 import warnings
 warnings.filterwarnings('ignore')
 
+# ============================================================
+# SILENCE LOGGING
+# ============================================================
 for _lib in ['httpx','httpcore','telegram','telegram.ext','telegram.request',
              'apscheduler','ccxt','urllib3','asyncio','matplotlib','PIL',
              'aiohttp','chardet','openai','groq','mplfinance','ta']:
@@ -36,8 +39,11 @@ _console = logging.StreamHandler()
 _console.setFormatter(logging.Formatter('%(asctime)s | %(message)s', datefmt='%H:%M:%S'))
 _console.addFilter(lambda r: r.name == 'VIP')
 logger.addHandler(_console)
-logger.info("VIP Platinum v36.0 starting...")
+logger.info("🚀 VIP Platinum v37.0 ULTIMATE PRO starting...")
 
+# ============================================================
+# AUTO-INSTALL
+# ============================================================
 def _ensure_libs():
     _needed = {
         'matplotlib':'matplotlib','mplfinance':'mplfinance','ta':'ta',
@@ -70,20 +76,25 @@ except:
 load_dotenv()
 TEHRAN_TZ = pytz.timezone('Asia/Tehran')
 
+# ============================================================
+# CONFIG
+# ============================================================
 @dataclass
 class Config:
     token: str = os.getenv("TELEGRAM_BOT_TOKEN", "")
     channel: str = os.getenv("CHANNEL_ID", "@CryptoPulse606")
     required_channel: str = "@CryptoPulse606"
-    owner: int = 7225279768
+    owner: int = 7225279768  # @Amir92aa
     groq_key: str = os.getenv("GROQ_API_KEY", "")
     gemini_key: str = os.getenv("GEMINI_API_KEY", "")
     coinex_key: str = os.getenv("COINEX_API_KEY", "")
     coinex_sec: str = os.getenv("COINEX_SECRET", "")
     symbols: List[str] = field(default_factory=lambda: [
         "BTC/USDT","ETH/USDT","SOL/USDT","XRP/USDT","ADA/USDT",
-        "BNB/USDT","DOGE/USDT","DOT/USDT","AVAX/USDT","LINK/USDT"
-    ])
+        "BNB/USDT","DOGE/USDT","DOT/USDT","AVAX/USDT","LINK/USDT",
+        "MATIC/USDT","UNI/USDT","ATOM/USDT","LTC/USDT","TRX/USDT",
+        "NEAR/USDT","APT/USDT","ARB/USDT","OP/USDT","PEPE/USDT"
+    ])  # 20 coins
     top_symbols: List[str] = field(default_factory=lambda: [
         "BTC/USDT","ETH/USDT","SOL/USDT","XRP/USDT","ADA/USDT",
         "BNB/USDT","DOGE/USDT","DOT/USDT","AVAX/USDT","LINK/USDT"
@@ -97,10 +108,16 @@ class Config:
         "#کریپتو","#ارز_دیجیتال","#اخبار","#بیتکوین"
     ])
     enable_ai_chat: bool = True
-    welcome_text: str = "به ربات VIP پلاتینیوم خوش آمدید"
+    welcome_text: str = "به ربات VIP پلاتینیوم خوش آمدید 💎"
+    banner_file_id: str = ""  # for main page image
+    daily_limit_chat: int = 10
+    daily_limit_image: int = 5
 
 cfg = Config()
 
+# ============================================================
+# PROCESS LOCK
+# ============================================================
 class ProcessLock:
     _f = "/tmp/vip_platinum.lock"
     @classmethod
@@ -121,6 +138,9 @@ class ProcessLock:
 for sig in [signal.SIGINT, signal.SIGTERM]:
     signal.signal(sig, lambda s,f: (ProcessLock.release(), sys.exit(0)))
 
+# ============================================================
+# PERSIAN DATE
+# ============================================================
 class Persian:
     DAYS = ['دوشنبه','سه‌شنبه','چهارشنبه','پنج‌شنبه','جمعه','شنبه','یکشنبه']
     MONTHS = ['فروردین','اردیبهشت','خرداد','تیر','مرداد','شهریور','مهر','آبان','آذر','دی','بهمن','اسفند']
@@ -138,17 +158,48 @@ class Persian:
     def greet(cls):
         h = cls.now().hour
         e = random.choice(['😊','🤗','😎','🥰','💖','✨','💎'])
-        if 5 <= h < 9: return f"صبح بخیر پلاتینیومی {e}"
-        elif 12 <= h < 14: return f"ظهر بخیر دوست من {e}"
-        elif 16 <= h < 18: return f"عصر بخیر تریدر حرفه‌ای {e}"
-        elif 20 <= h <= 23 or 1 <= h < 3: return f"شب خوش VIP {e}"
-        return f"وقت بخیر {e}"
+        if 5 <= h < 9: return f"صبح بخیر پلاتینیومی {e} 🌄"
+        elif 12 <= h < 14: return f"ظهر بخیر دوست من {e} ☀️"
+        elif 16 <= h < 18: return f"عصر بخیر تریدر حرفه‌ای {e} 🌇"
+        elif 20 <= h <= 23 or 1 <= h < 3: return f"شب خوش VIP {e} 🌙"
+        return f"وقت بخیر {e} ⏰"
 
 p = Persian()
 
+# ============================================================
+# DAILY LIMIT TRACKER
+# ============================================================
+class DailyLimit:
+    def __init__(self):
+        self._usage = {}  # {user_id: {'chat': (date, count), 'image': (date, count)}}
+    
+    def _today(self):
+        return p.now().date()
+    
+    def check_and_increment(self, user_id: int, service: str, limit: int) -> bool:
+        today = self._today()
+        if user_id not in self._usage:
+            self._usage[user_id] = {}
+        if service not in self._usage[user_id]:
+            self._usage[user_id][service] = (today, 0)
+        date, count = self._usage[user_id][service]
+        if date != today:
+            self._usage[user_id][service] = (today, 0)
+            count = 0
+        if count >= limit:
+            return False
+        self._usage[user_id][service] = (today, count + 1)
+        return True
+
+daily_limit = DailyLimit()
+
+# ============================================================
+# AI ENGINE
+# ============================================================
 class AI:
     GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
     GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent"
+    IMAGE_GEN_URL = "http://sdxl-artist.railway.internal:8000/generate/"
     
     SYS = """تو VIP پلاتینیوم هستی، حرفه‌ای‌ترین تحلیلگر کریپتو و دستیار هوشمند.
 فقط به فارسی طبیعی و روان صحبت کن.
@@ -219,6 +270,20 @@ class AI:
         if response:
             self._conversations[user_id].append(f"دستیار: {response[:200]}")
         return response or "در حال پردازش... لطفاً دوباره بپرسید."
+    
+    async def generate_image(self, prompt: str) -> Optional[bytes]:
+        try:
+            payload = {"prompt": prompt}
+            async with self._client as client:
+                resp = await client.post(self.IMAGE_GEN_URL, json=payload, timeout=120.0)
+                if resp.status_code == 200:
+                    return resp.content
+                else:
+                    logger.error(f"Image gen error: {resp.status_code}")
+                    return None
+        except Exception as e:
+            logger.error(f"Image gen exception: {e}")
+            return None
     
     async def full_analysis(self, symbol, price, change, ind, candles, mtf, smc, chart_desc=""):
         return await self.ask(f"""تحلیل کامل {symbol} — قیمت: {price:,.4f}$ | تغییر: {change:+.2f}%
@@ -303,6 +368,9 @@ EMA20={ind.get('EMA20',0):.2f} | EMA50={ind.get('EMA50',0):.2f}
 
 ai = AI()
 
+# ============================================================
+# EXCHANGE
+# ============================================================
 class Exchange:
     def __init__(self):
         self._ex = None
@@ -319,9 +387,9 @@ class Exchange:
                 self._ex = ccxt.coinex({'enableRateLimit': True, 'timeout': 30000})
             self._ex.load_markets()
             self.ok = True
-            logger.info(f"CoinEx connected")
+            logger.info("✅ CoinEx connected")
         except Exception as e:
-            logger.error(f"CoinEx error: {e}")
+            logger.error(f"❌ CoinEx error: {e}")
             self.ok = False
     
     def ticker(self, s):
@@ -351,7 +419,7 @@ class Exchange:
             return None
         except: return None
     
-    def movers(self, n=10):
+    def movers(self, n=20):
         mv = []
         if not self.ok: return {'up': [], 'dn': []}
         for sym in cfg.symbols:
@@ -378,6 +446,9 @@ class Exchange:
 
 ex = Exchange()
 
+# ============================================================
+# SMART MONEY
+# ============================================================
 class SMC:
     @staticmethod
     def analyze(df):
@@ -394,6 +465,9 @@ class SMC:
             return {"bos": "صعود" if up else "نزول" if dn else "هیچ", "choch": t, "trend": t, "power": "قوی" if (up or dn) else "ضعیف"}
         except: return {}
 
+# ============================================================
+# INDICATORS
+# ============================================================
 class Indicators:
     @staticmethod
     def calc(df):
@@ -472,6 +546,9 @@ class Indicators:
 
 ind_calc = Indicators()
 
+# ============================================================
+# SIGNAL GENERATOR
+# ============================================================
 class SignalGen:
     @staticmethod
     def generate(ind, price, smc_data=None, mtf=None):
@@ -505,15 +582,18 @@ class SignalGen:
                 if ti.get('RSI', 50) > 55: score += int(40 * w)
                 elif ti.get('RSI', 50) < 45: score -= int(40 * w)
         score = max(-1000, min(1000, score))
-        if score >= 500: sig, conf, act = "خرید قوی", 97 if score >= 800 else 88, "خرید"
-        elif score >= 250: sig, conf, act = "خرید محتاط", 75, "می‌تونی بخری"
-        elif score <= -500: sig, conf, act = "فروش قوی", 97 if score <= -800 else 88, "فروش"
-        elif score <= -250: sig, conf, act = "فروش محتاط", 75, "می‌تونی بفروشی"
-        else: sig, conf, act = "خنثی", 60, "صبر کن"
+        if score >= 500: sig, conf, act = "💎 خرید قوی", 97 if score >= 800 else 88, "💰 خرید"
+        elif score >= 250: sig, conf, act = "🟢 خرید محتاط", 75, "🤔 می‌تونی بخری"
+        elif score <= -500: sig, conf, act = "🔴 فروش قوی", 97 if score <= -800 else 88, "💸 فروش"
+        elif score <= -250: sig, conf, act = "🟠 فروش محتاط", 75, "😬 می‌تونی بفروشی"
+        else: sig, conf, act = "⚪ خنثی", 60, "⏳ صبر کن"
         return sig, conf, score, act
 
 sig_gen = SignalGen()
 
+# ============================================================
+# NEWS FETCHER (Persian friendly)
+# ============================================================
 class NewsFetcher:
     _cache = {}
     _dur = 7200
@@ -522,7 +602,10 @@ class NewsFetcher:
         ("https://cointelegraph.com/rss", "CoinTelegraph"),
         ("https://coindesk.com/arc/outboundfeeds/rss/", "CoinDesk"),
         ("https://cryptoslate.com/feed/", "CryptoSlate"),
-        ("https://decrypt.co/feed", "Decrypt")
+        ("https://decrypt.co/feed", "Decrypt"),
+        # Persian sources (if available)
+        ("https://arzdigital.com/feed/", "ارزدیجیتال"),
+        ("https://www.coiniran.com/feed/", "کوین ایران"),
     ]
     
     @classmethod
@@ -538,7 +621,7 @@ class NewsFetcher:
                     arts.append({"title": e.title, "link": e.link, "source": src})
             except: pass
         cls._cache = {"ts": now, "data": arts}
-        logger.info(f"News fetched: {len(arts)}")
+        logger.info(f"📰 News fetched: {len(arts)}")
         return arts
 
 class FearGreed:
@@ -557,6 +640,9 @@ class FearGreed:
                 return v, t
         except: return 50, "خنثی"
 
+# ============================================================
+# DEMO TRADE
+# ============================================================
 class DemoTrade:
     def __init__(self):
         self.balance = 10000
@@ -574,7 +660,7 @@ class DemoTrade:
         else:
             self.positions[symbol] = {'amount': amount, 'avg_price': price, 'amount_old': 0}
         self.trades.append({'type': 'buy', 'symbol': symbol, 'price': price, 'amount': amount, 'time': p.full()})
-        return True, f"خرید {amount} {symbol} با قیمت ${price:.2f} انجام شد"
+        return True, f"✅ خرید {amount} {symbol} با قیمت ${price:.2f} انجام شد"
     
     def sell(self, symbol, price, amount):
         if symbol not in self.positions or self.positions[symbol]['amount'] < amount:
@@ -584,58 +670,78 @@ class DemoTrade:
         if self.positions[symbol]['amount'] == 0:
             del self.positions[symbol]
         self.trades.append({'type': 'sell', 'symbol': symbol, 'price': price, 'amount': amount, 'time': p.full()})
-        return True, f"فروش {amount} {symbol} با قیمت ${price:.2f} انجام شد"
+        return True, f"✅ فروش {amount} {symbol} با قیمت ${price:.2f} انجام شد"
     
     def get_status(self):
-        txt = f"وضعیت حساب دمو\n{p.full()}\n\n"
-        txt += f"موجودی: ${self.balance:,.2f}\n"
-        txt += f"تعداد معاملات: {len(self.trades)}\n\n"
+        txt = f"💰 وضعیت حساب دمو\n{p.full()}\n\n"
+        txt += f"💵 موجودی: ${self.balance:,.2f}\n"
+        txt += f"📊 تعداد معاملات: {len(self.trades)}\n\n"
         if self.positions:
-            txt += "پوزیشن‌های باز:\n"
+            txt += "📈 پوزیشن‌های باز:\n"
             for sym, pos in self.positions.items():
                 txt += f"- {sym}: {pos['amount']:.4f} (میانگین: ${pos['avg_price']:.2f})\n"
         else:
-            txt += "هیچ پوزیشن بازی ندارید"
+            txt += "❌ هیچ پوزیشن بازی ندارید"
         return txt
 
 demo = DemoTrade()
 
-async def safe_send(bot, chat, text, markup=None):
+# ============================================================
+# GLOBAL BOT INSTANCE
+# ============================================================
+bot_instance = None
+
+async def safe_send(chat, text, markup=None, photo=None):
+    global bot_instance
+    if bot_instance is None:
+        logger.error("Bot instance not set!")
+        return
     try:
-        return await bot.send_message(chat_id=chat, text=text, parse_mode=ParseMode.MARKDOWN,
-                                      reply_markup=markup, disable_web_page_preview=True)
-    except:
-        try: 
+        if photo:
+            if isinstance(photo, bytes):
+                return await bot_instance.send_photo(chat_id=chat, photo=photo, caption=text[:1024],
+                                                     parse_mode=ParseMode.MARKDOWN, reply_markup=markup)
+        return await bot_instance.send_message(chat_id=chat, text=text, parse_mode=ParseMode.MARKDOWN,
+                                               reply_markup=markup, disable_web_page_preview=True)
+    except Exception as e:
+        logger.error(f"Send error: {e}")
+        try:
             clean = re.sub(r'[*_`~\\[\\]\\(\\)]','',text)
-            return await bot.send_message(chat_id=chat, text=clean[:4000], reply_markup=markup)
+            return await bot_instance.send_message(chat_id=chat, text=clean[:4000], reply_markup=markup)
         except: return None
 
+# ============================================================
+# MENU (with emojis)
+# ============================================================
 class Menu:
     @staticmethod
     def main():
         return InlineKeyboardMarkup([
-            [InlineKeyboardButton("پیش‌بینی", callback_data="prediction"),
-             InlineKeyboardButton("اخبار", callback_data="news")],
-            [InlineKeyboardButton("ساخت تصویر", callback_data="create_image"),
-             InlineKeyboardButton("چت با AI", callback_data="ai_chat")],
-            [InlineKeyboardButton("سیگنال", callback_data="signal"),
-             InlineKeyboardButton("تنظیمات", callback_data="settings")],
-            [InlineKeyboardButton("تحلیل بازار", callback_data="market"),
-             InlineKeyboardButton("معامله دمو", callback_data="demo_trade")],
-            [InlineKeyboardButton("بهترین‌ها", callback_data="movers"),
-             InlineKeyboardButton("ترس و طمع", callback_data="fear_greed")],
+            [InlineKeyboardButton("🔮 پیش‌بینی", callback_data="prediction"),
+             InlineKeyboardButton("📰 اخبار", callback_data="news")],
+            [InlineKeyboardButton("🎨 ساخت تصویر", callback_data="create_image"),
+             InlineKeyboardButton("💬 چت با AI", callback_data="ai_chat")],
+            [InlineKeyboardButton("💎 سیگنال (۲۰ ارز)", callback_data="signal_list"),
+             InlineKeyboardButton("⚙️ تنظیمات", callback_data="settings")],
+            [InlineKeyboardButton("📊 تحلیل بازار", callback_data="market"),
+             InlineKeyboardButton("💰 معامله دمو", callback_data="demo_trade")],
+            [InlineKeyboardButton("📈 بهترین‌ها", callback_data="movers"),
+             InlineKeyboardButton("😱 ترس و طمع", callback_data="fear_greed")],
         ])
     
     @staticmethod
     def owner_settings():
         return InlineKeyboardMarkup([
-            [InlineKeyboardButton("تغییر عکس اصلی", callback_data="change_banner"),
-             InlineKeyboardButton("تغییر متن Welcome", callback_data="change_welcome")],
-            [InlineKeyboardButton("افزودن ارز", callback_data="add_symbol"),
-             InlineKeyboardButton("حذف ارز", callback_data="remove_symbol")],
-            [InlineKeyboardButton("بازگشت", callback_data="back")],
+            [InlineKeyboardButton("🖼️ تغییر عکس اصلی", callback_data="change_banner"),
+             InlineKeyboardButton("📝 تغییر متن Welcome", callback_data="change_welcome")],
+            [InlineKeyboardButton("➕ افزودن ارز", callback_data="add_symbol"),
+             InlineKeyboardButton("➖ حذف ارز", callback_data="remove_symbol")],
+            [InlineKeyboardButton("🔙 بازگشت", callback_data="back")],
         ])
 
+# ============================================================
+# MEMBERSHIP CHECK
+# ============================================================
 async def is_member(bot, user_id: int) -> bool:
     try:
         member = await bot.get_chat_member(chat_id=cfg.required_channel, user_id=user_id)
@@ -643,74 +749,92 @@ async def is_member(bot, user_id: int) -> bool:
     except:
         return False
 
+# ============================================================
+# HANDLERS
+# ============================================================
 async def cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
-    
-    caption = f"""VIP PLATINUM v36.0
-
-{p.greet()}
-{p.full()}
-
-به قدرتمندترین ربات تحلیل کریپتو خوش آمدید!
-
-پیش‌بینی دقیق قیمت
-اخبار لحظه‌ای با تحلیل
-ساخت تصویر با هوش مصنوعی
-چت هوشمند فارسی
-سیگنال‌های VIP
-تحلیل کامل بازار
-معامله دمو (بدون ریسک)
-بهترین و بدترین ارزها
-شاخص ترس و طمع
-
-از دکمه‌های زیر استفاده کنید:"""
-    
-    if await is_member(ctx.bot, user.id):
-        await update.message.reply_text(caption, parse_mode=ParseMode.MARKDOWN, reply_markup=Menu.main())
-    else:
+    if not await is_member(ctx.bot, user.id):
         channel_link = f"https://t.me/{cfg.required_channel.replace('@','')}"
         markup = InlineKeyboardMarkup([
-            [InlineKeyboardButton("عضویت در کریپتو پالس", url=channel_link)],
-            [InlineKeyboardButton("عضو شدم", callback_data="check_membership")],
+            [InlineKeyboardButton("🔗 عضویت در کریپتو پالس", url=channel_link)],
+            [InlineKeyboardButton("✅ عضو شدم", callback_data="check_membership")],
         ])
         await update.message.reply_text(
-            f"{user.first_name} عزیز\n\nلطفاً ابتدا در کانال کریپتو پالس عضو شوید:\n@{cfg.required_channel.replace('@','')}\n\nسپس روی دکمه عضو شدم کلیک کنید.",
+            f"⚠️ {user.first_name} عزیز\n\nلطفاً ابتدا در کانال **کریپتو پالس** عضو شوید:\n@{cfg.required_channel.replace('@','')}\n\nسپس روی دکمه «عضو شدم» کلیک کنید.",
             reply_markup=markup
         )
+        return
+    
+    caption = f"""💎 VIP PLATINUM v37.0 💎
+
+{p.greet()} {p.full()}
+
+🔥 **به قدرتمندترین ربات تحلیل کریپتو خوش آمدید!**
+
+🔮 پیش‌بینی دقیق قیمت
+📰 اخبار لحظه‌ای با تحلیل
+🎨 ساخت تصویر با هوش مصنوعی
+💬 چت هوشمند فارسی
+💎 سیگنال‌های VIP (۲۰ ارز)
+📊 تحلیل کامل بازار
+💰 معامله دمو (بدون ریسک)
+📈 بهترین و بدترین ارزها
+😱 شاخص ترس و طمع
+
+✨ **نسخه ULTIMATE PRO** ✨
+
+از دکمه‌های زیر استفاده کنید:"""
+
+    if cfg.banner_file_id:
+        try:
+            await update.message.reply_photo(photo=cfg.banner_file_id, caption=caption, 
+                                            parse_mode=ParseMode.MARKDOWN, reply_markup=Menu.main())
+            return
+        except:
+            pass
+    await update.message.reply_text(caption, parse_mode=ParseMode.MARKDOWN, reply_markup=Menu.main())
 
 async def check_membership_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     user = query.from_user
-    
     if await is_member(ctx.bot, user.id):
-        caption = f"""VIP PLATINUM v36.0
+        caption = f"""💎 VIP PLATINUM v37.0 💎
 
-{p.greet()}
-{p.full()}
+{p.greet()} {p.full()}
 
-به قدرتمندترین ربات تحلیل کریپتو خوش آمدید!
+🔥 **به قدرتمندترین ربات تحلیل کریپتو خوش آمدید!**
 
-پیش‌بینی دقیق قیمت
-اخبار لحظه‌ای با تحلیل
-ساخت تصویر با هوش مصنوعی
-چت هوشمند فارسی
-سیگنال‌های VIP
-تحلیل کامل بازار
-معامله دمو (بدون ریسک)
-بهترین و بدترین ارزها
-شاخص ترس و طمع
+🔮 پیش‌بینی دقیق قیمت
+📰 اخبار لحظه‌ای با تحلیل
+🎨 ساخت تصویر با هوش مصنوعی
+💬 چت هوشمند فارسی
+💎 سیگنال‌های VIP (۲۰ ارز)
+📊 تحلیل کامل بازار
+💰 معامله دمو (بدون ریسک)
+📈 بهترین و بدترین ارزها
+😱 شاخص ترس و طمع
+
+✨ **نسخه ULTIMATE PRO** ✨
 
 از دکمه‌های زیر استفاده کنید:"""
+        if cfg.banner_file_id:
+            try:
+                await query.edit_message_media(media=InputMediaPhoto(media=cfg.banner_file_id, caption=caption, parse_mode=ParseMode.MARKDOWN),
+                                               reply_markup=Menu.main())
+                return
+            except:
+                pass
         await query.edit_message_text(caption, parse_mode=ParseMode.MARKDOWN, reply_markup=Menu.main())
     else:
         channel_link = f"https://t.me/{cfg.required_channel.replace('@','')}"
         markup = InlineKeyboardMarkup([
-            [InlineKeyboardButton("عضویت در کریپتو پالس", url=channel_link)],
-            [InlineKeyboardButton("عضو شدم", callback_data="check_membership")],
+            [InlineKeyboardButton("🔗 عضویت در کریپتو پالس", url=channel_link)],
+            [InlineKeyboardButton("✅ عضو شدم", callback_data="check_membership")],
         ])
         await query.edit_message_text(
-            "شما هنوز در کانال کریپتو پالس عضو نشده‌اید!\nلطفاً ابتدا عضو شوید.",
+            "❌ شما هنوز در کانال **کریپتو پالس** عضو نشده‌اید!\n\nلطفاً ابتدا عضو شوید.",
             reply_markup=markup
         )
 
@@ -724,255 +848,349 @@ async def button_router(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         return
     
     if not await is_member(ctx.bot, user.id):
-        await q.answer("ابتدا باید در کانال کریپتو پالس عضو شوید!", show_alert=True)
+        await q.answer("⚠️ ابتدا باید در کانال کریپتو پالس عضو شوید!", show_alert=True)
         return
     
+    # ========== PREDICTION ==========
     if d == "prediction":
-        await q.answer("دریافت پیش‌بینی...")
+        await q.answer("🔮 دریافت پیش‌بینی...")
         await q.edit_message_text(
-            "پیش‌بینی قیمت\n\nنام ارز مورد نظر را به صورت متن بفرستید.\nمثال: BTC یا ETH یا SOL\n\nارزهای پشتیبانی شده:\nBTC, ETH, SOL, XRP, ADA, BNB, DOGE, DOT, AVAX, LINK",
+            "🔮 **پیش‌بینی قیمت** 🔮\n\n"
+            "نام ارز مورد نظر را به صورت متن بفرستید.\n"
+            "مثال: `BTC` یا `ETH` یا `SOL`\n\n"
+            "📋 ارزهای پشتیبانی شده:\n"
+            "BTC, ETH, SOL, XRP, ADA, BNB, DOGE, DOT, AVAX, LINK, MATIC, UNI, ATOM, LTC, TRX, NEAR, APT, ARB, OP, PEPE",
             parse_mode=ParseMode.MARKDOWN,
-            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("بازگشت", callback_data="back")]])
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="back")]])
         )
         ctx.user_data['awaiting_prediction'] = True
     
+    # ========== NEWS ==========
     elif d == "news":
-        await q.answer("دریافت اخبار...")
+        await q.answer("📰 دریافت اخبار...")
         news = await NewsFetcher.fetch()
         if news:
-            headlines = [n['title'] for n in news[:10]]
-            txt = "آخرین اخبار کریپتو\n\n"
-            for i, n in enumerate(news[:10], 1):
-                txt += f"{i}. {n['title'][:100]}...\n{n['source']}\n\n"
-            
+            headlines = [n['title'] for n in news[:12]]
+            # Translate/summarize
             ai_t = await ai.news_summary(headlines)
+            txt = f"📰 **آخرین اخبار کریپتو** 📰\n\n"
+            for i, n in enumerate(news[:8], 1):
+                txt += f"{i}. {n['title'][:150]}...\n📎 {n['source']}\n\n"
             if ai_t:
-                txt += f"\nخلاصه اخبار:\n{ai_t[:500]}"
-            
+                txt += f"\n🧠 **خلاصه و تحلیل اخبار:**\n{ai_t[:600]}"
             await q.edit_message_text(txt[:4000], parse_mode=ParseMode.MARKDOWN,
-                                     reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("بازگشت", callback_data="back")]]))
+                                     reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="back")]]))
         else:
-            await q.edit_message_text("اخبار در دسترس نیست", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("بازگشت", callback_data="back")]]))
+            await q.edit_message_text("❌ اخبار در دسترس نیست", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="back")]]))
     
+    # ========== CREATE IMAGE ==========
     elif d == "create_image":
-        await q.answer("ساخت تصویر...")
+        if not daily_limit.check_and_increment(user.id, 'image', cfg.daily_limit_image):
+            await q.answer(f"⚠️ محدودیت روزانه {cfg.daily_limit_image} تصویر تمام شد!", show_alert=True)
+            return
+        await q.answer("🎨 ساخت تصویر...")
         await q.edit_message_text(
-            "ساخت تصویر با هوش مصنوعی\n\nتوضیحات تصویر مورد نظر را به صورت متن بفرستید.\nمثال: نمودار بیت‌کوین صعودی\n\nهرچه دقیق‌تر توصیف کنید، تصویر بهتر خواهد بود.",
+            "🎨 **ساخت تصویر با هوش مصنوعی** 🎨\n\n"
+            "توضیحات تصویر مورد نظر را به صورت متن بفرستید.\n"
+            "مثال: «نمودار بیت‌کوین صعودی با رنگ طلایی»\n\n"
+            "🔹 هرچه دقیق‌تر توصیف کنید، تصویر بهتر خواهد بود.",
             parse_mode=ParseMode.MARKDOWN,
-            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("بازگشت", callback_data="back")]])
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="back")]])
         )
         ctx.user_data['awaiting_image'] = True
     
+    # ========== AI CHAT ==========
     elif d == "ai_chat":
-        await q.answer("شروع چت با AI...")
+        if not daily_limit.check_and_increment(user.id, 'chat', cfg.daily_limit_chat):
+            await q.answer(f"⚠️ محدودیت روزانه {cfg.daily_limit_chat} پیام چت تمام شد!", show_alert=True)
+            return
+        await q.answer("💬 شروع چت با AI...")
         await q.edit_message_text(
-            "چت با هوش مصنوعی پلاتینیوم\n\nسلام! من دستیار هوشمند پلاتینیوم هستم.\nهر سوالی در مورد بازار کریپتو، تحلیل، استراتژی یا هر چیز دیگه بپرس!\n\nمثال:\n- بیت‌کوین رو تحلیل کن\n- بهترین ارز برای سرمایه‌گذاری چیه؟\n- استراتژی معاملاتی بهم بده\n\nپیامت رو به صورت متن بفرست تا پاسخ بگیرم.",
+            "💬 **چت با هوش مصنوعی پلاتینیوم** 💎\n\n"
+            "سلام! من دستیار هوشمند پلاتینیوم هستم 🤖\n"
+            "هر سوالی در مورد بازار کریپتو، تحلیل، استراتژی یا هر چیز دیگه بپرس!\n\n"
+            "📝 **مثال:**\n"
+            "- بیت‌کوین رو تحلیل کن\n"
+            "- بهترین ارز برای سرمایه‌گذاری چیه؟\n"
+            "- استراتژی معاملاتی بهم بده\n\n"
+            "💡 پیامت رو به صورت متن بفرست تا پاسخ بگیرم.",
             parse_mode=ParseMode.MARKDOWN,
-            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("بازگشت به منو", callback_data="back")]])
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت به منو", callback_data="back")]])
         )
         ctx.user_data['ai_chat'] = True
     
+    # ========== SIGNAL LIST (20 coins) ==========
+    elif d == "signal_list":
+        await q.answer("💎 دریافت سیگنال ۲۰ ارز...")
+        if not ex.ok: ex.connect()
+        tickers = ex.all_tickers()
+        if not tickers:
+            await q.edit_message_text("❌ داده‌ای در دسترس نیست", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]]))
+            return
+        
+        # Sort by change descending
+        tickers.sort(key=lambda x: x['change'], reverse=True)
+        top20 = tickers[:20]
+        
+        txt = f"💎 **سیگنال ۲۰ ارز برتر** 💎\n{p.full()}\n\n"
+        for i, t in enumerate(top20, 1):
+            em = "🟢" if t['change'] > 0 else "🔴" if t['change'] < 0 else "⚪"
+            # Quick signal
+            if t['change'] > 3:
+                sig = "💎 خرید قوی"
+            elif t['change'] > 1:
+                sig = "🟢 خرید"
+            elif t['change'] < -3:
+                sig = "🔴 فروش قوی"
+            elif t['change'] < -1:
+                sig = "🟠 فروش"
+            else:
+                sig = "⚪ خنثی"
+            txt += f"{i}. {em} {t['symbol']}: ${t['price']:,.2f} ({t['change']:+.1f}%) → {sig}\n"
+        
+        await q.edit_message_text(txt, parse_mode=ParseMode.MARKDOWN,
+                                 reply_markup=InlineKeyboardMarkup([
+                                     [InlineKeyboardButton("🔍 دریافت تحلیل کامل", callback_data="signal")],
+                                     [InlineKeyboardButton("🔙 بازگشت", callback_data="back")]
+                                 ]))
+    
+    # ========== SIGNAL (individual) ==========
     elif d == "signal":
-        await q.answer("دریافت سیگنال...")
+        await q.answer("💎 دریافت سیگنال...")
         await q.edit_message_text(
-            "دریافت سیگنال VIP\n\nنام ارز مورد نظر را به صورت متن بفرستید.\nمثال: BTC یا ETH یا SOL\n\nارزهای پشتیبانی شده:\nBTC, ETH, SOL, XRP, ADA, BNB, DOGE, DOT, AVAX, LINK",
+            "💎 **دریافت سیگنال VIP** 💎\n\n"
+            "نام ارز مورد نظر را به صورت متن بفرستید.\n"
+            "مثال: `BTC` یا `ETH` یا `SOL`\n\n"
+            "📋 ارزهای پشتیبانی شده:\n"
+            "BTC, ETH, SOL, XRP, ADA, BNB, DOGE, DOT, AVAX, LINK, MATIC, UNI, ATOM, LTC, TRX, NEAR, APT, ARB, OP, PEPE",
             parse_mode=ParseMode.MARKDOWN,
-            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("بازگشت", callback_data="back")]])
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="back")]])
         )
         ctx.user_data['awaiting_signal'] = True
     
+    # ========== SETTINGS ==========
     elif d == "settings":
         if user.id != cfg.owner:
-            await q.answer("فقط برای سازنده ربات قابل دسترس است!", show_alert=True)
+            await q.answer("⛔ فقط برای سازنده ربات قابل دسترس است!", show_alert=True)
             return
         
-        txt = f"""تنظیمات پلاتینیوم
+        txt = f"""⚙️ **تنظیمات پلاتینیوم** ⚙️
 
-سازنده: {cfg.owner}
-چت AI: فعال
-سیگنال‌ها: فعال
-اخبار: فعال
-پیش‌بینی: فعال
-ترس و طمع: فعال
-معامله دمو: فعال
+👤 **سازنده:** {cfg.owner}
+🤖 **چت AI:** {'فعال' if cfg.enable_ai_chat else 'غیرفعال'}
+💎 **سیگنال‌ها:** فعال
+📰 **اخبار:** فعال
+🔮 **پیش‌بینی:** فعال
+😱 **ترس و طمع:** فعال
+💰 **معامله دمو:** فعال
+🖼️ **عکس اصلی:** {'دارد' if cfg.banner_file_id else 'ندارد'}
 
-کانال: {cfg.channel}
-تعداد ارزها: {len(cfg.symbols)}
+📈 **تعداد ارزها:** {len(cfg.symbols)}
+📅 **محدودیت چت:** {cfg.daily_limit_chat} پیام در روز
+🎨 **محدودیت تصویر:** {cfg.daily_limit_image} تصویر در روز
 
-نسخه: v36.0 ULTIMATE PRO
+📢 **کانال:** {cfg.channel}
+🔧 **نسخه:** v37.0 ULTIMATE PRO
 
-برای تغییر تنظیمات از دکمه‌های زیر استفاده کنید:"""
+💡 برای تغییر تنظیمات از دکمه‌های زیر استفاده کنید:"""
         await q.edit_message_text(txt, parse_mode=ParseMode.MARKDOWN, reply_markup=Menu.owner_settings())
     
+    # ========== MARKET ANALYSIS ==========
     elif d == "market":
-        await q.answer("دریافت تحلیل بازار...")
+        await q.answer("📊 دریافت تحلیل بازار...")
         if not ex.ok: ex.connect()
         tickers = ex.all_tickers()
-        movers = ex.movers(10)
+        movers = ex.movers(20)
         
-        txt = f"تحلیل کامل بازار\n{p.full()}\n\n"
+        txt = f"📊 **تحلیل کامل بازار** 📊\n{p.full()}\n\n"
         
-        txt += "۱۰ ارز با بیشترین رشد:\n"
-        for i, m in enumerate(movers['up'][:10], 1):
+        txt += "🔝 **۲۰ ارز با بیشترین رشد:**\n"
+        for i, m in enumerate(movers['up'][:20], 1):
             txt += f"{i}. {m['symbol']}: +{m['change']:.1f}% (${m['price']:,.2f})\n"
         
-        txt += "\n۱۰ ارز با بیشترین ریزش:\n"
-        for i, m in enumerate(movers['dn'][:10], 1):
+        txt += "\n🔻 **۲۰ ارز با بیشترین ریزش:**\n"
+        for i, m in enumerate(movers['dn'][:20], 1):
             txt += f"{i}. {m['symbol']}: {m['change']:.1f}% (${m['price']:,.2f})\n"
         
-        txt += "\nارزهای اصلی:\n"
-        for t in tickers[:5]:
-            em = '+' if t['change'] > 0 else ''
-            txt += f"{t['symbol']}: ${t['price']:,.2f} ({em}{t['change']:.1f}%)\n"
-        
-        ai_t = await ai.market_overview({"up": movers['up'][:3], "down": movers['dn'][:3]})
+        ai_t = await ai.market_overview({"up": movers['up'][:5], "down": movers['dn'][:5]})
         if ai_t:
-            txt += f"\nتحلیل AI:\n{ai_t[:500]}"
+            txt += f"\n🧠 **تحلیل AI:**\n{ai_t[:600]}"
         
         await q.edit_message_text(txt[:4000], parse_mode=ParseMode.MARKDOWN,
-                                 reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("بازگشت", callback_data="back")]]))
+                                 reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="back")]]))
     
+    # ========== DEMO TRADE ==========
     elif d == "demo_trade":
-        await q.answer("معامله دمو...")
+        await q.answer("💰 معامله دمو...")
         txt = demo.get_status()
-        txt += "\n\nدستورات:\nبرای خرید: خرید BTC 1\nبرای فروش: فروش BTC 0.5\nبرای دیدن وضعیت: وضعیت"
+        txt += "\n\n📝 **دستورات:**\n"
+        txt += "🔹 برای خرید: `خرید BTC 1`\n"
+        txt += "🔹 برای فروش: `فروش BTC 0.5`\n"
+        txt += "🔹 برای دیدن وضعیت: `وضعیت`"
         
         await q.edit_message_text(txt, parse_mode=ParseMode.MARKDOWN,
-                                 reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("بازگشت", callback_data="back")]]))
+                                 reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="back")]]))
         ctx.user_data['demo_mode'] = True
     
+    # ========== MOVERS ==========
     elif d == "movers":
-        await q.answer("دریافت بهترین‌ها...")
+        await q.answer("📈 دریافت بهترین‌ها...")
         if not ex.ok: ex.connect()
-        movers = ex.movers(10)
-        txt = f"۱۰ ارز برتر و بدتر\n{p.full()}\n\n"
+        movers = ex.movers(20)
+        txt = f"📈 **۲۰ ارز برتر و بدتر** 📉\n{p.full()}\n\n"
         
-        txt += "بیشترین رشد:\n"
-        for i, m in enumerate(movers['up'][:10], 1):
+        txt += "🟢 **بیشترین رشد:**\n"
+        for i, m in enumerate(movers['up'][:20], 1):
             txt += f"{i}. {m['symbol']}: +{m['change']:.1f}%\n"
         
-        txt += "\nبیشترین ریزش:\n"
-        for i, m in enumerate(movers['dn'][:10], 1):
+        txt += "\n🔴 **بیشترین ریزش:**\n"
+        for i, m in enumerate(movers['dn'][:20], 1):
             txt += f"{i}. {m['symbol']}: {m['change']:.1f}%\n"
         
         await q.edit_message_text(txt, parse_mode=ParseMode.MARKDOWN,
-                                 reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("بازگشت", callback_data="back")]]))
+                                 reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="back")]]))
     
+    # ========== FEAR & GREED ==========
     elif d == "fear_greed":
-        await q.answer("دریافت شاخص ترس و طمع...")
+        await q.answer("😱 دریافت شاخص ترس و طمع...")
         v, t = await FearGreed.fetch()
         emoji = "😱" if v < 25 else "😨" if v < 40 else "😐" if v < 60 else "😊" if v < 75 else "🤑"
-        txt = f"""شاخص ترس و طمع
+        txt = f"""😱 **شاخص ترس و طمع** 😱
 
-وضعیت فعلی: {v}/۱۰۰ ({t})
-{emoji} احساس بازار: {t}
+📊 **وضعیت فعلی:** {v}/۱۰۰ ({t})
+{emoji} **احساس بازار:** {t}
 
-تفسیر:"""
+📈 **تفسیر:**"""
         if v < 25:
-            txt += "\nبازار در حالت ترس شدید قرار داره\nاین می‌تونه فرصت خرید باشه!"
+            txt += "\nبازار در حالت **ترس شدید** قرار داره 📉\nاین می‌تونه فرصت خرید باشه!"
         elif v < 40:
-            txt += "\nبازار ترسو هست\nاحتمال ریزش بیشتر وجود داره"
+            txt += "\nبازار **ترسو** هست 😐\nاحتمال ریزش بیشتر وجود داره"
         elif v < 60:
-            txt += "\nبازار خنثی هست\nصبر کن ببین روند به کجا می‌ره"
+            txt += "\nبازار **خنثی** هست ⚪\nصبر کن ببین روند به کجا می‌ره"
         elif v < 75:
-            txt += "\nبازار طمع‌آمیز هست\nاحتیاط کن! ممکنه اصلاح بیاد"
+            txt += "\nبازار **طمع‌آمیز** هست 🟡\nاحتیاط کن! ممکنه اصلاح بیاد"
         else:
-            txt += "\nبازار طمع شدید داره\nزمان مناسبه برای فروش!"
+            txt += "\nبازار **طمع شدید** داره 🔴\nزمان مناسبه برای فروش!"
         
         ai_t = await ai.fg_analysis(v, t)
         if ai_t:
-            txt += f"\n\nتحلیل AI:\n{ai_t[:400]}"
+            txt += f"\n\n🧠 **تحلیل AI:**\n{ai_t[:400]}"
         
         await q.edit_message_text(txt[:4000], parse_mode=ParseMode.MARKDOWN,
-                                 reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("بازگشت", callback_data="back")]]))
+                                 reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="back")]]))
     
+    # ========== OWNER SETTINGS ==========
     elif d == "change_banner":
         if user.id != cfg.owner:
-            await q.answer("فقط برای سازنده!", show_alert=True)
+            await q.answer("⛔ فقط برای سازنده!", show_alert=True)
             return
-        await q.answer("تغییر عکس...")
+        await q.answer("🖼️ تغییر عکس...")
         await q.edit_message_text(
-            "تغییر عکس اصلی ربات\n\nلطفاً عکس جدید را به صورت فایل (عکس) ارسال کنید.",
+            "🖼️ **تغییر عکس اصلی ربات** 🖼️\n\n"
+            "لطفاً عکس جدید را به صورت فایل (عکس) ارسال کنید.\n"
+            "عکس باید با فرمت PNG یا JPG باشد.",
             parse_mode=ParseMode.MARKDOWN,
-            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("بازگشت", callback_data="settings")]])
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="settings")]])
         )
         ctx.user_data['changing_banner'] = True
     
     elif d == "change_welcome":
         if user.id != cfg.owner:
-            await q.answer("فقط برای سازنده!", show_alert=True)
+            await q.answer("⛔ فقط برای سازنده!", show_alert=True)
             return
-        await q.answer("تغییر متن...")
+        await q.answer("📝 تغییر متن...")
         await q.edit_message_text(
-            "تغییر متن Welcome\n\nلطفاً متن جدید را به صورت متن ارسال کنید.",
+            "📝 **تغییر متن Welcome** 📝\n\n"
+            "لطفاً متن جدید را به صورت متن ارسال کنید.\n"
+            "این متن هنگام استارت ربات نمایش داده می‌شود.",
             parse_mode=ParseMode.MARKDOWN,
-            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("بازگشت", callback_data="settings")]])
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="settings")]])
         )
         ctx.user_data['changing_welcome'] = True
     
     elif d == "add_symbol":
         if user.id != cfg.owner:
-            await q.answer("فقط برای سازنده!", show_alert=True)
+            await q.answer("⛔ فقط برای سازنده!", show_alert=True)
             return
-        await q.answer("افزودن ارز...")
+        await q.answer("➕ افزودن ارز...")
         await q.edit_message_text(
-            "افزودن ارز جدید\n\nلطفاً نام ارز را با فرمت BTC/USDT ارسال کنید.\nمثال: DOGE/USDT",
+            "➕ **افزودن ارز جدید** ➕\n\n"
+            "لطفاً نام ارز را با فرمت `BTC/USDT` ارسال کنید.\n"
+            "مثال: `DOGE/USDT` یا `SHIB/USDT`",
             parse_mode=ParseMode.MARKDOWN,
-            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("بازگشت", callback_data="settings")]])
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="settings")]])
         )
         ctx.user_data['adding_symbol'] = True
     
     elif d == "remove_symbol":
         if user.id != cfg.owner:
-            await q.answer("فقط برای سازنده!", show_alert=True)
+            await q.answer("⛔ فقط برای سازنده!", show_alert=True)
             return
-        await q.answer("حذف ارز...")
-        txt = "حذف ارز\n\nارزهای موجود:\n"
+        await q.answer("➖ حذف ارز...")
+        txt = "➖ **حذف ارز** ➖\n\nارزهای موجود:\n"
         for i, sym in enumerate(cfg.symbols, 1):
             txt += f"{i}. {sym}\n"
         txt += "\nلطفاً شماره ارز مورد نظر برای حذف را ارسال کنید."
         await q.edit_message_text(txt, parse_mode=ParseMode.MARKDOWN,
-                                 reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("بازگشت", callback_data="settings")]]))
+                                 reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="settings")]]))
         ctx.user_data['removing_symbol'] = True
     
+    # ========== BACK ==========
     elif d == "back":
-        caption = f"""VIP PLATINUM v36.0
+        caption = f"""💎 VIP PLATINUM v37.0 💎
 
-{p.greet()}
-{p.full()}
+{p.greet()} {p.full()}
 
-به قدرتمندترین ربات تحلیل کریپتو خوش آمدید!
+🔥 **به قدرتمندترین ربات تحلیل کریپتو خوش آمدید!**
 
-پیش‌بینی دقیق قیمت
-اخبار لحظه‌ای با تحلیل
-ساخت تصویر با هوش مصنوعی
-چت هوشمند فارسی
-سیگنال‌های VIP
-تحلیل کامل بازار
-معامله دمو (بدون ریسک)
-بهترین و بدترین ارزها
-شاخص ترس و طمع
+🔮 پیش‌بینی دقیق قیمت
+📰 اخبار لحظه‌ای با تحلیل
+🎨 ساخت تصویر با هوش مصنوعی
+💬 چت هوشمند فارسی
+💎 سیگنال‌های VIP (۲۰ ارز)
+📊 تحلیل کامل بازار
+💰 معامله دمو (بدون ریسک)
+📈 بهترین و بدترین ارزها
+😱 شاخص ترس و طمع
+
+✨ **نسخه ULTIMATE PRO** ✨
 
 از دکمه‌های زیر استفاده کنید:"""
+        if cfg.banner_file_id:
+            try:
+                await q.edit_message_media(media=InputMediaPhoto(media=cfg.banner_file_id, caption=caption, parse_mode=ParseMode.MARKDOWN),
+                                           reply_markup=Menu.main())
+                return
+            except:
+                pass
         await q.edit_message_text(caption, parse_mode=ParseMode.MARKDOWN, reply_markup=Menu.main())
     
     else:
         await q.answer("")
 
+# ============================================================
+# MESSAGE HANDLER
+# ============================================================
 async def handle_msg(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     text = update.message.text
     
     if not await is_member(ctx.bot, user.id):
-        await update.message.reply_text(f"لطفاً ابتدا در کانال کریپتو پالس عضو شوید:\n@{cfg.required_channel.replace('@','')}\n\nسپس /start را وارد کنید.")
+        await update.message.reply_text(f"⚠️ لطفاً ابتدا در کانال **کریپتو پالس** عضو شوید:\n@{cfg.required_channel.replace('@','')}\n\nسپس /start را وارد کنید.")
         return
     
+    # ========== AI CHAT ==========
     if ctx.user_data.get('ai_chat', False):
-        await update.message.reply_text("در حال پردازش...")
+        # Check limit again
+        if not daily_limit.check_and_increment(user.id, 'chat', cfg.daily_limit_chat):
+            await update.message.reply_text(f"⚠️ محدودیت روزانه {cfg.daily_limit_chat} پیام چت تمام شد!")
+            return
+        await update.message.reply_text("🤖 در حال پردازش...")
         response = await ai.chat(user.id, text)
         await update.message.reply_text(response, parse_mode=ParseMode.MARKDOWN)
         return
     
+    # ========== PREDICTION ==========
     if ctx.user_data.get('awaiting_prediction', False):
         symbol = text.upper().strip()
         if not symbol.endswith('/USDT'):
@@ -986,22 +1204,23 @@ async def handle_msg(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             ind, _ = ind_calc.calc(df)
             pred_t = await ai.predict_price(symbol, t['last'], ind)
             
-            txt = f"""پیش‌بینی قیمت {symbol}
+            txt = f"""🔮 **پیش‌بینی قیمت {symbol}** 🔮
 {p.full()}
 
-قیمت فعلی: ${t['last']:,.2f}
-تغییر: {t.get('percentage', 0):+.2f}%
+💰 **قیمت فعلی:** ${t['last']:,.2f}
+📊 **تغییر:** {t.get('percentage', 0):+.2f}%
 
 {pred_t if pred_t else 'در حال محاسبه...'}
 
-توجه: پیش‌بینی‌ها قطعی نیستند و فقط جنبه تحلیلی دارند."""
+⚠️ **توجه:** پیش‌بینی‌ها قطعی نیستند و فقط جنبه تحلیلی دارند."""
             await update.message.reply_text(txt[:4000], parse_mode=ParseMode.MARKDOWN)
         else:
-            await update.message.reply_text("ارز مورد نظر یافت نشد. لطفاً نام صحیح را وارد کنید.")
+            await update.message.reply_text("❌ ارز مورد نظر یافت نشد. لطفاً نام صحیح را وارد کنید.")
         
         ctx.user_data['awaiting_prediction'] = False
         return
     
+    # ========== SIGNAL ==========
     if ctx.user_data.get('awaiting_signal', False):
         symbol = text.upper().strip()
         if not symbol.endswith('/USDT'):
@@ -1028,49 +1247,61 @@ async def handle_msg(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             tp1 = t['last'] + ind['ATR'] * 3.5
             tp2 = t['last'] + ind['ATR'] * 6
             
-            msg = f"""VIP PLATINUM | {symbol.replace('/USDT','')}
+            msg = f"""💎 **VIP PLATINUM | {symbol.replace('/USDT','')}** 💎
 {p.greet()} {p.full()}
 
-قیمت: ${t['last']:,.4f} | تغییر: {t.get('percentage', 0):+.2f}%
-سیگنال: {sig_text} | قدرت: {conf}%
-امتیاز: {score}/۱۰۰۰ | اقدام: {action}
+💰 **قیمت:** ${t['last']:,.4f} | 📊 **تغییر:** {t.get('percentage', 0):+.2f}%
+🎯 **سیگنال:** {sig_text} | 💪 **قدرت:** {conf}%
+⭐ **امتیاز:** {score}/۱۰۰۰ | 🚦 **اقدام:** {action}
 
-EMAs: 7={ind.get('EMA7',0):.2f} | 20={ind.get('EMA20',0):.2f} | 50={ind.get('EMA50',0):.2f}
-شمع‌ها: {', '.join(candles) if candles else 'بدون الگو'}
+📈 **EMAs:** 7={ind.get('EMA7',0):.2f} | 20={ind.get('EMA20',0):.2f} | 50={ind.get('EMA50',0):.2f}
+🕯️ **شمع‌ها:** {', '.join(candles) if candles else 'بدون الگو'}
 
-اندیکاتورها:
-RSI={ind['RSI']:.1f} | MACD={'صعودی' if ind.get('MACD',0)>0 else 'نزولی'}
+📊 **اندیکاتورها:**
+RSI={ind['RSI']:.1f} | MACD={'🟢 صعودی' if ind.get('MACD',0)>0 else '🔴 نزولی'}
 ADX={ind['ADX']:.1f} | CCI={ind['CCI']:.1f} | MFI={ind['MFI']:.1f}
 BB={ind['BB']:.2f} | Vol={ind['VOL']:.1f}x
 
-مقاومت: {ind['RES']:.4f} | حمایت: {ind['SUP']:.4f}
-فیبوناچی ۶۱۸: {ind.get('FIB618',0):.4f}
+🛡️ **مقاومت:** {ind['RES']:.4f} | **حمایت:** {ind['SUP']:.4f}
+📐 **فیبوناچی ۶۱۸:** {ind.get('FIB618',0):.4f}
 
-ستاپ معامله:
-ورود: ${entry:,.4f}
-حد ضرر: ${sl:,.4f} ({(abs(entry-sl)/entry*100):.1f}%)
-هدف ۱: ${tp1:,.4f} | هدف ۲: ${tp2:,.4f}
+🎯 **ستاپ معامله:**
+🔵 **ورود:** ${entry:,.4f}
+🔴 **حد ضرر:** ${sl:,.4f} ({(abs(entry-sl)/entry*100):.1f}%)
+🟢 **هدف ۱:** ${tp1:,.4f} | **هدف ۲:** ${tp2:,.4f}
 
-تحلیل کامل:
+🧠 **تحلیل کامل:**
 {ai_t[:600] if ai_t else 'در حال بروزرسانی...'}
 
-پیش‌بینی عددی:
+🔮 **پیش‌بینی عددی:**
 {pred_t[:400] if pred_t else 'در حال محاسبه...'}
 
-@{cfg.channel.replace('@','')} | {p.full()}"""
+💎 @{cfg.channel.replace('@','')} | {p.full()}"""
             await update.message.reply_text(msg[:4000], parse_mode=ParseMode.MARKDOWN)
         else:
-            await update.message.reply_text("ارز مورد نظر یافت نشد. لطفاً نام صحیح را وارد کنید.")
+            await update.message.reply_text("❌ ارز مورد نظر یافت نشد. لطفاً نام صحیح را وارد کنید.")
         
         ctx.user_data['awaiting_signal'] = False
         return
     
+    # ========== CREATE IMAGE ==========
     if ctx.user_data.get('awaiting_image', False):
-        await update.message.reply_text("در حال ساخت تصویر...")
-        await update.message.reply_text(f"تصویر ساخته شده برای:\n{text[:100]}\n\n(قابلیت ساخت تصویر در نسخه کامل فعال خواهد شد)")
+        # Already checked limit in button, but double-check
+        if not daily_limit.check_and_increment(user.id, 'image', cfg.daily_limit_image):
+            await update.message.reply_text(f"⚠️ محدودیت روزانه {cfg.daily_limit_image} تصویر تمام شد!")
+            ctx.user_data['awaiting_image'] = False
+            return
+        
+        await update.message.reply_text("🎨 در حال ساخت تصویر... لطفاً صبر کنید.")
+        img_bytes = await ai.generate_image(text)
+        if img_bytes:
+            await update.message.reply_photo(photo=img_bytes, caption=f"🎨 تصویر ساخته شده برای:\n{text[:200]}")
+        else:
+            await update.message.reply_text("❌ ساخت تصویر ناموفق بود. لطفاً دوباره تلاش کنید.")
         ctx.user_data['awaiting_image'] = False
         return
     
+    # ========== DEMO TRADE ==========
     if ctx.user_data.get('demo_mode', False):
         if text == "وضعیت":
             await update.message.reply_text(demo.get_status(), parse_mode=ParseMode.MARKDOWN)
@@ -1090,11 +1321,11 @@ BB={ind['BB']:.2f} | Vol={ind['VOL']:.1f}x
                         success, msg = demo.buy(symbol, t['last'], amount)
                         await update.message.reply_text(msg, parse_mode=ParseMode.MARKDOWN)
                     else:
-                        await update.message.reply_text("ارز نامعتبر است")
+                        await update.message.reply_text("❌ ارز نامعتبر است")
                 except ValueError:
-                    await update.message.reply_text("مقدار عددی معتبر وارد کنید")
+                    await update.message.reply_text("❌ مقدار عددی معتبر وارد کنید")
             else:
-                await update.message.reply_text("فرمت صحیح: خرید BTC 1")
+                await update.message.reply_text("❌ فرمت صحیح: `خرید BTC 1`")
             return
         
         if text.startswith("فروش"):
@@ -1111,26 +1342,32 @@ BB={ind['BB']:.2f} | Vol={ind['VOL']:.1f}x
                         success, msg = demo.sell(symbol, t['last'], amount)
                         await update.message.reply_text(msg, parse_mode=ParseMode.MARKDOWN)
                     else:
-                        await update.message.reply_text("ارز نامعتبر است")
+                        await update.message.reply_text("❌ ارز نامعتبر است")
                 except ValueError:
-                    await update.message.reply_text("مقدار عددی معتبر وارد کنید")
+                    await update.message.reply_text("❌ مقدار عددی معتبر وارد کنید")
             else:
-                await update.message.reply_text("فرمت صحیح: فروش BTC 0.5")
+                await update.message.reply_text("❌ فرمت صحیح: `فروش BTC 0.5`")
             return
         
-        await update.message.reply_text("دستور نامعتبر. گزینه‌ها:\nوضعیت\nخرید BTC 1\nفروش BTC 0.5")
+        await update.message.reply_text("❌ دستور نامعتبر. گزینه‌ها:\nوضعیت\nخرید BTC 1\nفروش BTC 0.5")
         return
     
+    # ========== OWNER SETTINGS ==========
     if user.id == cfg.owner:
         if ctx.user_data.get('changing_banner', False):
             if update.message.photo:
-                await update.message.reply_text("عکس اصلی با موفقیت تغییر کرد!")
+                file_id = update.message.photo[-1].file_id
+                cfg.banner_file_id = file_id
+                await update.message.reply_text("✅ عکس اصلی با موفقیت تغییر کرد!")
                 ctx.user_data['changing_banner'] = False
+                return
+            else:
+                await update.message.reply_text("❌ لطفاً یک عکس ارسال کنید.")
                 return
         
         if ctx.user_data.get('changing_welcome', False):
             cfg.welcome_text = text
-            await update.message.reply_text("متن Welcome با موفقیت تغییر کرد!")
+            await update.message.reply_text("✅ متن Welcome با موفقیت تغییر کرد!")
             ctx.user_data['changing_welcome'] = False
             return
         
@@ -1138,9 +1375,9 @@ BB={ind['BB']:.2f} | Vol={ind['VOL']:.1f}x
             symbol = text.upper().strip()
             if symbol.endswith('/USDT') and symbol not in cfg.symbols:
                 cfg.symbols.append(symbol)
-                await update.message.reply_text(f"ارز {symbol} با موفقیت اضافه شد!")
+                await update.message.reply_text(f"✅ ارز {symbol} با موفقیت اضافه شد!")
             else:
-                await update.message.reply_text("فرمت نامعتبر یا ارز تکراری. مثال: BTC/USDT")
+                await update.message.reply_text("❌ فرمت نامعتبر یا ارز تکراری. مثال: `BTC/USDT`")
             ctx.user_data['adding_symbol'] = False
             return
         
@@ -1149,22 +1386,29 @@ BB={ind['BB']:.2f} | Vol={ind['VOL']:.1f}x
                 idx = int(text) - 1
                 if 0 <= idx < len(cfg.symbols):
                     removed = cfg.symbols.pop(idx)
-                    await update.message.reply_text(f"ارز {removed} با موفقیت حذف شد!")
+                    await update.message.reply_text(f"✅ ارز {removed} با موفقیت حذف شد!")
                 else:
-                    await update.message.reply_text("شماره نامعتبر")
+                    await update.message.reply_text("❌ شماره نامعتبر")
             except ValueError:
-                await update.message.reply_text("لطفاً یک عدد وارد کنید")
+                await update.message.reply_text("❌ لطفاً یک عدد وارد کنید")
             ctx.user_data['removing_symbol'] = False
             return
     
+    # ========== DEFAULT ==========
     await update.message.reply_text(
-        "از دکمه‌های منو استفاده کنید یا /start را بزنید.\n\nبرای چت با AI، گزینه چت با AI رو انتخاب کنید.",
+        "💎 از دکمه‌های منو استفاده کنید یا /start را بزنید.\n\n"
+        "💬 برای چت با AI، گزینه «چت با AI» رو انتخاب کنید.\n"
+        "🔮 برای پیش‌بینی، گزینه «پیش‌بینی» رو انتخاب کنید.\n"
+        "💎 برای سیگنال، گزینه «سیگنال» رو انتخاب کنید.",
         reply_markup=Menu.main()
     )
 
+# ============================================================
+# AUTO SCHEDULED POSTS
+# ============================================================
 async def scheduled_signal():
     if not ex.ok: ex.connect()
-    for sym in cfg.top_symbols[:3]:
+    for sym in cfg.top_symbols[:5]:
         try:
             t = ex.ticker(sym)
             df = ex.ohlcv(sym, '1h', 150)
@@ -1185,86 +1429,84 @@ async def scheduled_signal():
                 tp1 = t['last'] + ind['ATR'] * 3.5
                 tp2 = t['last'] + ind['ATR'] * 6
                 
-                msg = f"""VIP SIGNAL | {sym.replace('/USDT','')}
+                msg = f"""💎 **VIP SIGNAL | {sym.replace('/USDT','')}** 💎
 {p.full()}
 
-قیمت: ${t['last']:,.4f} | تغییر: {t.get('percentage', 0):+.2f}%
-سیگنال: {sig_text} | قدرت: {conf}%
-امتیاز: {score}/۱۰۰۰
+💰 **قیمت:** ${t['last']:,.4f} | 📊 **تغییر:** {t.get('percentage', 0):+.2f}%
+🎯 **سیگنال:** {sig_text} | 💪 **قدرت:** {conf}%
+⭐ **امتیاز:** {score}/۱۰۰۰
 
-ورود: ${entry:,.4f}
-حد ضرر: ${sl:,.4f}
-هدف ۱: ${tp1:,.4f} | هدف ۲: ${tp2:,.4f}
+🎯 **ستاپ معامله:**
+🔵 **ورود:** ${entry:,.4f}
+🔴 **حد ضرر:** ${sl:,.4f}
+🟢 **هدف ۱:** ${tp1:,.4f} | **هدف ۲:** ${tp2:,.4f}
 
-تحلیل: {ai_t[:400] if ai_t else ''}
-{pred_t[:300] if pred_t else ''}
+🧠 **تحلیل:** {ai_t[:400] if ai_t else ''}
+🔮 **پیش‌بینی:** {pred_t[:300] if pred_t else ''}
 
-@{cfg.channel.replace('@','')}"""
-                await safe_send(None, cfg.channel, msg[:4000])
-                logger.info(f"Scheduled signal sent for {sym}")
+💎 @{cfg.channel.replace('@','')}"""
+                await safe_send(cfg.channel, msg[:4000])
+                logger.info(f"📤 Scheduled signal sent for {sym}")
                 break
         except Exception as e:
             logger.error(f"Scheduled signal error: {e}")
 
 async def scheduled_movers():
     if not ex.ok: ex.connect()
-    movers = ex.movers(10)
-    txt = f"""۱۰ ارز برتر و بدتر
-{p.full()}
-
-بیشترین رشد (۲۴ ساعت):"""
-    for i, m in enumerate(movers['up'][:10], 1):
-        txt += f"\n{i}. {m['symbol']}: +{m['change']:.1f}%"
-    
-    txt += "\n\nبیشترین ریزش (۲۴ ساعت):"
-    for i, m in enumerate(movers['dn'][:10], 1):
-        txt += f"\n{i}. {m['symbol']}: {m['change']:.1f}%"
-    
-    await safe_send(None, cfg.channel, txt)
+    movers = ex.movers(20)
+    txt = f"📈 **۲۰ ارز برتر و بدتر** 📉\n{p.full()}\n\n"
+    txt += "🟢 **بیشترین رشد (۲۴ ساعت):**\n"
+    for i, m in enumerate(movers['up'][:20], 1):
+        txt += f"{i}. {m['symbol']}: +{m['change']:.1f}%\n"
+    txt += "\n🔴 **بیشترین ریزش (۲۴ ساعت):**\n"
+    for i, m in enumerate(movers['dn'][:20], 1):
+        txt += f"{i}. {m['symbol']}: {m['change']:.1f}%\n"
+    await safe_send(cfg.channel, txt)
 
 async def scheduled_news():
     news = await NewsFetcher.fetch()
     if news:
-        headlines = [n['title'] for n in news[:8]]
+        headlines = [n['title'] for n in news[:12]]
         ai_t = await ai.news_summary(headlines)
-        txt = "آخرین اخبار کریپتو\n\n"
+        txt = "📰 **آخرین اخبار کریپتو** 📰\n\n"
         for i, n in enumerate(news[:8], 1):
-            txt += f"{i}. {n['title'][:100]}...\n{n['source']}\n\n"
+            txt += f"{i}. {n['title'][:150]}...\n📎 {n['source']}\n\n"
         if ai_t:
-            txt += f"\nخلاصه اخبار:\n{ai_t[:400]}"
-        await safe_send(None, cfg.channel, txt[:4000])
+            txt += f"\n🧠 **خلاصه اخبار:**\n{ai_t[:600]}"
+        await safe_send(cfg.channel, txt[:4000])
 
 async def scheduled_daily_summary():
     if not ex.ok: ex.connect()
-    movers = ex.movers(10)
-    ai_t = await ai.daily_summary({"up": movers['up'][:5], "dn": movers['dn'][:5]})
-    txt = f"""جمع‌بندی روزانه بازار
-{p.full()}
-
-بهترین رشد: {movers['up'][0]['symbol'] if movers['up'] else 'نامشخص'} (+{movers['up'][0]['change']:.1f}%)
-بدترین ریزش: {movers['dn'][0]['symbol'] if movers['dn'] else 'نامشخص'} ({movers['dn'][0]['change']:.1f}%)
-
-۱۰ ارز برتر:"""
-    for i, m in enumerate(movers['up'][:5], 1):
-        txt += f"\n{i}. {m['symbol']}: +{m['change']:.1f}%"
-    for i, m in enumerate(movers['dn'][:5], 1):
-        txt += f"\n{i}. {m['symbol']}: {m['change']:.1f}%"
-    
+    movers = ex.movers(20)
+    ai_t = await ai.daily_summary({"up": movers['up'][:10], "dn": movers['dn'][:10]})
+    txt = f"📊 **جمع‌بندی روزانه بازار** 📊\n{p.full()}\n\n"
+    txt += f"🔝 **بهترین رشد:** {movers['up'][0]['symbol'] if movers['up'] else 'نامشخص'} (+{movers['up'][0]['change']:.1f}%)\n"
+    txt += f"🔻 **بدترین ریزش:** {movers['dn'][0]['symbol'] if movers['dn'] else 'نامشخص'} ({movers['dn'][0]['change']:.1f}%)\n\n"
+    txt += "📈 **۱۰ ارز برتر امروز:**\n"
+    for i, m in enumerate(movers['up'][:10], 1):
+        txt += f"{i}. {m['symbol']}: +{m['change']:.1f}%\n"
+    txt += "\n📉 **۱۰ ارز بدتر امروز:**\n"
+    for i, m in enumerate(movers['dn'][:10], 1):
+        txt += f"{i}. {m['symbol']}: {m['change']:.1f}%\n"
     if ai_t:
-        txt += f"\n\nتحلیل روز:\n{ai_t[:500]}"
-    
-    await safe_send(None, cfg.channel, txt[:4000])
+        txt += f"\n🧠 **تحلیل روز:**\n{ai_t[:600]}"
+    await safe_send(cfg.channel, txt[:4000])
 
+# ============================================================
+# MAIN
+# ============================================================
 async def main():
+    global bot_instance
     if not ProcessLock.acquire(): sys.exit(1)
     if not cfg.token: ProcessLock.release(); return
     
-    logger.info(f"VIP PLATINUM v36.0 ULTIMATE PRO | {p.full()}")
-    logger.info(f"Required channel: {cfg.required_channel}")
+    logger.info(f"💎 VIP PLATINUM v37.0 ULTIMATE PRO | {p.full()}")
+    logger.info(f"🔐 Required channel: {cfg.required_channel}")
     
     ex.connect()
     req = HTTPXRequest(connect_timeout=60.0, read_timeout=60.0, write_timeout=60.0)
     app = Application.builder().token(cfg.token).request(req).build()
+    bot_instance = app.bot
     
     app.add_handler(CommandHandler("start", cmd_start))
     app.add_handler(CallbackQueryHandler(button_router))
@@ -1275,13 +1517,13 @@ async def main():
         last_signal = last_movers = last_news = last_summary = 0
         while True:
             now = time.time()
-            if now - last_signal >= 14400:
+            if now - last_signal >= cfg.signal_int:
                 await scheduled_signal()
                 last_signal = now
-            if now - last_movers >= 43200:
+            if now - last_movers >= cfg.movers_int:
                 await scheduled_movers()
                 last_movers = now
-            if now - last_news >= 43200:
+            if now - last_news >= cfg.news_int:
                 await scheduled_news()
                 last_news = now
             if p.now().hour == 23 and now - last_summary >= 3600:
@@ -1291,7 +1533,7 @@ async def main():
     
     asyncio.create_task(scheduler())
     
-    logger.info("VIP PLATINUM READY")
+    logger.info("💎 VIP PLATINUM READY ✨")
     
     try:
         await app.initialize()
@@ -1299,7 +1541,7 @@ async def main():
         await app.updater.start_polling(drop_pending_updates=True)
         while True: await asyncio.sleep(3600)
     except Exception as e:
-        logger.error(f"Error: {e}")
+        logger.error(f"❌ Error: {e}")
     finally:
         ProcessLock.release()
 
