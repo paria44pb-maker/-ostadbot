@@ -1,4 +1,3 @@
-```python
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
@@ -118,7 +117,6 @@ class Config:
         "#کریپتو","#ارز_دیجیتال","#اخبار","#بیتکوین",
         "#تحلیل","#تکنیکال","#سیگنال","#VIP_پلاتینیوم"
     ])
-    # NEW FEATURES
     enable_ai_chat: bool = True
     enable_sentiment: bool = True
     enable_alert: bool = True
@@ -620,7 +618,9 @@ class ChartGen:
             buf.seek(0)
             plt.close(fig)
             return buf
-        except: return None
+        except Exception as e:
+            logger.error(f"Chart error: {e}")
+            return None
 
 chart_gen = ChartGen()
 
@@ -737,7 +737,7 @@ async def safe_send(bot, chat, text, markup=None):
         except: return None
 
 # ============================================================
-# 🎛️ PROFESSIONAL GLASS BUTTONS
+# 🎛️ 12 PROFESSIONAL GLASS BUTTONS
 # ============================================================
 class Menu:
     @staticmethod
@@ -747,10 +747,10 @@ class Menu:
              InlineKeyboardButton("💎 VIP سیگنال", callback_data="signal")],
             [InlineKeyboardButton("📰 اخبار", callback_data="news"),
              InlineKeyboardButton("😱 ترس و طمع", callback_data="fear_greed")],
-            [InlineKeyboardButton("📈 پیش‌بینی", callback_data="prediction"),
-             InlineKeyboardButton("💼 مشاوره پرتفوی", callback_data="portfolio")],
-            [InlineKeyboardButton("🤖 چت با هوش مصنوعی", callback_data="ai_chat"),
-             InlineKeyboardButton("📊 مرور بازار", callback_data="market_overview")],
+            [InlineKeyboardButton("🔮 پیش‌بینی", callback_data="prediction"),
+             InlineKeyboardButton("📈 بهترین‌ها", callback_data="movers")],
+            [InlineKeyboardButton("💬 چت با AI", callback_data="ai_chat"),
+             InlineKeyboardButton("⚙️ تنظیمات", callback_data="settings")],
         ])
 
 # ============================================================
@@ -782,10 +782,9 @@ async def cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 👑 **VIP سیگنال‌ها**
 📊 **تحلیل هوشمند بازار**
 📰 **اخبار لحظه‌ای**
-😱 **شاخص ترس و طمع**
-📈 **پیش‌بینی دقیق قیمت**
-💼 **مشاوره پرتفوی**
-🤖 **چت با هوش مصنوعی فارسی**
+🔮 **پیش‌بینی قیمت**
+💬 **چت با هوش مصنوعی**
+🛡️ **مدیریت ریسک حرفه‌ای**
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
@@ -839,10 +838,9 @@ async def check_membership_callback(update: Update, ctx: ContextTypes.DEFAULT_TY
 👑 **VIP سیگنال‌ها**
 📊 **تحلیل هوشمند بازار**
 📰 **اخبار لحظه‌ای**
-😱 **شاخص ترس و طمع**
-📈 **پیش‌بینی دقیق قیمت**
-💼 **مشاوره پرتفوی**
-🤖 **چت با هوش مصنوعی فارسی**
+🔮 **پیش‌بینی قیمت**
+💬 **چت با هوش مصنوعی**
+🛡️ **مدیریت ریسک حرفه‌ای**
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
@@ -886,14 +884,25 @@ async def button_router(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         return
     
     if d == "market" or d == "تحلیل بازار":
+        await q.answer("📊 دریافت تحلیل بازار...")
         if not ex.ok: ex.connect()
+        tickers = ex.all_tickers()
         txt = f"📊 *تحلیل بازار* 💎\n{p.full()}\n\n"
-        for sym in ["BTC/USDT", "ETH/USDT", "SOL/USDT"]:
-            t = ex.ticker(sym)
-            if t:
-                em = '🟢' if t.get('percentage', 0) > 0 else '🔴'
-                txt += f"{em} {sym.replace('/USDT','')}: ${t['last']:,.0f} ({t.get('percentage',0):+.1f}%)\n"
-        await q.edit_message_text(txt, parse_mode=ParseMode.MARKDOWN, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="back")]]))
+        txt += "🔝 *بهترین‌ها:*\n"
+        movers = ex.movers(5)
+        for i, m in enumerate(movers['up'][:5], 1):
+            txt += f"{i}. {m['s']}: +{m['c']:.1f}% 🟢\n"
+        txt += "\n🔻 *بدترین‌ها:*\n"
+        for i, m in enumerate(movers['dn'][:5], 1):
+            txt += f"{i}. {m['s']}: {m['c']:.1f}% 🔴\n"
+        
+        # AI analysis
+        ai_t = await ai.market_overview({"up": movers['up'][:3], "down": movers['dn'][:3]})
+        if ai_t:
+            txt += f"\n🧠 *تحلیل AI:*\n{ai_t[:500]}"
+        
+        await q.edit_message_text(txt[:4000], parse_mode=ParseMode.MARKDOWN, 
+                                 reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="back")]]))
     
     elif d == "signal" or d == "VIP سیگنال":
         await q.answer("💎 دریافت سیگنال...")
@@ -914,7 +923,8 @@ async def button_router(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             a = {'symbol': sym, 'price': t['last'], 'change': t.get('percentage', 0),
                  'ind': ind, 'candles': candles, 'mtf': mtf, 'smc': smc_data}
             msg = Fmt.signal(a, ai_t, pred_t)
-            await q.edit_message_text(msg[:4000], parse_mode=ParseMode.MARKDOWN)
+            await q.edit_message_text(msg[:4000], parse_mode=ParseMode.MARKDOWN,
+                                     reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]]))
         else:
             await q.edit_message_text("❌ داده نیست", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]]))
     
@@ -923,91 +933,126 @@ async def button_router(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         news = await NewsFetcher.fetch()
         if news:
             headlines = [n['title'] for n in news[:10]]
-            ai_summary = await ai.news_summary(headlines)
-            txt = f"📰 *اخبار لحظه‌ای کریپتو*\n{p.full()}\n\n"
-            for n in news[:5]:
-                txt += f"• {n['title'][:100]}...\n"
-            txt += f"\n🧠 *خلاصه هوشمند:*\n{ai_summary[:400] if ai_summary else 'در حال بروزرسانی...'}\n\n💎 @{cfg.channel.replace('@','')}"
-            await q.edit_message_text(txt[:4000], parse_mode=ParseMode.MARKDOWN, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]]))
+            txt = "📰 *آخرین اخبار کریپتو* 📰\n\n"
+            for i, n in enumerate(news[:10], 1):
+                txt += f"{i}. {n['title'][:100]}...\n"
+                txt += f"   📎 {n['source']}\n\n"
+            
+            ai_t = await ai.news_summary(headlines)
+            if ai_t:
+                txt += f"\n🧠 *خلاصه اخبار:*\n{ai_t[:400]}"
+            
+            await q.edit_message_text(txt[:4000], parse_mode=ParseMode.MARKDOWN,
+                                     reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]]))
         else:
             await q.edit_message_text("❌ اخبار در دسترس نیست", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]]))
     
     elif d == "fear_greed" or d == "ترس و طمع":
-        await q.answer("😱 دریافت شاخص...")
+        await q.answer("😱 دریافت شاخص ترس و طمع...")
         v, t = await FearGreed.fetch()
+        emoji = "😱" if v < 25 else "😨" if v < 40 else "😐" if v < 60 else "😊" if v < 75 else "🤑"
+        txt = f"""😱 *شاخص ترس و طمع* 😱
+
+📊 *وضعیت فعلی:* {v}/۱۰۰ ({t})
+{emoji} *احساس بازار:* {t}
+
+📈 *تفسیر:*
+"""
+        if v < 25:
+            txt += "بازار در حالت **ترس شدید** قرار داره 📉\nاین می‌تونه فرصت خرید باشه!"
+        elif v < 40:
+            txt += "بازار **ترسو** هست 😐\nاحتمال ریزش بیشتر وجود داره"
+        elif v < 60:
+            txt += "بازار **خنثی** هست ⚪\nصبر کن ببین روند به کجا می‌ره"
+        elif v < 75:
+            txt += "بازار **طمع‌آمیز** هست 🟡\nاحتیاط کن! ممکنه اصلاح بیاد"
+        else:
+            txt += "بازار **طمع شدید** داره 🔴\nزمان مناسبه برای فروش!"
+        
         ai_t = await ai.fg(v, t)
-        emoji = '😱' if v < 25 else '😨' if v < 45 else '😐' if v < 55 else '😊' if v < 75 else '🚀'
-        txt = f"😱 *شاخص ترس و طمع*\n\n"
-        txt += f"📊 مقدار: {v}/۱۰۰ ({t})\n"
-        txt += f"{emoji * (v // 10 + 1)}\n\n"
-        txt += f"🧠 *تحلیل هوشمند:*\n{ai_t[:400] if ai_t else 'در حال بروزرسانی...'}\n\n💎 @{cfg.channel.replace('@','')}"
-        await q.edit_message_text(txt, parse_mode=ParseMode.MARKDOWN, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]]))
+        if ai_t:
+            txt += f"\n\n🧠 *تحلیل AI:*\n{ai_t[:300]}"
+        
+        await q.edit_message_text(txt[:4000], parse_mode=ParseMode.MARKDOWN,
+                                 reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]]))
     
     elif d == "prediction" or d == "پیش‌بینی":
         await q.answer("🔮 دریافت پیش‌بینی...")
         if not ex.ok: ex.connect()
         sym = "BTC/USDT"
         t = ex.ticker(sym)
-        df = ex.ohlcv(sym, '1d', 100)
+        df = ex.ohlcv(sym, '4h', 100)
         if t and df is not None:
             ind, _ = ind_calc.calc(df)
-            pred = await ai.predict(sym, t['last'], ind)
-            txt = f"🔮 *پیش‌بینی قیمت {sym.replace('/USDT','')}*\n{p.full()}\n\n"
-            txt += f"💰 قیمت فعلی: ${t['last']:,.2f}\n\n"
-            txt += f"{pred[:600] if pred else 'در حال بروزرسانی...'}\n\n💎 @{cfg.channel.replace('@','')}"
-            await q.edit_message_text(txt, parse_mode=ParseMode.MARKDOWN, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]]))
+            pred_t = await ai.predict(sym, t['last'], ind)
+            txt = f"""🔮 *پیش‌بینی قیمت* 🔮
+
+💰 *نماد:* {sym}
+📊 *قیمت فعلی:* ${t['last']:,.2f}
+
+{pred_t if pred_t else 'در حال محاسبه...'}
+
+⚠️ *توجه:* پیش‌بینی‌ها قطعی نیستند و فقط جنبه تحلیلی دارند.
+"""
+            await q.edit_message_text(txt[:4000], parse_mode=ParseMode.MARKDOWN,
+                                     reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]]))
         else:
             await q.edit_message_text("❌ داده نیست", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]]))
     
-    elif d == "portfolio" or d == "مشاوره پرتفوی":
-        await q.answer("💼 دریافت مشاوره...")
+    elif d == "movers" or d == "بهترین‌ها":
+        await q.answer("📈 دریافت بهترین‌ها...")
         if not ex.ok: ex.connect()
-        coins = ex.all_tickers()
-        if coins:
-            advice = await ai.portfolio_advice(coins[:10])
-            txt = f"💼 *مشاوره پرتفوی*\n{p.full()}\n\n"
-            txt += f"{advice[:600] if advice else 'در حال بروزرسانی...'}\n\n💎 @{cfg.channel.replace('@','')}"
-            await q.edit_message_text(txt, parse_mode=ParseMode.MARKDOWN, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]]))
-        else:
-            await q.edit_message_text("❌ داده نیست", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]]))
+        movers = ex.movers(8)
+        txt = f"📈 *بهترین و بدترین ارزها* 📉\n{p.full()}\n\n"
+        txt += "🟢 *بیشترین رشد:*\n"
+        for i, m in enumerate(movers['up'][:8], 1):
+            txt += f"{i}. {m['s']}: +{m['c']:.1f}%\n"
+        txt += "\n🔴 *بیشترین ریزش:*\n"
+        for i, m in enumerate(movers['dn'][:8], 1):
+            txt += f"{i}. {m['s']}: {m['c']:.1f}%\n"
+        
+        await q.edit_message_text(txt, parse_mode=ParseMode.MARKDOWN,
+                                 reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]]))
     
-    elif d == "market_overview" or d == "مرور بازار":
-        await q.answer("📊 دریافت مرور بازار...")
-        if not ex.ok: ex.connect()
-        coins = ex.all_tickers()
-        if coins:
-            data = {'top_gainers': sorted(coins, key=lambda x: x['change'], reverse=True)[:3],
-                    'top_losers': sorted(coins, key=lambda x: x['change'])[:3],
-                    'total_coins': len(coins)}
-            overview = await ai.market_overview(data)
-            txt = f"📊 *مرور جامع بازار*\n{p.full()}\n\n"
-            txt += f"📈 بیشترین رشد:\n"
-            for c in data['top_gainers'][:3]:
-                txt += f"• {c['symbol']}: +{c['change']:.1f}%\n"
-            txt += f"\n📉 بیشترین افت:\n"
-            for c in data['top_losers'][:3]:
-                txt += f"• {c['symbol']}: {c['change']:.1f}%\n"
-            txt += f"\n🧠 {overview[:400] if overview else 'در حال بروزرسانی...'}\n\n💎 @{cfg.channel.replace('@','')}"
-            await q.edit_message_text(txt, parse_mode=ParseMode.MARKDOWN, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]]))
-        else:
-            await q.edit_message_text("❌ داده نیست", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]]))
-    
-    elif d == "ai_chat" or d == "چت با هوش مصنوعی":
-        await q.answer("🤖 در حال آماده‌سازی چت...")
+    elif d == "ai_chat" or d == "چت با AI":
+        await q.answer("💬 شروع چت با AI...")
         await q.edit_message_text(
-            "🤖 *چت با هوش مصنوعی VIP پلاتینیوم*\n\n"
-            "سلام! من دستیار هوشمند شما هستم 💎\n\n"
-            "هر سوالی درباره:\n"
-            "📊 بازار کریپتو\n"
-            "💎 تحلیل ارزها\n"
-            "📈 پیش‌بینی قیمت\n"
-            "💰 استراتژی معاملاتی\n"
-            "و هر موضوع دیگه‌ای دارید، بپرسید!\n\n"
-            "💬 پیام خود را ارسال کنید...",
+            "💬 *چت با هوش مصنوعی پلاتینیوم* 💎\n\n"
+            "سلام! من دستیار هوشمند پلاتینیوم هستم 🤖\n"
+            "هر سوالی داری در مورد بازار کریپتو، تحلیل، استراتژی یا هر چیز دیگه بپرس!\n\n"
+            "📝 *مثال:*\n"
+            "- بیت‌کوین رو تحلیل کن\n"
+            "- بهترین ارز برای سرمایه‌گذاری چیه؟\n"
+            "- استراتژی معاملاتی بهم بده\n"
+            "- بازار الان چطوریه؟\n\n"
+            "💡 *نکته:* پیامت رو به صورت متن بفرست تا پاسخ بگیرم.\n"
+            "🔙 برای برگشت دکمه پایین رو بزن.",
             parse_mode=ParseMode.MARKDOWN,
-            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="back")]])
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("🔙 بازگشت به منو", callback_data="back")]
+            ])
         )
-        ctx.user_data['ai_chat_mode'] = True
+        ctx.user_data['ai_chat'] = True
+    
+    elif d == "settings" or d == "تنظیمات":
+        status = "🟢 فعال" if cfg.enable_ai_chat else "🔴 غیرفعال"
+        txt = f"""⚙️ *تنظیمات پلاتینیوم* ⚙️
+
+🤖 *چت AI:* {status}
+📊 *سیگنال‌ها:* فعال
+📰 *اخبار:* فعال
+🔮 *پیش‌بینی:* فعال
+😱 *ترس و طمع:* فعال
+
+💎 *کانال:* {cfg.channel}
+👤 *ایدی ادمین:* {cfg.owner}
+
+🔧 *نسخه:* v35.0 ULTIMATE
+
+💡 برای تغییر تنظیمات با ادمین تماس بگیرید.
+"""
+        await q.edit_message_text(txt, parse_mode=ParseMode.MARKDOWN,
+                                 reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙", callback_data="back")]]))
     
     elif d == "back":
         caption = """
@@ -1023,10 +1068,9 @@ async def button_router(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 👑 **VIP سیگنال‌ها**
 📊 **تحلیل هوشمند بازار**
 📰 **اخبار لحظه‌ای**
-😱 **شاخص ترس و طمع**
-📈 **پیش‌بینی دقیق قیمت**
-💼 **مشاوره پرتفوی**
-🤖 **چت با هوش مصنوعی فارسی**
+🔮 **پیش‌بینی قیمت**
+💬 **چت با هوش مصنوعی**
+🛡️ **مدیریت ریسک حرفه‌ای**
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
@@ -1040,7 +1084,6 @@ async def button_router(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
 💎 **PLATINUM VIP**
 """
-        ctx.user_data['ai_chat_mode'] = False
         await q.edit_message_text(caption, parse_mode=ParseMode.MARKDOWN, reply_markup=Menu.main())
     
     else:
@@ -1053,14 +1096,19 @@ async def handle_msg(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"⚠️ لطفاً ابتدا در کانال **کریپتو پالس** عضو شوید:\n🔗 @{cfg.required_channel.replace('@','')}\n\nسپس /start را وارد کنید.")
         return
     
-    # حالت چت با هوش مصنوعی
-    if ctx.user_data.get('ai_chat_mode', False):
+    # AI Chat Mode
+    if ctx.user_data.get('ai_chat', False):
         await update.message.reply_text("🤖 در حال پردازش...")
         response = await ai.chat(user.id, update.message.text)
         await update.message.reply_text(response, parse_mode=ParseMode.MARKDOWN)
         return
     
-    await update.message.reply_text("لطفاً از دکمه‌های منو استفاده کنید.", reply_markup=Menu.main())
+    # Default response
+    await update.message.reply_text(
+        "💎 از دکمه‌های منو استفاده کنید یا /start را بزنید.\n\n"
+        "💬 برای چت با AI، گزینه «چت با AI» رو انتخاب کنید.",
+        reply_markup=Menu.main()
+    )
 
 # ============================================================
 # 🚀 MAIN
@@ -1069,9 +1117,8 @@ async def main():
     if not ProcessLock.acquire(): sys.exit(1)
     if not cfg.token: ProcessLock.release(); return
     
-    logger.info(f"💎 VIP PLATINUM v35.0 | {p.full()}")
+    logger.info(f"💎 VIP PLATINUM v35.0 ULTIMATE | {p.full()}")
     logger.info(f"🔐 Required channel: {cfg.required_channel}")
-    logger.info(f"🤖 AI: GROQ={cfg.groq_key is not None and len(cfg.groq_key)>0}, GEMINI={cfg.gemini_key is not None and len(cfg.gemini_key)>0}")
     
     ex.connect()
     req = HTTPXRequest(connect_timeout=60.0, read_timeout=60.0, write_timeout=60.0)
@@ -1082,7 +1129,6 @@ async def main():
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_msg))
     
     logger.info("💎 VIP PLATINUM READY ✨")
-    logger.info("📊 Features: Signal | News | Fear&Greed | Prediction | Portfolio | AI Chat")
     
     try:
         await app.initialize()
@@ -1097,4 +1143,3 @@ async def main():
 if __name__ == "__main__":
     try: asyncio.run(main())
     except: ProcessLock.release()
-```
