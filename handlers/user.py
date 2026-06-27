@@ -22,7 +22,10 @@ async def reset_daily_if_needed(user_id):
     today = tehran_now().date().isoformat()
     row = await q("SELECT last_reset_day FROM user_state WHERE user_id=?", (user_id,), one=True)
     if not row:
-        await q("INSERT OR IGNORE INTO user_state(user_id,last_ai_at,daily_ai_count,last_reset_day) VALUES(?,?,?,?)", (user_id,0,0,today))
+        await q(
+            "INSERT OR IGNORE INTO user_state(user_id,last_ai_at,daily_ai_count,last_reset_day) VALUES(?,?,?,?)",
+            (user_id, 0, 0, today)
+        )
     elif row[0] != today:
         await q("UPDATE user_state SET daily_ai_count=0,last_reset_day=? WHERE user_id=?", (today, user_id))
 
@@ -33,7 +36,10 @@ async def get_ai_count(user_id):
 
 async def increase_ai_count(user_id):
     await reset_daily_if_needed(user_id)
-    await q("UPDATE user_state SET daily_ai_count = daily_ai_count + 1, last_ai_at=? WHERE user_id=?", (int(time.time()), user_id))
+    await q(
+        "UPDATE user_state SET daily_ai_count = daily_ai_count + 1, last_ai_at=? WHERE user_id=?",
+        (int(time.time()), user_id)
+    )
 
 async def rate_limit_ok(user_id):
     row = await q("SELECT last_ai_at FROM user_state WHERE user_id=?", (user_id,), one=True)
@@ -115,14 +121,4 @@ async def ai_cmd(message: types.Message):
         return await message.answer("مثال: /ai بیت‌کوین را تحلیل کن")
     user = await get_user(message.from_user.id)
     if not user:
-        return await message.answer("❌ ابتدا /start را بزنید.")
-    premium = await is_premium(user)
-    count = await get_ai_count(message.from_user.id)
-    if not premium and count >= FREE_DAILY_AI_LIMIT:
-        return await message.answer("⚠️ سقف AI رایگان امروز پر شده.")
-    if not await rate_limit_ok(message.from_user.id):
-        return await message.answer("⏳ چند ثانیه صبر کن.")
-    await message.answer("🤖 در حال تحلیل...")
-    answer = await ask_groq(prompt, f"plan={user[5]}, premium={premium}, risk={user[4]}")
-    await increase_ai_count(message.from_user.id)
-    await message.answer(answer[:3900])
+        return await message.answer("❌ ابتدا /s
