@@ -124,12 +124,12 @@ async def upsert_user(user_id, username, full_name):
         await conn.commit()
 
 async def set_plan(user_id, plan, days=30):
-    until = int((datetime.now(ZoneInfo("Asia/Tehran"))).timestamp()) + days * 24 * 3600
+    until = int(time.time()) + days * 24 * 3600
     async with aiosqlite.connect(DATABASE_URL) as conn:
         await conn.execute("UPDATE users SET plan=?, plan_until=? WHERE user_id=?", (plan, until, user_id))
         await conn.execute(
             "INSERT INTO payments(user_id, plan, amount, status, created_at) VALUES(?,?,?,?,?)",
-            (user_id, plan, 0, "manual", int(time.time()))
+            (user_id, plan, 199000 if plan == "vip" else 0, "manual", int(time.time()))
         )
         await conn.commit()
 
@@ -155,8 +155,10 @@ async def reset_daily_if_needed(user_id):
 async def increase_ai_count(user_id):
     await reset_daily_if_needed(user_id)
     async with aiosqlite.connect(DATABASE_URL) as conn:
-        await conn.execute("UPDATE user_state SET daily_ai_count = daily_ai_count + 1, last_ai_at=? WHERE user_id=?",
-                           (int(time.time()), user_id))
+        await conn.execute(
+            "UPDATE user_state SET daily_ai_count = daily_ai_count + 1, last_ai_at=? WHERE user_id=?",
+            (int(time.time()), user_id)
+        )
         await conn.commit()
 
 async def get_ai_count(user_id):
@@ -187,7 +189,10 @@ async def coinex_get_ticker(symbol="BTCUSDT"):
             return await resp.json()
 
 async def ask_groq(prompt: str, user_profile: str = ""):
-    system = "You are a professional Persian crypto assistant. Be concise, practical, and risk-aware."
+    system = (
+        "You are a professional Persian crypto assistant. "
+        "Be concise, practical, risk-aware, and never promise guaranteed profit."
+    )
     messages = [
         {"role": "system", "content": system},
         {"role": "user", "content": f"Profile: {user_profile}
@@ -221,6 +226,8 @@ async def start(message: types.Message):
         f"زمان تهران: <b>{tehran_datetime()}</b>
 "
         f"پلن شما: <b>{user[4] if user else 'free'}</b>
+"
+        f"اشتراک VIP ماهانه: <b>۱۹۹٬۰۰۰ تومان</b>
 
 "
         f"دستورها:
@@ -281,8 +288,10 @@ async def watch(message: types.Message):
         return await message.answer("نمونه: /watch BTCUSDT")
     symbol = parts[1].upper()
     async with aiosqlite.connect(DATABASE_URL) as conn:
-        await conn.execute("INSERT INTO watchlists(user_id, symbol, created_at) VALUES(?,?,?)",
-                           (message.from_user.id, symbol, int(time.time())))
+        await conn.execute(
+            "INSERT INTO watchlists(user_id, symbol, created_at) VALUES(?,?,?)",
+            (message.from_user.id, symbol, int(time.time()))
+        )
         await conn.commit()
     await message.answer(f"{symbol} به واچ‌لیست اضافه شد.")
 
@@ -293,7 +302,7 @@ async def subscribe(message: types.Message):
     if plan not in ("vip", "pro", "elite"):
         return await message.answer("پلن معتبر: vip / pro / elite")
     await set_plan(message.from_user.id, plan, 30)
-    await message.answer(f"پلن شما به <b>{plan}</b> برای 30 روز فعال شد.")
+    await message.answer("پلن شما به <b>VIP</b> برای ۳۰ روز فعال شد. مبلغ: <b>۱۹۹٬۰۰۰ تومان</b>")
 
 @router.message(Command("ai"))
 async def ai_cmd(message: types.Message):
@@ -325,8 +334,11 @@ async def admin(message: types.Message):
     async with aiosqlite.connect(DATABASE_URL) as conn:
         cur = await conn.execute("SELECT COUNT(*) FROM users")
         users = (await cur.fetchone())[0]
+        cur = await conn.execute("SELECT COUNT(*) FROM payments")
+        payments = (await cur.fetchone())[0]
     await message.answer(f"ادمین فعال است.
 Users: {users}
+Payments: {payments}
 زمان تهران: {tehran_datetime()}")
 
 @app.post("/webhook")
