@@ -1,8 +1,11 @@
 from aiogram import Bot, Dispatcher
 from config import Config
 
-bot = Bot(token=Config.BOT_TOKEN)
+config = Config()
+
+bot = Bot(token=config.BOT_TOKEN)
 dp = Dispatcher()
 
+
 async def setup_bot():
-    print("Bot started...")
+    print(f"Bot @{config.BOT_USERNAME} started...")
