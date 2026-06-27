@@ -28,59 +28,68 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # ============================================================
-# TOKEN LOADING - MULTIPLE SOURCES WITH DEBUG
+# TOKEN LOADING WITH DEBUG
 # ============================================================
 
 def load_token() -> str:
-    """تلاش برای دریافت توکن از منابع مختلف با نمایش خطا"""
+    """تلاش برای دریافت توکن از منابع مختلف با نمایش جزئیات"""
+    
+    sources = []
     
     # 1. از متغیر محیطی BOT_TOKEN
     token = os.getenv("BOT_TOKEN")
-    if token and token.strip():
+    if token:
         token = token.strip()
-        print(f"✅ Token loaded from environment variable (length: {len(token)})")
-        return token
+        sources.append(("BOT_TOKEN env", token))
     
-    # 2. از متغیر TELEGRAM_TOKEN (برخی پلتفرم‌ها)
-    token = os.getenv("TELEGRAM_TOKEN")
-    if token and token.strip():
-        token = token.strip()
-        print(f"✅ Token loaded from TELEGRAM_TOKEN (length: {len(token)})")
-        return token
+    # 2. از متغیر TELEGRAM_TOKEN
+    if not token:
+        token = os.getenv("TELEGRAM_TOKEN")
+        if token:
+            token = token.strip()
+            sources.append(("TELEGRAM_TOKEN env", token))
     
     # 3. از فایل token.txt
-    try:
-        if os.path.exists("token.txt"):
+    if not token and os.path.exists("token.txt"):
+        try:
             with open("token.txt", "r") as f:
                 token = f.read().strip()
-            if token:
-                print(f"✅ Token loaded from token.txt (length: {len(token)})")
-                return token
-    except Exception as e:
-        print(f"⚠️ Could not read token.txt: {e}")
+                if token:
+                    sources.append(("token.txt", token))
+        except:
+            pass
     
     # 4. از فایل .env (دستی)
-    try:
-        if os.path.exists(".env"):
+    if not token and os.path.exists(".env"):
+        try:
             with open(".env", "r") as f:
                 for line in f:
                     if line.startswith("BOT_TOKEN="):
                         token = line.split("=", 1)[1].strip().strip('"').strip("'")
                         if token:
-                            print(f"✅ Token loaded from .env file (length: {len(token)})")
-                            return token
-    except Exception as e:
-        print(f"⚠️ Could not read .env: {e}")
+                            sources.append((".env file", token))
+                            break
+        except:
+            pass
     
     # 5. از آرگومان خط فرمان
-    for arg in sys.argv:
-        if arg.startswith("BOT_TOKEN="):
-            token = arg.split("=", 1)[1]
-            if token:
-                print(f"✅ Token loaded from command line (length: {len(token)})")
-                return token
+    if not token:
+        for arg in sys.argv:
+            if arg.startswith("BOT_TOKEN="):
+                token = arg.split("=", 1)[1].strip()
+                if token:
+                    sources.append(("command line", token))
+                    break
     
-    # 6. اگر هیچ کدام کار نکرد، یک فایل token.txt بساز و راهنمایی کن
+    # اگر توکن پیدا شد، نمایش جزئیات
+    if token:
+        print(f"✅ Token loaded from: {sources[-1][0]}")
+        print(f"   Length: {len(token)}")
+        print(f"   First 10 chars: {token[:10]}...")
+        print(f"   Last 5 chars: ...{token[-5:] if len(token) > 5 else token}")
+        return token
+    
+    # اگر هیچ کدام کار نکرد
     print("❌ BOT_TOKEN not found in any source!")
     print("Please choose one of the following methods:")
     print("1. Set BOT_TOKEN in Railway Variables (recommended)")
@@ -114,8 +123,6 @@ def validate_token_format(token: str) -> bool:
 if not validate_token_format(BOT_TOKEN):
     print("❌ Token format is invalid!")
     sys.exit(1)
-
-print(f"✅ BOT_TOKEN validated (length: {len(BOT_TOKEN)})")
 
 # ============================================================
 # LOGGING
@@ -154,7 +161,7 @@ class Config:
 cfg = Config()
 
 # ============================================================
-# DATABASE (همان کد قبلی - فشرده شده برای صرفه‌جویی)
+# DATABASE
 # ============================================================
 class Database:
     def __init__(self, db_file: str):
@@ -412,15 +419,6 @@ class Persian:
 p = Persian()
 
 # ============================================================
-# AI, COINEX, BOT, HANDLERS (ادامه کد قبلی)
-# ============================================================
-# ... (بقیه کد ربات که قبلاً داشتیم، اینجا قرار می‌گیرد)
-# برای جلوگیری از طولانی شدن بیش از حد، فرض می‌کنیم بقیه کد
-# دقیقاً مانند نسخه قبلی است. اگر نیاز به کل کد دارید،
-# می‌توانید ادامه را از نسخه قبلی کپی کنید.
-# در اینجا فقط بخش‌های کلیدی را می‌نویسم.
-
-# ============================================================
 # AI ENGINE (GROQ)
 # ============================================================
 class GroqAI:
@@ -589,14 +587,24 @@ from aiogram.types import Message, CallbackQuery
 from aiogram.enums import ParseMode
 from aiogram.client.default import DefaultBotProperties
 
-bot = Bot(
-    token=cfg.BOT_TOKEN,
-    default=DefaultBotProperties(parse_mode=ParseMode.MARKDOWN)
-)
+# قبل از ساخت Bot، دوباره توکن را چاپ می‌کنیم
+print(f"🔑 Using token: {cfg.BOT_TOKEN[:10]}... (length: {len(cfg.BOT_TOKEN)})")
+
+try:
+    bot = Bot(
+        token=cfg.BOT_TOKEN,
+        default=DefaultBotProperties(parse_mode=ParseMode.MARKDOWN)
+    )
+    print("✅ Bot instance created successfully")
+except Exception as e:
+    print(f"❌ Failed to create Bot: {e}")
+    print("Please check your token and try again.")
+    sys.exit(1)
+
 dp = Dispatcher(storage=MemoryStorage())
 
 # ============================================================
-# COMMAND HANDLERS (خلاصه)
+# COMMAND HANDLERS
 # ============================================================
 @dp.message(CommandStart())
 async def cmd_start(message: Message, command: CommandObject):
@@ -640,8 +648,544 @@ async def cmd_start(message: Message, command: CommandObject):
 """
     await message.answer(welcome, reply_markup=main_keyboard(user.id))
 
-# ... (بقیه هندلرها مانند قبل)
-# برای جلوگیری از طولانی شدن، بقیه کد را از نسخه قبلی کپی کنید.
+@dp.message(Command("time"))
+async def cmd_time(message: Message):
+    await message.answer(f"🕐 **{p.full()}**")
+
+@dp.message(Command("price"))
+async def cmd_price(message: Message):
+    await message.answer("📊 در حال دریافت قیمت‌ها...")
+    prices = await coinex.get_all_prices()
+    if not prices:
+        await message.answer("❌ خطا در دریافت قیمت‌ها")
+        return
+    txt = "📊 **قیمت لحظه‌ای ارزها**\n\n"
+    for p in prices:
+        em = "🟢" if p['change'] >= 0 else "🔴"
+        txt += f"{em} {p['symbol']}: ${p['price']:,.2f} ({p['change']:+.2f}%)\n"
+    await message.answer(txt)
+
+@dp.message(Command("ai"))
+async def cmd_ai(message: Message):
+    if not ai.enabled:
+        await message.answer("❌ سرویس AI در حال حاضر در دسترس نیست.")
+        return
+    
+    user_data = db.get_user(message.from_user.id)
+    is_vip = db.is_vip(message.from_user.id)
+    if not is_vip and user_data.get('free_trial_used', 0) == 0:
+        db.use_free_trial(message.from_user.id)
+        await message.answer("🎁 **نسخه آزمایشی ۳ روزه فعال شد!**\nاز این فرصت استفاده کنید.")
+    elif not is_vip:
+        await message.answer("⛔ برای استفاده از AI، باید اشتراک VIP تهیه کنید.\nاز دکمه خرید VIP استفاده کنید.")
+        return
+    
+    prompt = message.text.replace("/ai", "").strip()
+    if not prompt:
+        await message.answer("🤖 لطفاً یک سوال یا تحلیل مورد نظر را بنویسید.\nمثال: `/ai بیت‌کوین رو تحلیل کن`")
+        return
+    
+    await message.answer("🤖 در حال تحلیل... لطفاً صبر کنید.")
+    result = await ai.analyze(prompt)
+    if result:
+        await message.answer(result)
+    else:
+        await message.answer("❌ خطا در پردازش. لطفاً دوباره تلاش کنید.")
+
+@dp.message(Command("watch"))
+async def cmd_watch(message: Message, state: FSMContext):
+    is_vip = db.is_vip(message.from_user.id)
+    if not is_vip:
+        await message.answer("⛔ این قابلیت فقط برای کاربران VIP است. از دکمه خرید VIP استفاده کنید.")
+        return
+    await state.set_state(WatchState.waiting_symbol)
+    await message.answer("👀 **افزودن به واچ‌لیست**\n\nنام ارز را وارد کنید (مثلاً BTC یا ETH):")
+
+@dp.message(WatchState.waiting_symbol)
+async def watch_symbol(message: Message, state: FSMContext):
+    symbol = message.text.upper().strip()
+    if symbol not in [s.split('/')[0] for s in cfg.COINEX_SYMBOLS]:
+        await message.answer("❌ ارز نامعتبر است. ارزهای پشتیبانی شده:\n" + ", ".join([s.split('/')[0] for s in cfg.COINEX_SYMBOLS]))
+        return
+    await state.update_data(symbol=symbol)
+    await state.set_state(WatchState.waiting_target)
+    await message.answer(f"💰 قیمت هدف برای {symbol} را وارد کنید (عدد):")
+
+@dp.message(WatchState.waiting_target)
+async def watch_target(message: Message, state: FSMContext):
+    try:
+        target = float(message.text.replace(',', ''))
+    except:
+        await message.answer("❌ لطفاً یک عدد معتبر وارد کنید.")
+        return
+    await state.update_data(target=target)
+    await state.set_state(WatchState.waiting_type)
+    await message.answer("📈 نوع هشدار را انتخاب کنید:", 
+                        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                            [InlineKeyboardButton(text="⬆️ بالاتر از", callback_data="watch_above"),
+                             InlineKeyboardButton(text="⬇️ پایین‌تر از", callback_data="watch_below")]
+                        ]))
+
+@dp.callback_query(F.data.startswith("watch_"))
+async def watch_type(callback: CallbackQuery, state: FSMContext):
+    await callback.answer()
+    alert_type = "above" if callback.data == "watch_above" else "below"
+    data = await state.get_data()
+    symbol = data.get('symbol')
+    target = data.get('target')
+    db.add_watch(callback.from_user.id, symbol, target, alert_type)
+    await state.clear()
+    await callback.message.edit_text(
+        f"✅ هشدار برای {symbol} با هدف {alert_type} ${target:.2f} ثبت شد.",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="👀 مشاهده واچ‌لیست", callback_data="watchlist")],
+            [InlineKeyboardButton(text="🔙 بازگشت", callback_data="back_main")]
+        ])
+    )
+
+@dp.message(Command("subscribe"))
+async def cmd_subscribe(message: Message):
+    await message.answer(
+        f"💰 **خرید اشتراک VIP**\n\n"
+        f"💎 **مبلغ:** {cfg.VIP_PRICE:,} تومان\n"
+        f"📅 **مدت:** {cfg.VIP_DURATION} روز\n"
+        f"✨ **ویژگی‌ها:**\n"
+        f"• تحلیل پیشرفته با AI\n"
+        f"• هشدار قیمت نامحدود\n"
+        f"• واچ‌لیست ۲۰ ارز\n"
+        f"• اولویت پشتیبانی\n\n"
+        f"💳 **نحوه پرداخت:**\n"
+        f"کارت به کارت به شماره:\n"
+        f"`{cfg.CARD_NUMBER}`\n"
+        f"به نام {cfg.CARD_OWNER}\n\n"
+        f"پس از پرداخت، کد پیگیری را با دستور `/pay [کد]` ارسال کنید.",
+        parse_mode=ParseMode.MARKDOWN
+    )
+
+@dp.message(Command("pay"))
+async def cmd_pay(message: Message):
+    parts = message.text.split(maxsplit=1)
+    if len(parts) < 2:
+        await message.answer("❌ لطفاً کد پیگیری را همراه با دستور ارسال کنید:\n`/pay 123456789`", parse_mode=ParseMode.MARKDOWN)
+        return
+    tracking = parts[1].strip()
+    
+    db.add_payment(message.from_user.id, cfg.VIP_PRICE, tracking)
+    await message.answer(
+        f"✅ کد پیگیری {tracking} ثبت شد.\n"
+        f"پرداخت شما در حال بررسی است. پس از تأیید ادمین، اشتراک VIP فعال خواهد شد.\n\n"
+        f"⏳ لطفاً صبور باشید. در کمتر از ۲۴ ساعت بررسی می‌شود."
+    )
+    for admin_id in cfg.ADMIN_IDS:
+        try:
+            await bot.send_message(
+                admin_id,
+                f"🆕 درخواست پرداخت جدید:\n"
+                f"👤 کاربر: {message.from_user.full_name} (ID: {message.from_user.id})\n"
+                f"💰 مبلغ: {cfg.VIP_PRICE:,} تومان\n"
+                f"📎 کد پیگیری: {tracking}\n\n"
+                f"برای تأیید از پنل ادمین استفاده کنید."
+            )
+        except:
+            pass
+
+@dp.message(Command("me"))
+async def cmd_me(message: Message):
+    user_data = db.get_user(message.from_user.id)
+    if not user_data:
+        await message.answer("❌ اطلاعاتی یافت نشد.")
+        return
+    is_vip = db.is_vip(message.from_user.id)
+    txt = f"👤 **پروفایل کاربری**\n\n"
+    txt += f"🆔 آیدی: {message.from_user.id}\n"
+    txt += f"👤 نام: {message.from_user.full_name}\n"
+    txt += f"🪙 سکه: {user_data.get('balance', 0)}\n"
+    txt += f"💎 وضعیت: {'✅ VIP' if is_vip else '❌ رایگان'}\n"
+    if is_vip:
+        txt += f"📅 انقضا: {user_data['vip_expires']}\n"
+    txt += f"🎁 تعداد دعوت: {db.get_referral_count(message.from_user.id)}\n"
+    await message.answer(txt)
+
+@dp.message(Command("admin"))
+async def cmd_admin(message: Message):
+    if message.from_user.id not in cfg.ADMIN_IDS:
+        await message.answer("⛔ دسترسی غیرمجاز.")
+        return
+    await message.answer("🔧 **پنل ادمین**", reply_markup=admin_keyboard())
+
+# ============================================================
+# CALLBACK HANDLERS
+# ============================================================
+@dp.callback_query(F.data == "back_main")
+async def back_main(callback: CallbackQuery):
+    await callback.answer()
+    await callback.message.edit_text(
+        f"💎 VIP PLATINUM\n\n{p.greet()} {p.full()}",
+        reply_markup=main_keyboard(callback.from_user.id)
+    )
+
+@dp.callback_query(F.data == "prices")
+async def show_prices(callback: CallbackQuery):
+    await callback.answer("📊 دریافت قیمت‌ها...")
+    prices = await coinex.get_all_prices()
+    txt = "📊 **قیمت لحظه‌ای**\n\n"
+    for p in prices:
+        em = "🟢" if p['change'] >= 0 else "🔴"
+        txt += f"{em} {p['symbol']}: ${p['price']:,.2f} ({p['change']:+.2f}%)\n"
+    await callback.message.edit_text(txt, reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🔄 بروزرسانی", callback_data="prices")],
+        [InlineKeyboardButton(text="🔙 بازگشت", callback_data="back_main")]
+    ]))
+
+@dp.callback_query(F.data == "ai_analyze")
+async def ai_analyze(callback: CallbackQuery):
+    await callback.answer()
+    if not ai.enabled:
+        await callback.message.edit_text("❌ سرویس AI در دسترس نیست.", reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🔙 بازگشت", callback_data="back_main")]
+        ]))
+        return
+    
+    is_vip = db.is_vip(callback.from_user.id)
+    user_data = db.get_user(callback.from_user.id)
+    
+    if not is_vip and user_data.get('free_trial_used', 0) == 0:
+        db.use_free_trial(callback.from_user.id)
+        await callback.message.edit_text(
+            "🎁 **نسخه آزمایشی ۳ روزه فعال شد!**\n"
+            "لطفاً سوال یا تحلیل خود را به صورت متن بنویسید.\n"
+            "مثال: `بیت‌کوین رو تحلیل کن`",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text="🔙 بازگشت", callback_data="back_main")]
+            ])
+        )
+        return
+    elif not is_vip:
+        await callback.message.edit_text(
+            "⛔ برای استفاده از AI، باید اشتراک VIP تهیه کنید.\n"
+            "از دکمه خرید VIP استفاده کنید.",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text="💰 خرید VIP", callback_data="buy_vip")],
+                [InlineKeyboardButton(text="🔙 بازگشت", callback_data="back_main")]
+            ])
+        )
+        return
+    
+    await callback.message.edit_text(
+        "🤖 **تحلیل هوشمند**\n\n"
+        "سوال یا تحلیل خود را به صورت متن بنویسید.\n"
+        "مثال: `بیت‌کوین رو با اندیکاتورها تحلیل کن`",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🔙 بازگشت", callback_data="back_main")]
+        ])
+    )
+
+@dp.callback_query(F.data == "watchlist")
+async def show_watchlist(callback: CallbackQuery):
+    await callback.answer()
+    watches = db.get_watchlist(callback.from_user.id)
+    if not watches:
+        await callback.message.edit_text(
+            "👀 **واچ‌لیست شما خالی است.**\n\n"
+            "برای افزودن ارز به واچ‌لیست، از دستور `/watch` استفاده کنید.",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text="🔙 بازگشت", callback_data="back_main")]
+            ])
+        )
+        return
+    txt = "👀 **واچ‌لیست شما**\n\n"
+    for w in watches:
+        txt += f"🔹 {w['symbol']}: هدف {w['alert_type']} ${w['target_price']:.2f}\n"
+    await callback.message.edit_text(txt, reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="➕ افزودن جدید", callback_data="set_alert")],
+        [InlineKeyboardButton(text="🔙 بازگشت", callback_data="back_main")]
+    ]))
+
+@dp.callback_query(F.data == "set_alert")
+async def set_alert(callback: CallbackQuery, state: FSMContext):
+    await callback.answer()
+    is_vip = db.is_vip(callback.from_user.id)
+    if not is_vip:
+        await callback.message.edit_text(
+            "⛔ این قابلیت فقط برای کاربران VIP است.",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text="💰 خرید VIP", callback_data="buy_vip")],
+                [InlineKeyboardButton(text="🔙 بازگشت", callback_data="back_main")]
+            ])
+        )
+        return
+    await state.set_state(WatchState.waiting_symbol)
+    await callback.message.edit_text(
+        "👀 **افزودن هشدار قیمت**\n\n"
+        "نام ارز را وارد کنید (مثلاً BTC یا ETH):",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🔙 بازگشت", callback_data="back_main")]
+        ])
+    )
+
+@dp.callback_query(F.data == "buy_vip")
+async def buy_vip(callback: CallbackQuery):
+    await callback.answer()
+    await callback.message.edit_text(
+        f"💰 **خرید اشتراک VIP**\n\n"
+        f"💎 **مبلغ:** {cfg.VIP_PRICE:,} تومان\n"
+        f"📅 **مدت:** {cfg.VIP_DURATION} روز\n"
+        f"✨ **ویژگی‌ها:**\n"
+        f"• تحلیل پیشرفته با AI\n"
+        f"• هشدار قیمت نامحدود\n"
+        f"• واچ‌لیست ۲۰ ارز\n"
+        f"• اولویت پشتیبانی\n\n"
+        f"💳 **نحوه پرداخت:**\n"
+        f"کارت به کارت به شماره:\n"
+        f"`{cfg.CARD_NUMBER}`\n"
+        f"به نام {cfg.CARD_OWNER}\n\n"
+        f"پس از پرداخت، کد پیگیری را با دستور `/pay [کد]` ارسال کنید.",
+        parse_mode=ParseMode.MARKDOWN,
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="✅ ارسال کد پیگیری", callback_data="send_payment")],
+            [InlineKeyboardButton(text="🔙 بازگشت", callback_data="back_main")]
+        ])
+    )
+
+@dp.callback_query(F.data == "send_payment")
+async def send_payment(callback: CallbackQuery):
+    await callback.answer()
+    await callback.message.edit_text(
+        "📤 **ارسال کد پیگیری**\n\n"
+        "لطفاً کد پیگیری (رسید) را به صورت متن بنویسید.\n"
+        "مثال: `123456789`",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🔙 بازگشت", callback_data="back_main")]
+        ])
+    )
+
+@dp.callback_query(F.data == "profile")
+async def profile(callback: CallbackQuery):
+    await callback.answer()
+    user_data = db.get_user(callback.from_user.id)
+    is_vip = db.is_vip(callback.from_user.id)
+    txt = f"👤 **پروفایل**\n\n"
+    txt += f"🆔 آیدی: {callback.from_user.id}\n"
+    txt += f"👤 نام: {callback.from_user.full_name}\n"
+    txt += f"🪙 سکه: {user_data.get('balance', 0)}\n"
+    txt += f"💎 وضعیت: {'✅ VIP' if is_vip else '❌ رایگان'}\n"
+    if is_vip:
+        txt += f"📅 انقضا: {user_data['vip_expires']}\n"
+    txt += f"🎁 تعداد دعوت: {db.get_referral_count(callback.from_user.id)}\n"
+    await callback.message.edit_text(txt, reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🎁 دعوت از دوستان", callback_data="referral")],
+        [InlineKeyboardButton(text="🔙 بازگشت", callback_data="back_main")]
+    ]))
+
+@dp.callback_query(F.data == "referral")
+async def referral(callback: CallbackQuery):
+    await callback.answer()
+    bot_username = (await bot.get_me()).username
+    ref_link = f"https://t.me/{bot_username}?start={callback.from_user.id}"
+    txt = f"🎁 **سیستم دعوت دوستان**\n\n"
+    txt += f"🔗 لینک دعوت شما:\n`{ref_link}`\n\n"
+    txt += f"👥 تعداد دعوت‌ها: {db.get_referral_count(callback.from_user.id)}\n"
+    txt += f"🪙 سکه فعلی: {db.get_user(callback.from_user.id).get('balance', 0)}\n\n"
+    txt += "✨ **پاداش:**\n"
+    txt += "• هر دعوت: +۵ سکه به شما\n"
+    txt += "• دوست شما: +۱۰ سکه\n"
+    await callback.message.edit_text(txt, parse_mode=ParseMode.MARKDOWN, reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="📋 کپی لینک", callback_data="copy_ref")],
+        [InlineKeyboardButton(text="🔙 بازگشت", callback_data="back_main")]
+    ]))
+
+@dp.callback_query(F.data == "copy_ref")
+async def copy_ref(callback: CallbackQuery):
+    await callback.answer("✅ لینک کپی شد!", show_alert=True)
+    bot_username = (await bot.get_me()).username
+    ref_link = f"https://t.me/{bot_username}?start={callback.from_user.id}"
+    await callback.message.answer(f"🔗 لینک دعوت شما:\n`{ref_link}`", parse_mode=ParseMode.MARKDOWN)
+
+# ============================================================
+# ADMIN CALLBACKS
+# ============================================================
+@dp.callback_query(F.data == "admin_panel")
+async def admin_panel(callback: CallbackQuery):
+    if callback.from_user.id not in cfg.ADMIN_IDS:
+        await callback.answer("⛔ دسترسی غیرمجاز", show_alert=True)
+        return
+    await callback.answer()
+    await callback.message.edit_text("🔧 **پنل ادمین**", reply_markup=admin_keyboard())
+
+@dp.callback_query(F.data == "admin_broadcast")
+async def admin_broadcast(callback: CallbackQuery, state: FSMContext):
+    if callback.from_user.id not in cfg.ADMIN_IDS:
+        await callback.answer("⛔ دسترسی غیرمجاز", show_alert=True)
+        return
+    await callback.answer()
+    await state.set_state(AdminState.waiting_broadcast)
+    await callback.message.edit_text(
+        "📨 **ارسال همگانی**\n\n"
+        "متن پیام خود را وارد کنید.\n\n"
+        "⚠️ پیام به **همه کاربران** ارسال خواهد شد.",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🔙 انصراف", callback_data="admin_panel")]
+        ])
+    )
+
+@dp.message(AdminState.waiting_broadcast)
+async def process_broadcast(message: Message, state: FSMContext):
+    if message.from_user.id not in cfg.ADMIN_IDS:
+        await message.answer("⛔ دسترسی غیرمجاز")
+        await state.clear()
+        return
+    conn = sqlite3.connect(cfg.DB_FILE)
+    cur = conn.cursor()
+    cur.execute("SELECT user_id FROM users")
+    users = cur.fetchall()
+    conn.close()
+    
+    success = 0
+    fail = 0
+    for user_id in users:
+        try:
+            await bot.send_message(user_id[0], message.text)
+            success += 1
+        except:
+            fail += 1
+        await asyncio.sleep(0.05)
+    
+    await message.answer(f"✅ ارسال همگانی انجام شد.\n📤 موفق: {success}\n📤 ناموفق: {fail}")
+    await state.clear()
+
+@dp.callback_query(F.data == "admin_verify")
+async def admin_verify(callback: CallbackQuery):
+    if callback.from_user.id not in cfg.ADMIN_IDS:
+        await callback.answer("⛔ دسترسی غیرمجاز", show_alert=True)
+        return
+    await callback.answer()
+    pending = db.get_pending_payments()
+    if not pending:
+        await callback.message.edit_text(
+            "✅ هیچ درخواست پرداختی در انتظار تأیید نیست.",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text="🔙 بازگشت", callback_data="admin_panel")]
+            ])
+        )
+        return
+    txt = "💳 **درخواست‌های پرداخت**\n\n"
+    for p in pending[:10]:
+        txt += f"🆔 {p['id']} | کاربر: {p['user_id']} | مبلغ: {p['amount']:,}\n"
+        txt += f"📎 کد: {p['tracking_code']} | تاریخ: {p['created_at']}\n\n"
+    txt += "برای تأیید: `/verify [id]`\nبرای رد: `/reject [id]`"
+    await callback.message.edit_text(txt, reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🔙 بازگشت", callback_data="admin_panel")]
+    ]))
+
+@dp.message(Command("verify"))
+async def verify_payment(message: Message):
+    if message.from_user.id not in cfg.ADMIN_IDS:
+        await message.answer("⛔ دسترسی غیرمجاز")
+        return
+    parts = message.text.split()
+    if len(parts) < 2:
+        await message.answer("❌ لطفاً آیدی پرداخت را وارد کنید: `/verify [id]`")
+        return
+    try:
+        payment_id = int(parts[1])
+    except:
+        await message.answer("❌ آیدی نامعتبر")
+        return
+    
+    conn = sqlite3.connect(cfg.DB_FILE)
+    cur = conn.cursor()
+    cur.execute("SELECT user_id FROM payments WHERE id = ? AND status = 'pending'", (payment_id,))
+    row = cur.fetchone()
+    conn.close()
+    
+    if not row:
+        await message.answer("❌ پرداخت یافت نشد یا قبلاً تأیید شده است.")
+        return
+    
+    user_id = row[0]
+    db.verify_payment(payment_id, message.from_user.id)
+    db.activate_vip(user_id)
+    
+    await message.answer(f"✅ پرداخت {payment_id} تأیید شد. اشتراک VIP کاربر {user_id} فعال شد.")
+    try:
+        await bot.send_message(user_id, f"✅ **اشتراک VIP شما فعال شد!**\n\n🎉 تبریک! اشتراک {cfg.VIP_DURATION} روزه شما فعال شد.\nاز تمام قابلیت‌های VIP استفاده کنید.")
+    except:
+        pass
+
+@dp.message(Command("reject"))
+async def reject_payment(message: Message):
+    if message.from_user.id not in cfg.ADMIN_IDS:
+        await message.answer("⛔ دسترسی غیرمجاز")
+        return
+    parts = message.text.split()
+    if len(parts) < 2:
+        await message.answer("❌ لطفاً آیدی پرداخت را وارد کنید: `/reject [id]`")
+        return
+    try:
+        payment_id = int(parts[1])
+    except:
+        await message.answer("❌ آیدی نامعتبر")
+        return
+    
+    db.reject_payment(payment_id)
+    await message.answer(f"✅ پرداخت {payment_id} رد شد.")
+
+@dp.callback_query(F.data == "admin_stats")
+async def admin_stats(callback: CallbackQuery):
+    if callback.from_user.id not in cfg.ADMIN_IDS:
+        await callback.answer("⛔ دسترسی غیرمجاز", show_alert=True)
+        return
+    await callback.answer()
+    conn = sqlite3.connect(cfg.DB_FILE)
+    cur = conn.cursor()
+    cur.execute("SELECT COUNT(*) FROM users")
+    total_users = cur.fetchone()[0]
+    cur.execute("SELECT COUNT(*) FROM users WHERE is_vip = 1")
+    vip_users = cur.fetchone()[0]
+    cur.execute("SELECT COUNT(*) FROM payments WHERE status = 'verified'")
+    total_payments = cur.fetchone()[0]
+    cur.execute("SELECT SUM(amount) FROM payments WHERE status = 'verified'")
+    total_revenue = cur.fetchone()[0] or 0
+    cur.execute("SELECT COUNT(*) FROM payments WHERE status = 'pending'")
+    pending_payments = cur.fetchone()[0]
+    cur.execute("SELECT COUNT(*) FROM watchlist")
+    total_watches = cur.fetchone()[0]
+    conn.close()
+    
+    txt = f"📊 **گزارش عملکرد**\n\n"
+    txt += f"👥 کل کاربران: {total_users}\n"
+    txt += f"💎 کاربران VIP: {vip_users}\n"
+    txt += f"💰 کل پرداخت‌ها: {total_payments}\n"
+    txt += f"📈 درآمد کل: {total_revenue:,} تومان\n"
+    txt += f"⏳ پرداخت‌های در انتظار: {pending_payments}\n"
+    txt += f"👀 واچ‌لیست‌ها: {total_watches}\n"
+    await callback.message.edit_text(txt, reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🔄 بروزرسانی", callback_data="admin_stats")],
+        [InlineKeyboardButton(text="🔙 بازگشت", callback_data="admin_panel")]
+    ]))
+
+@dp.callback_query(F.data == "admin_users")
+async def admin_users(callback: CallbackQuery):
+    if callback.from_user.id not in cfg.ADMIN_IDS:
+        await callback.answer("⛔ دسترسی غیرمجاز", show_alert=True)
+        return
+    await callback.answer()
+    conn = sqlite3.connect(cfg.DB_FILE)
+    cur = conn.cursor()
+    cur.execute("SELECT user_id, username, first_name, is_vip, vip_expires FROM users ORDER BY joined_at DESC LIMIT 20")
+    users = cur.fetchall()
+    conn.close()
+    
+    txt = "📝 **۲۰ کاربر اخیر**\n\n"
+    for u in users:
+        txt += f"🆔 {u[0]} | {u[1] or u[2] or 'نامشخص'}\n"
+        txt += f"💎 {'✅ VIP' if u[3] else '❌ رایگان'}"
+        if u[4]:
+            txt += f" (تا {u[4]})"
+        txt += "\n\n"
+    await callback.message.edit_text(txt, reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🔙 بازگشت", callback_data="admin_panel")]
+    ]))
 
 # ============================================================
 # PRICE ALERT CHECKER
@@ -685,46 +1229,6 @@ async def price_alert_checker():
         await asyncio.sleep(60)
 
 # ============================================================
-# FASTAPI WEBHOOK (OPTIONAL)
-# ============================================================
-from fastapi import FastAPI, Request, HTTPException, Header
-import uvicorn
-
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    logger.info("🚀 Starting in webhook mode...")
-    asyncio.create_task(price_alert_checker())
-    
-    if cfg.WEBHOOK_URL:
-        await bot.set_webhook(
-            url=f"{cfg.WEBHOOK_URL}/webhook",
-            secret_token=cfg.WEBHOOK_SECRET,
-            max_connections=100
-        )
-        logger.info(f"✅ Webhook set to {cfg.WEBHOOK_URL}/webhook")
-    
-    yield
-    await bot.delete_webhook()
-    await bot.session.close()
-    logger.info("🛑 Bot stopped")
-
-app = FastAPI(lifespan=lifespan)
-
-@app.post("/webhook")
-async def webhook(request: Request, x_telegram_bot_api_secret_token: Optional[str] = Header(None)):
-    if x_telegram_bot_api_secret_token != cfg.WEBHOOK_SECRET:
-        raise HTTPException(status_code=403, detail="Invalid secret token")
-    
-    body = await request.json()
-    update = types.Update(**body)
-    await dp.feed_update(bot, update)
-    return {"status": "ok"}
-
-@app.get("/health")
-async def health():
-    return {"status": "ok", "time": p.full(), "version": "45.0"}
-
-# ============================================================
 # MAIN ENTRY POINT
 # ============================================================
 async def polling_main():
@@ -737,8 +1241,42 @@ async def polling_main():
 
 if __name__ == "__main__":
     try:
+        # اگر WEBHOOK_URL تنظیم شده باشد، از FastAPI استفاده کن (اختیاری)
         if cfg.WEBHOOK_URL:
-            logger.info(f"🚀 Starting with Webhook on port {cfg.PORT}")
+            from fastapi import FastAPI, Request, HTTPException, Header
+            import uvicorn
+            
+            @asynccontextmanager
+            async def lifespan(app: FastAPI):
+                logger.info("🚀 Starting in webhook mode...")
+                asyncio.create_task(price_alert_checker())
+                if cfg.WEBHOOK_URL:
+                    await bot.set_webhook(
+                        url=f"{cfg.WEBHOOK_URL}/webhook",
+                        secret_token=cfg.WEBHOOK_SECRET,
+                        max_connections=100
+                    )
+                    logger.info(f"✅ Webhook set to {cfg.WEBHOOK_URL}/webhook")
+                yield
+                await bot.delete_webhook()
+                await bot.session.close()
+                logger.info("🛑 Bot stopped")
+            
+            app = FastAPI(lifespan=lifespan)
+            
+            @app.post("/webhook")
+            async def webhook(request: Request, x_telegram_bot_api_secret_token: Optional[str] = Header(None)):
+                if x_telegram_bot_api_secret_token != cfg.WEBHOOK_SECRET:
+                    raise HTTPException(status_code=403, detail="Invalid secret token")
+                body = await request.json()
+                update = types.Update(**body)
+                await dp.feed_update(bot, update)
+                return {"status": "ok"}
+            
+            @app.get("/health")
+            async def health():
+                return {"status": "ok", "time": p.full(), "version": "45.0"}
+            
             uvicorn.run(app, host="0.0.0.0", port=cfg.PORT)
         else:
             asyncio.run(polling_main())
