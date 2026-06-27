@@ -19,31 +19,23 @@ def main_keyboard():
         [InlineKeyboardButton(text="👤 پروفایل", callback_data="profile")],
     ])
 
+def fmt_dt():
+    return tehran_now().strftime("%Y/%m/%d - %H:%M:%S")
+
 async def reset_daily_if_needed(user_id: int):
     today = tehran_now().date().isoformat()
-    row = await q(
-        "SELECT last_reset_day FROM user_state WHERE user_id=?",
-        (user_id,),
-        one=True
-    )
+    row = await q("SELECT last_reset_day FROM user_state WHERE user_id=?", (user_id,), one=True)
     if not row:
         await q(
             "INSERT OR IGNORE INTO user_state(user_id, last_ai_at, daily_ai_count, last_reset_day) VALUES(?,?,?,?)",
             (user_id, 0, 0, today)
         )
     elif row[0] != today:
-        await q(
-            "UPDATE user_state SET daily_ai_count=0, last_reset_day=? WHERE user_id=?",
-            (today, user_id)
-        )
+        await q("UPDATE user_state SET daily_ai_count=0, last_reset_day=? WHERE user_id=?", (today, user_id))
 
 async def get_ai_count(user_id: int):
     await reset_daily_if_needed(user_id)
-    row = await q(
-        "SELECT daily_ai_count FROM user_state WHERE user_id=?",
-        (user_id,),
-        one=True
-    )
+    row = await q("SELECT daily_ai_count FROM user_state WHERE user_id=?", (user_id,), one=True)
     return row[0] if row else 0
 
 async def increase_ai_count(user_id: int):
@@ -54,11 +46,7 @@ async def increase_ai_count(user_id: int):
     )
 
 async def rate_limit_ok(user_id: int):
-    row = await q(
-        "SELECT last_ai_at FROM user_state WHERE user_id=?",
-        (user_id,),
-        one=True
-    )
+    row = await q("SELECT last_ai_at FROM user_state WHERE user_id=?", (user_id,), one=True)
     last = row[0] if row else 0
     return (int(time.time()) - int(last)) >= RATE_LIMIT_SECONDS
 
@@ -70,34 +58,30 @@ async def start(message: types.Message):
         message.from_user.full_name or ""
     )
     user = await get_user(message.from_user.id)
+    plan = user[5] if user else "free"
 
-    text = (
-        f"👋 سلام {message.from_user.full_name}!
-
-"
-        f"🕐 زمان تهران: <b>{tehran_now().strftime('%Y/%m/%d - %H:%M:%S')}</b>
-"
-        f"💎 پلن شما: <b>{user[5] if user else 'free'}</b>
-"
-        f"📢 کانال: {CHANNEL_USERNAME}
-
-"
-        f"/price BTCUSDT
-"
-        f"/ai بیت‌کوین را تحلیل کن
-"
-        f"/buyvip
-"
-        f"/me"
-    )
+    text = "
+".join([
+        f"👋 سلام {message.from_user.full_name}!",
+        "",
+        f"🕐 زمان تهران: <b>{fmt_dt()}</b>",
+        f"💎 پلن شما: <b>{plan}</b>",
+        f"📢 کانال: {CHANNEL_USERNAME}",
+        "",
+        "/price BTCUSDT",
+        "/ai بیت‌کوین را تحلیل کن",
+        "/buyvip",
+        "/me",
+    ])
     await message.answer(text, reply_markup=main_keyboard())
 
 @router.message(Command("time"))
 async def time_cmd(message: types.Message):
-    await message.answer(
-        f"🕐 زمان فعلی تهران:
-<b>{tehran_now().strftime('%Y/%m/%d - %H:%M:%S')}</b>"
-    )
+    await message.answer("
+".join([
+        "🕐 زمان فعلی تهران:",
+        f"<b>{fmt_dt()}</b>",
+    ]))
 
 @router.message(Command("me"))
 async def me(message: types.Message):
@@ -109,20 +93,16 @@ async def me(message: types.Message):
     premium = await is_premium(user)
     ai_count = await get_ai_count(message.from_user.id)
 
-    text = (
-        f"👤 پروفایل
-
-"
-        f"نام: {user[2]}
-"
-        f"پلن: {user[5]}
-"
-        f"پریمیوم: {'بله' if premium else 'خیر'}
-"
-        f"AI امروز: {ai_count}
-"
-        f"زمان: {tehran_now().strftime('%Y/%m/%d - %H:%M:%S')}"
-    )
+    text = "
+".join([
+        "👤 پروفایل",
+        "",
+        f"نام: {user[2]}",
+        f"پلن: {user[5]}",
+        f"پریمیوم: {'بله' if premium else 'خیر'}",
+        f"AI امروز: {ai_count}",
+        f"زمان: {fmt_dt()}",
+    ])
     await message.answer(text)
 
 @router.message(Command("price"))
@@ -134,19 +114,15 @@ async def price(message: types.Message):
         data = await get_ticker(symbol)
         ticker = data.get("data") or {}
 
-        text = (
-            f"📊 {symbol}
-"
-            f"آخرین: {ticker.get('last', 'N/A')}
-"
-            f"باز: {ticker.get('open', 'N/A')}
-"
-            f"بسته: {ticker.get('close', 'N/A')}
-"
-            f"بیشترین: {ticker.get('high', 'N/A')}
-"
-            f"کمترین: {ticker.get('low', 'N/A')}"
-        )
+        text = "
+".join([
+            f"📊 {symbol}",
+            f"آخرین: {ticker.get('last', 'N/A')}",
+            f"باز: {ticker.get('open', 'N/A')}",
+            f"بسته: {ticker.get('close', 'N/A')}",
+            f"بیشترین: {ticker.get('high', 'N/A')}",
+            f"کمترین: {ticker.get('low', 'N/A')}",
+        ])
         await message.answer(text)
     except Exception as e:
         await message.answer(f"❌ خطا در دریافت قیمت: {e}")
@@ -179,9 +155,6 @@ async def ai_cmd(message: types.Message):
         return
 
     await message.answer("🤖 در حال تحلیل...")
-    answer = await ask_groq(
-        prompt,
-        f"plan={user[5]}, premium={premium}, risk={user[4]}"
-    )
+    answer = await ask_groq(prompt, f"plan={user[5]}, premium={premium}, risk={user[4]}")
     await increase_ai_count(message.from_user.id)
     await message.answer(answer[:3900])
