@@ -1,13 +1,16 @@
 from fastapi import FastAPI
-from telegram import setup_bot
 from core.startup import init_app
+from telegram.bot import start_bot
 
 app = FastAPI()
 
 @app.on_event("startup")
 async def startup():
     await init_app()
-    await setup_bot()
+
+    # مهم: جدا اجرا شود
+    import asyncio
+    asyncio.create_task(start_bot())
 
 @app.get("/")
 def home():
