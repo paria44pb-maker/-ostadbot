@@ -1,6 +1,7 @@
-def create_invoice(user_id, amount):
+def create_payment(user_id, plan):
     return {
         "user": user_id,
-        "amount": amount,
-        "status": "pending"
+        "plan": plan,
+        "wallet": "TRC20_ADDRESS",
+        "status": "waiting"
     }
