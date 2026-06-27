@@ -1,9 +1,6 @@
 FROM python:3.11
 
 WORKDIR /app
-
 COPY . .
 
-RUN pip install -r requirements.txt
-
-CMD ["python", "-c", "print('🔥 DOCKER IS RUNNING')"]
+CMD ["python", "-c", "print('🔥 DOCKER EXECUTED SUCCESSFULLY')"]
