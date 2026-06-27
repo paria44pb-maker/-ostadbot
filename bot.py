@@ -1,1154 +1,484 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-
-"""
-💎 VIP PLATINUM BOT v46.0 - COMPLETE EDITION
-ربات کامل VIP با تمام قابلیت‌ها - توکن در کد قرار داده شده
-"""
-
 import os
-import sys
+import time
+import hmac
+import json
+import hashlib
 import asyncio
 import logging
-import sqlite3
-import json
-import time
-import hashlib
-import random
-import re
 from datetime import datetime, timedelta
-from typing import Dict, List, Optional, Any
-from collections import defaultdict
+from zoneinfo import ZoneInfo
 
 import aiohttp
-import httpx
-import pytz
-import jdatetime
-from dotenv import load_dotenv
-
-load_dotenv()
-
-# ============================================================
-# ✅ توکن مستقیماً در کد قرار داده شده
-# ============================================================
-BOT_TOKEN = "7225279768:AAHB8ZQdgzhFoeV8tPryyReJ-Gq_Y8pI90U"
-
-# ============================================================
-# VALIDATE TOKEN
-# ============================================================
-if not BOT_TOKEN or len(BOT_TOKEN) < 30:
-    print("❌ Invalid token!")
-    sys.exit(1)
-
-print(f"✅ Token loaded (length: {len(BOT_TOKEN)})")
-
-# ============================================================
-# LOGGING
-# ============================================================
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s | %(name)s | %(levelname)s | %(message)s',
-    datefmt='%Y-%m-%d %H:%M:%S'
-)
-logger = logging.getLogger('vip_bot')
-logger.setLevel(logging.INFO)
-
-# ============================================================
-# CONFIG
-# ============================================================
-class Config:
-    BOT_TOKEN: str = BOT_TOKEN
-    GROQ_API_KEY: str = os.getenv("GROQ_API_KEY", "")
-    CHANNEL_ID: str = os.getenv("CHANNEL_ID", "@CryptoPulse606")
-    ADMIN_IDS: List[int] = [int(x.strip()) for x in os.getenv("ADMIN_IDS", "7225279768").split(",")]
-    OWNER_ID: int = int(os.getenv("OWNER_ID", "7225279768"))
-    CARD_NUMBER: str = os.getenv("CARD_NUMBER", "6037997513379934")
-    CARD_OWNER: str = os.getenv("CARD_OWNER", "علی محمدی")
-    VIP_PRICE: int = int(os.getenv("VIP_PRICE", "199000"))
-    VIP_DURATION: int = int(os.getenv("VIP_DURATION", "30"))
-    FREE_TRIAL_DAYS: int = int(os.getenv("FREE_TRIAL_DAYS", "3"))
-    DB_FILE: str = "vip_bot.db"
-    COINEX_SYMBOLS: List[str] = [
-        "BTC/USDT", "ETH/USDT", "SOL/USDT", "XRP/USDT", "ADA/USDT",
-        "BNB/USDT", "DOGE/USDT", "DOT/USDT", "AVAX/USDT", "LINK/USDT"
-    ]
-
-cfg = Config()
-
-# ============================================================
-# DATABASE
-# ============================================================
-class Database:
-    def __init__(self, db_file: str):
-        self.db_file = db_file
-        self._init_db()
-    
-    def _get_conn(self):
-        conn = sqlite3.connect(self.db_file)
-        conn.row_factory = sqlite3.Row
-        return conn
-    
-    def _init_db(self):
-        conn = self._get_conn()
-        cur = conn.cursor()
-        cur.execute('''
-            CREATE TABLE IF NOT EXISTS users (
-                user_id INTEGER PRIMARY KEY,
-                username TEXT,
-                first_name TEXT,
-                last_name TEXT,
-                joined_at TEXT,
-                is_vip INTEGER DEFAULT 0,
-                vip_expires TEXT,
-                free_trial_used INTEGER DEFAULT 0,
-                balance INTEGER DEFAULT 0,
-                referred_by INTEGER
-            )
-        ''')
-        cur.execute('''
-            CREATE TABLE IF NOT EXISTS watchlist (
-                user_id INTEGER,
-                symbol TEXT,
-                target_price REAL,
-                alert_type TEXT,
-                created_at TEXT,
-                PRIMARY KEY (user_id, symbol)
-            )
-        ''')
-        cur.execute('''
-            CREATE TABLE IF NOT EXISTS payments (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id INTEGER,
-                amount INTEGER,
-                tracking_code TEXT,
-                status TEXT DEFAULT 'pending',
-                created_at TEXT,
-                verified_at TEXT,
-                verified_by INTEGER
-            )
-        ''')
-        cur.execute('''
-            CREATE TABLE IF NOT EXISTS referrals (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                referrer_id INTEGER,
-                referred_id INTEGER,
-                created_at TEXT,
-                reward_given INTEGER DEFAULT 0
-            )
-        ''')
-        cur.execute('''
-            CREATE TABLE IF NOT EXISTS price_cache (
-                symbol TEXT PRIMARY KEY,
-                price REAL,
-                change REAL,
-                updated_at TEXT
-            )
-        ''')
-        conn.commit()
-        conn.close()
-        logger.info("✅ Database initialized")
-    
-    def add_user(self, user_id: int, username: str, first_name: str, last_name: str = ""):
-        conn = self._get_conn()
-        cur = conn.cursor()
-        cur.execute(
-            "INSERT OR IGNORE INTO users (user_id, username, first_name, last_name, joined_at) VALUES (?, ?, ?, ?, ?)",
-            (user_id, username, first_name, last_name, datetime.now().isoformat())
-        )
-        conn.commit()
-        conn.close()
-    
-    def get_user(self, user_id: int) -> Optional[Dict]:
-        conn = self._get_conn()
-        cur = conn.cursor()
-        cur.execute("SELECT * FROM users WHERE user_id = ?", (user_id,))
-        row = cur.fetchone()
-        conn.close()
-        return dict(row) if row else None
-    
-    def update_user(self, user_id: int, **kwargs):
-        conn = self._get_conn()
-        cur = conn.cursor()
-        set_clause = ", ".join([f"{k} = ?" for k in kwargs.keys()])
-        cur.execute(f"UPDATE users SET {set_clause} WHERE user_id = ?", list(kwargs.values()) + [user_id])
-        conn.commit()
-        conn.close()
-    
-    def is_vip(self, user_id: int) -> bool:
-        user = self.get_user(user_id)
-        if not user:
-            return False
-        if user['is_vip']:
-            if user['vip_expires'] and datetime.now().isoformat() < user['vip_expires']:
-                return True
-            else:
-                self.update_user(user_id, is_vip=0, vip_expires=None)
-                return False
-        return False
-    
-    def activate_vip(self, user_id: int, days: int = None):
-        if days is None:
-            days = cfg.VIP_DURATION
-        expires = (datetime.now() + timedelta(days=days)).isoformat()
-        self.update_user(user_id, is_vip=1, vip_expires=expires)
-    
-    def use_free_trial(self, user_id: int):
-        self.update_user(user_id, free_trial_used=1, is_vip=1, 
-                        vip_expires=(datetime.now() + timedelta(days=cfg.FREE_TRIAL_DAYS)).isoformat())
-    
-    def add_watch(self, user_id: int, symbol: str, target_price: float, alert_type: str = "above"):
-        conn = self._get_conn()
-        cur = conn.cursor()
-        cur.execute(
-            "INSERT OR REPLACE INTO watchlist (user_id, symbol, target_price, alert_type, created_at) VALUES (?, ?, ?, ?, ?)",
-            (user_id, symbol.upper(), target_price, alert_type, datetime.now().isoformat())
-        )
-        conn.commit()
-        conn.close()
-    
-    def remove_watch(self, user_id: int, symbol: str):
-        conn = self._get_conn()
-        cur = conn.cursor()
-        cur.execute("DELETE FROM watchlist WHERE user_id = ? AND symbol = ?", (user_id, symbol.upper()))
-        conn.commit()
-        conn.close()
-    
-    def get_watchlist(self, user_id: int) -> List[Dict]:
-        conn = self._get_conn()
-        cur = conn.cursor()
-        cur.execute("SELECT * FROM watchlist WHERE user_id = ?", (user_id,))
-        rows = cur.fetchall()
-        conn.close()
-        return [dict(row) for row in rows]
-    
-    def get_all_watchlists(self) -> List[Dict]:
-        conn = self._get_conn()
-        cur = conn.cursor()
-        cur.execute("SELECT * FROM watchlist")
-        rows = cur.fetchall()
-        conn.close()
-        return [dict(row) for row in rows]
-    
-    def add_payment(self, user_id: int, amount: int, tracking_code: str):
-        conn = self._get_conn()
-        cur = conn.cursor()
-        cur.execute(
-            "INSERT INTO payments (user_id, amount, tracking_code, created_at) VALUES (?, ?, ?, ?)",
-            (user_id, amount, tracking_code, datetime.now().isoformat())
-        )
-        conn.commit()
-        conn.close()
-        return cur.lastrowid
-    
-    def get_pending_payments(self) -> List[Dict]:
-        conn = self._get_conn()
-        cur = conn.cursor()
-        cur.execute("SELECT * FROM payments WHERE status = 'pending' ORDER BY created_at ASC")
-        rows = cur.fetchall()
-        conn.close()
-        return [dict(row) for row in rows]
-    
-    def verify_payment(self, payment_id: int, admin_id: int):
-        conn = self._get_conn()
-        cur = conn.cursor()
-        cur.execute(
-            "UPDATE payments SET status = 'verified', verified_at = ?, verified_by = ? WHERE id = ?",
-            (datetime.now().isoformat(), admin_id, payment_id)
-        )
-        conn.commit()
-        conn.close()
-    
-    def reject_payment(self, payment_id: int):
-        conn = self._get_conn()
-        cur = conn.cursor()
-        cur.execute("UPDATE payments SET status = 'rejected' WHERE id = ?", (payment_id,))
-        conn.commit()
-        conn.close()
-    
-    def add_referral(self, referrer_id: int, referred_id: int):
-        conn = self._get_conn()
-        cur = conn.cursor()
-        cur.execute(
-            "INSERT OR IGNORE INTO referrals (referrer_id, referred_id, created_at) VALUES (?, ?, ?)",
-            (referrer_id, referred_id, datetime.now().isoformat())
-        )
-        conn.commit()
-        conn.close()
-    
-    def get_referral_count(self, user_id: int) -> int:
-        conn = self._get_conn()
-        cur = conn.cursor()
-        cur.execute("SELECT COUNT(*) FROM referrals WHERE referrer_id = ?", (user_id,))
-        count = cur.fetchone()[0]
-        conn.close()
-        return count
-    
-    def update_price_cache(self, symbol: str, price: float, change: float):
-        conn = self._get_conn()
-        cur = conn.cursor()
-        cur.execute(
-            "INSERT OR REPLACE INTO price_cache (symbol, price, change, updated_at) VALUES (?, ?, ?, ?)",
-            (symbol, price, change, datetime.now().isoformat())
-        )
-        conn.commit()
-        conn.close()
-
-db = Database(cfg.DB_FILE)
-
-# ============================================================
-# PERSIAN TIME
-# ============================================================
-TEHRAN_TZ = pytz.timezone('Asia/Tehran')
-
-class Persian:
-    DAYS = ['دوشنبه', 'سه‌شنبه', 'چهارشنبه', 'پنج‌شنبه', 'جمعه', 'شنبه', 'یکشنبه']
-    MONTHS = ['فروردین', 'اردیبهشت', 'خرداد', 'تیر', 'مرداد', 'شهریور', 'مهر', 'آبان', 'آذر', 'دی', 'بهمن', 'اسفند']
-    
-    @classmethod
-    def now(cls):
-        return datetime.now(TEHRAN_TZ)
-    
-    @classmethod
-    def shamsi(cls):
-        j = jdatetime.datetime.fromgregorian(datetime=cls.now())
-        return f"{j.day} {cls.MONTHS[j.month-1]} {j.year}"
-    
-    @classmethod
-    def time(cls):
-        return cls.now().strftime('%H:%M:%S')
-    
-    @classmethod
-    def full(cls):
-        return f"{cls.DAYS[cls.now().weekday()]} {cls.shamsi()} ساعت {cls.time()}"
-    
-    @classmethod
-    def greet(cls):
-        h = cls.now().hour
-        e = random.choice(['😊', '🤗', '😎', '🥰', '💖', '✨', '💎'])
-        if 5 <= h < 9: return f"صبح بخیر پلاتینیومی {e} 🌄"
-        elif 12 <= h < 14: return f"ظهر بخیر دوست من {e} ☀️"
-        elif 16 <= h < 18: return f"عصر بخیر تریدر حرفه‌ای {e} 🌇"
-        elif 20 <= h <= 23 or 1 <= h < 3: return f"شب خوش VIP {e} 🌙"
-        return f"وقت بخیر {e} ⏰"
-
-p = Persian()
-
-# ============================================================
-# AI ENGINE (GROQ)
-# ============================================================
-class GroqAI:
-    def __init__(self):
-        self.api_key = cfg.GROQ_API_KEY
-        self.enabled = bool(self.api_key)
-        self._client = httpx.AsyncClient(timeout=60.0)
-        self._last_request = 0
-        self._min_interval = 1.0
-        self._cache = {}
-        self._cache_ttl = 300
-    
-    async def _wait(self):
-        now = time.time()
-        elapsed = now - self._last_request
-        if elapsed < self._min_interval:
-            await asyncio.sleep(self._min_interval - elapsed)
-        self._last_request = time.time()
-    
-    async def analyze(self, prompt: str) -> Optional[str]:
-        if not self.enabled:
-            return None
-        cache_key = hashlib.md5(prompt.encode()).hexdigest()
-        if cache_key in self._cache:
-            cached, ts = self._cache[cache_key]
-            if time.time() - ts < self._cache_ttl:
-                return cached
-        
-        await self._wait()
-        
-        try:
-            response = await self._client.post(
-                "https://api.groq.com/openai/v1/chat/completions",
-                headers={
-                    "Authorization": f"Bearer {self.api_key}",
-                    "Content-Type": "application/json"
-                },
-                json={
-                    "model": "llama-3.3-70b-versatile",
-                    "messages": [
-                        {"role": "system", "content": "تو یک تحلیلگر حرفه‌ای کریپتو هستی. فارسی روان و دقیق پاسخ بده."},
-                        {"role": "user", "content": prompt}
-                    ],
-                    "temperature": 0.7,
-                    "max_tokens": 600
-                }
-            )
-            if response.status_code == 200:
-                result = response.json()["choices"][0]["message"]["content"]
-                self._cache[cache_key] = (result, time.time())
-                return result
-            else:
-                logger.error(f"Groq error: {response.status_code}")
-                return None
-        except Exception as e:
-            logger.error(f"Groq exception: {e}")
-            return None
-
-ai = GroqAI()
-
-# ============================================================
-# COINEX API
-# ============================================================
-class CoinExAPI:
-    def __init__(self):
-        self._cache = {}
-        self._cache_ttl = 30
-    
-    async def _fetch_ticker(self, symbol: str) -> Optional[Dict]:
-        try:
-            async with aiohttp.ClientSession() as session:
-                url = f"https://api.coinex.com/v1/market/ticker?market={symbol}"
-                async with session.get(url, timeout=10) as resp:
-                    if resp.status == 200:
-                        data = await resp.json()
-                        if data.get("code") == 0:
-                            ticker = data.get("data", {}).get("ticker", {})
-                            return {
-                                "symbol": symbol,
-                                "price": float(ticker.get("last", 0)),
-                                "change": float(ticker.get("change", 0)),
-                                "high": float(ticker.get("high", 0)),
-                                "low": float(ticker.get("low", 0)),
-                                "volume": float(ticker.get("vol", 0)),
-                            }
-        except Exception as e:
-            logger.error(f"CoinEx error for {symbol}: {e}")
-        return None
-    
-    async def get_price(self, symbol: str) -> Optional[Dict]:
-        cache_key = f"price_{symbol}"
-        if cache_key in self._cache:
-            data, ts = self._cache[cache_key]
-            if time.time() - ts < self._cache_ttl:
-                return data
-        
-        result = await self._fetch_ticker(symbol)
-        if result:
-            self._cache[cache_key] = (result, time.time())
-            db.update_price_cache(symbol, result['price'], result['change'])
-        return result
-    
-    async def get_all_prices(self) -> List[Dict]:
-        results = []
-        for sym in cfg.COINEX_SYMBOLS:
-            data = await self.get_price(sym)
-            if data:
-                results.append(data)
-        return results
-
-coinex = CoinExAPI()
-
-# ============================================================
-# FSM STATES
-# ============================================================
-from aiogram.fsm.state import State, StatesGroup
-
-class WatchState(StatesGroup):
-    waiting_symbol = State()
-    waiting_target = State()
-    waiting_type = State()
-
-class AdminState(StatesGroup):
-    waiting_broadcast = State()
-
-# ============================================================
-# KEYBOARDS
-# ============================================================
+import aiosqlite
+from fastapi import FastAPI, Request, HTTPException
+from aiogram import Bot, Dispatcher, Router, types
+from aiogram.enums import ParseMode
+from aiogram.filters import CommandStart, Command
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+from groq import Groq
 
-def main_keyboard(user_id: int):
-    is_vip = db.is_vip(user_id)
-    vip_status = "✅ VIP" if is_vip else "❌ رایگان"
-    
-    kb = [
-        [InlineKeyboardButton(text="📊 قیمت لحظه‌ای", callback_data="prices"),
-         InlineKeyboardButton(text="🤖 تحلیل AI", callback_data="ai_analyze")],
-        [InlineKeyboardButton(text="👀 واچ‌لیست", callback_data="watchlist"),
-         InlineKeyboardButton(text="🔔 هشدار قیمت", callback_data="set_alert")],
-        [InlineKeyboardButton(text=f"💰 خرید VIP ({cfg.VIP_PRICE:,} تومان)", callback_data="buy_vip")],
-        [InlineKeyboardButton(text=f"👤 وضعیت: {vip_status}", callback_data="profile")],
+BOT_TOKEN = os.getenv("BOT_TOKEN", "")
+WEBHOOK_URL = os.getenv("WEBHOOK_URL", "")
+WEBHOOK_SECRET = os.getenv("WEBHOOK_SECRET", "change_me")
+GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
+COINEX_KEY = os.getenv("COINEX_KEY", "")
+COINEX_SECRET = os.getenv("COINEX_SECRET", "")
+DATABASE_URL = os.getenv("DATABASE_URL", "bot.db")
+ADMIN_IDS = set(int(x) for x in os.getenv("ADMIN_IDS", "").split(",") if x.strip().isdigit())
+CHANNEL_USERNAME = os.getenv("CHANNEL_USERNAME", "@CryptoPulse606")
+FREE_DAILY_AI_LIMIT = int(os.getenv("FREE_DAILY_AI_LIMIT", "5"))
+RATE_LIMIT_SECONDS = int(os.getenv("RATE_LIMIT_SECONDS", "2"))
+VIP_PRICE_TOMAN = 199000
+
+if not BOT_TOKEN or not WEBHOOK_URL or not GROQ_API_KEY:
+    raise RuntimeError("BOT_TOKEN, WEBHOOK_URL, GROQ_API_KEY are required")
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+logger = logging.getLogger("cryptopulse")
+
+app = FastAPI()
+bot = Bot(BOT_TOKEN, parse_mode=ParseMode.HTML)
+dp = Dispatcher()
+router = Router()
+dp.include_router(router)
+groq_client = Groq(api_key=GROQ_API_KEY)
+
+CREATE_TABLES = """
+CREATE TABLE IF NOT EXISTS users (
+    user_id INTEGER PRIMARY KEY,
+    username TEXT,
+    full_name TEXT,
+    language TEXT DEFAULT 'fa',
+    risk_level TEXT DEFAULT 'medium',
+    plan TEXT DEFAULT 'free',
+    plan_until INTEGER DEFAULT 0,
+    created_at INTEGER
+);
+
+CREATE TABLE IF NOT EXISTS user_state (
+    user_id INTEGER PRIMARY KEY,
+    last_ai_at INTEGER DEFAULT 0,
+    daily_ai_count INTEGER DEFAULT 0,
+    last_reset_day TEXT DEFAULT ''
+);
+
+CREATE TABLE IF NOT EXISTS watchlists (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER,
+    symbol TEXT,
+    created_at INTEGER
+);
+
+CREATE TABLE IF NOT EXISTS alerts (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER,
+    symbol TEXT,
+    target_price REAL,
+    alert_type TEXT,
+    active INTEGER DEFAULT 1,
+    created_at INTEGER
+);
+
+CREATE TABLE IF NOT EXISTS payments (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER,
+    plan TEXT,
+    amount REAL,
+    status TEXT,
+    reference TEXT,
+    created_at INTEGER
+);
+
+CREATE TABLE IF NOT EXISTS logs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER,
+    action TEXT,
+    data TEXT,
+    created_at INTEGER
+);
+
+CREATE TABLE IF NOT EXISTS channel_posts (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    post_type TEXT,
+    content TEXT,
+    created_at INTEGER
+);
+"""
+
+def tehran_now():
+    return datetime.now(ZoneInfo("Asia/Tehran"))
+
+def tehran_datetime():
+    return tehran_now().strftime("%Y/%m/%d - %H:%M:%S")
+
+async def init_db():
+    async with aiosqlite.connect(DATABASE_URL) as conn:
+        await conn.executescript(CREATE_TABLES)
+        await conn.commit()
+
+async def log_action(user_id, action, data=""):
+    async with aiosqlite.connect(DATABASE_URL) as conn:
+        await conn.execute(
+            "INSERT INTO logs(user_id, action, data, created_at) VALUES(?,?,?,?)",
+            (user_id, action, data, int(time.time()))
+        )
+        await conn.commit()
+
+async def get_user(user_id):
+    async with aiosqlite.connect(DATABASE_URL) as conn:
+        cur = await conn.execute("SELECT * FROM users WHERE user_id=?", (user_id,))
+        return await cur.fetchone()
+
+async def upsert_user(user_id, username, full_name):
+    async with aiosqlite.connect(DATABASE_URL) as conn:
+        await conn.execute(
+            "INSERT INTO users(user_id, username, full_name, created_at) VALUES(?,?,?,?) "
+            "ON CONFLICT(user_id) DO UPDATE SET username=excluded.username, full_name=excluded.full_name",
+            (user_id, username, full_name, int(time.time()))
+        )
+        await conn.execute(
+            "INSERT OR IGNORE INTO user_state(user_id, last_ai_at, daily_ai_count, last_reset_day) VALUES(?,?,?,?)",
+            (user_id, 0, 0, tehran_now().date().isoformat())
+        )
+        await conn.commit()
+
+async def set_plan(user_id, plan, days=30, amount=VIP_PRICE_TOMAN, reference="manual"):
+    until = int((tehran_now() + timedelta(days=days)).timestamp())
+    async with aiosqlite.connect(DATABASE_URL) as conn:
+        await conn.execute("UPDATE users SET plan=?, plan_until=? WHERE user_id=?", (plan, until, user_id))
+        await conn.execute(
+            "INSERT INTO payments(user_id, plan, amount, status, reference, created_at) VALUES(?,?,?,?,?,?)",
+            (user_id, plan, amount, "paid", reference, int(time.time()))
+        )
+        await conn.commit()
+
+async def is_premium(user_row):
+    if not user_row:
+        return False
+    return user_row[4] in ("vip", "pro", "elite") and int(time.time()) < int(user_row[5] or 0)
+
+async def reset_daily_if_needed(user_id):
+    today = tehran_now().date().isoformat()
+    async with aiosqlite.connect(DATABASE_URL) as conn:
+        cur = await conn.execute("SELECT last_reset_day FROM user_state WHERE user_id=?", (user_id,))
+        row = await cur.fetchone()
+        if not row:
+            await conn.execute(
+                "INSERT OR IGNORE INTO user_state(user_id,last_ai_at,daily_ai_count,last_reset_day) VALUES(?,?,?,?)",
+                (user_id, 0, 0, today)
+            )
+        elif row[0] != today:
+            await conn.execute("UPDATE user_state SET daily_ai_count=0,last_reset_day=? WHERE user_id=?", (today, user_id))
+        await conn.commit()
+
+async def increase_ai_count(user_id):
+    await reset_daily_if_needed(user_id)
+    async with aiosqlite.connect(DATABASE_URL) as conn:
+        await conn.execute(
+            "UPDATE user_state SET daily_ai_count = daily_ai_count + 1, last_ai_at=? WHERE user_id=?",
+            (int(time.time()), user_id)
+        )
+        await conn.commit()
+
+async def get_ai_count(user_id):
+    await reset_daily_if_needed(user_id)
+    async with aiosqlite.connect(DATABASE_URL) as conn:
+        cur = await conn.execute("SELECT daily_ai_count FROM user_state WHERE user_id=?", (user_id,))
+        row = await cur.fetchone()
+        return row[0] if row else 0
+
+def coinex_sign(method: str, path: str, body: str = "", timestamp: str = ""):
+    msg = f"{method.upper()}{path}{timestamp}{body}"
+    return hmac.new(COINEX_SECRET.encode(), msg.encode(), hashlib.sha256).hexdigest()
+
+async def coinex_get_ticker(symbol="BTCUSDT"):
+    url = f"https://api.coinex.com/v2/spot/ticker?market={symbol}"
+    headers = {}
+    if COINEX_KEY and COINEX_SECRET:
+        ts = str(int(time.time() * 1000))
+        path = f"/v2/spot/ticker?market={symbol}"
+        headers = {
+            "X-COINEX-KEY": COINEX_KEY,
+            "X-COINEX-SIGN": coinex_sign("GET", path, "", ts),
+            "X-COINEX-TIMESTAMP": ts,
+            "X-COINEX-WINDOWTIME": "5000",
+        }
+    async with aiohttp.ClientSession() as session:
+        async with session.get(url, headers=headers, timeout=15) as resp:
+            return await resp.json()
+
+async def ask_groq(prompt: str, user_profile: str = ""):
+    system = (
+        "You are a professional Persian crypto assistant. "
+        "Be concise, practical, risk-aware, and never promise guaranteed profit."
+    )
+    messages = [
+        {"role": "system", "content": system},
+        {"role": "user", "content": f"Profile: {user_profile}
+
+Question: {prompt}"}
     ]
-    if db.get_referral_count(user_id) > 0:
-        kb.append([InlineKeyboardButton(text="🎁 دعوت از دوستان", callback_data="referral")])
-    if user_id in cfg.ADMIN_IDS:
-        kb.append([InlineKeyboardButton(text="🔧 پنل ادمین", callback_data="admin_panel")])
-    return InlineKeyboardMarkup(inline_keyboard=kb)
+    loop = asyncio.get_running_loop()
+    def _call():
+        return groq_client.chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            messages=messages,
+            temperature=0.3,
+        )
+    res = await loop.run_in_executor(None, _call)
+    return res.choices[0].message.content.strip()
 
-def admin_keyboard():
+async def rate_limit_ok(user_id):
+    async with aiosqlite.connect(DATABASE_URL) as conn:
+        cur = await conn.execute("SELECT last_ai_at FROM user_state WHERE user_id=?", (user_id,))
+        row = await cur.fetchone()
+        last = row[0] if row else 0
+        return (int(time.time()) - int(last)) >= RATE_LIMIT_SECONDS
+
+async def channel_post(text: str):
+    await bot.send_message(chat_id=CHANNEL_USERNAME, text=text)
+
+def vip_keyboard():
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="📨 ارسال همگانی", callback_data="admin_broadcast")],
-        [InlineKeyboardButton(text="💳 تأیید پرداخت", callback_data="admin_verify")],
-        [InlineKeyboardButton(text="📊 گزارش عملکرد", callback_data="admin_stats")],
-        [InlineKeyboardButton(text="📝 مدیریت کاربران", callback_data="admin_users")],
-        [InlineKeyboardButton(text="🔙 بازگشت", callback_data="back_main")],
+        [InlineKeyboardButton(text="خرید VIP ماهانه ۱۹۹٬۰۰۰ تومان", callback_data="buy_vip")],
+        [InlineKeyboardButton(text="عضویت در کانال", url=f"https://t.me/{CHANNEL_USERNAME.lstrip('@')}")]
     ])
 
-# ============================================================
-# BOT INIT
-# ============================================================
-from aiogram import Bot, Dispatcher, types, F
-from aiogram.filters import Command, CommandStart, CommandObject
-from aiogram.fsm.context import FSMContext
-from aiogram.fsm.storage.memory import MemoryStorage
-from aiogram.types import Message, CallbackQuery
-from aiogram.enums import ParseMode
-from aiogram.client.default import DefaultBotProperties
+@router.callback_query(lambda c: c.data == "buy_vip")
+async def buy_vip_callback(callback: types.CallbackQuery):
+    text = (
+        f"برای فعال‌سازی VIP، مبلغ <b>{VIP_PRICE_TOMAN:,}</b> تومان را به کارت زیر واریز کن:
 
-bot = Bot(
-    token=cfg.BOT_TOKEN,
-    default=DefaultBotProperties(parse_mode=ParseMode.MARKDOWN)
-)
-dp = Dispatcher(storage=MemoryStorage())
+"
+        f"نام: <b>فرهاد بهمرد</b>
+"
+        f"کارت: <code>6063731196254479</code>
 
-# ============================================================
-# COMMAND HANDLERS
-# ============================================================
-@dp.message(CommandStart())
-async def cmd_start(message: Message, command: CommandObject):
-    user = message.from_user
-    db.add_user(user.id, user.username, user.first_name, user.last_name or "")
-    
-    if command.args:
-        try:
-            ref_id = int(command.args.split()[0])
-            if ref_id != user.id:
-                db.add_referral(ref_id, user.id)
-                db.update_user(ref_id, balance=db.get_user(ref_id)['balance'] + 5)
-                await bot.send_message(ref_id, f"🎁 یک کاربر جدید با لینک شما عضو شد! +۵ سکه")
-        except:
-            pass
-    
-    user_data = db.get_user(user.id)
-    is_vip = db.is_vip(user.id)
-    
-    welcome = f"""💎 VIP PLATINUM v46.0 💎
+"
+        f"بعد از واریز، <b>رسید</b> یا <b>شماره پیگیری</b> را همینجا ارسال کن."
+    )
+    await callback.message.answer(text, reply_markup=vip_keyboard())
+    await callback.answer()
 
-{p.greet()} {p.full()}
+@router.message(CommandStart())
+async def start(message: types.Message):
+    await upsert_user(message.from_user.id, message.from_user.username or "", message.from_user.full_name or "")
+    user = await get_user(message.from_user.id)
+    plan = user[4] if user else "free"
+    await message.answer(
+        f"سلام {message.from_user.full_name} 👋
+"
+        f"زمان تهران: <b>{tehran_datetime()}</b>
+"
+        f"پلن شما: <b>{plan}</b>
+"
+        f"اشتراک VIP ماهانه: <b>{VIP_PRICE_TOMAN:,} تومان</b>
 
-🔥 به ربات حرفه‌ای تحلیل کریپتو خوش آمدید!
+"
+        f"دستورها:
+"
+        f"/ai سوال
+"
+        f"/price BTCUSDT
+"
+        f"/watch BTCUSDT
+"
+        f"/time
+"
+        f"/subscribe vip
+"
+        f"/me
+"
+        f"/buyvip"
+    )
+    await log_action(message.from_user.id, "start")
 
-🔹 **قابلیت‌ها:**
-📊 قیمت لحظه‌ای ۲۰ ارز
-🤖 تحلیل هوشمند با AI
-👀 واچ‌لیست شخصی
-🔔 هشدار قیمت هوشمند
-📈 تحلیل روزانه و هفتگی
-💰 خرید اشتراک VIP
+@router.message(Command("time"))
+async def time_cmd(message: types.Message):
+    await message.answer(f"زمان فعلی تهران:
+<b>{tehran_datetime()}</b>")
 
-👤 **وضعیت شما:** {'✅ VIP' if is_vip else '❌ رایگان'}
-🪙 **سکه:** {user_data.get('balance', 0)}
+@router.message(Command("me"))
+async def me(message: types.Message):
+    user = await get_user(message.from_user.id)
+    if not user:
+        return await message.answer("ابتدا /start")
+    premium = await is_premium(user)
+    ai_count = await get_ai_count(message.from_user.id)
+    await message.answer(
+        f"کاربر: <b>{user[2]}</b>
+"
+        f"پلن: <b>{user[4]}</b>
+"
+        f"پریمیوم: <b>{'بله' if premium else 'خیر'}</b>
+"
+        f"AI امروز: <b>{ai_count}</b>
+"
+        f"زمان تهران: <b>{tehran_datetime()}</b>
+"
+        f"کانال: <b>{CHANNEL_USERNAME}</b>"
+    )
 
-🔹 **پلن VIP:** {cfg.VIP_PRICE:,} تومان / {cfg.VIP_DURATION} روز
-🔹 **ویژگی‌های VIP:** تحلیل پیشرفته، هشدار نامحدود، واچ‌لیست ۲۰ ارز، اولویت پشتیبانی
-
-💡 از دکمه‌های زیر استفاده کنید:
-"""
-    await message.answer(welcome, reply_markup=main_keyboard(user.id))
-
-@dp.message(Command("time"))
-async def cmd_time(message: Message):
-    await message.answer(f"🕐 **{p.full()}**")
-
-@dp.message(Command("price"))
-async def cmd_price(message: Message):
-    await message.answer("📊 در حال دریافت قیمت‌ها...")
-    prices = await coinex.get_all_prices()
-    if not prices:
-        await message.answer("❌ خطا در دریافت قیمت‌ها")
-        return
-    txt = "📊 **قیمت لحظه‌ای ارزها**\n\n"
-    for p in prices:
-        em = "🟢" if p['change'] >= 0 else "🔴"
-        txt += f"{em} {p['symbol']}: ${p['price']:,.2f} ({p['change']:+.2f}%)\n"
-    await message.answer(txt)
-
-@dp.message(Command("ai"))
-async def cmd_ai(message: Message):
-    if not ai.enabled:
-        await message.answer("❌ سرویس AI در حال حاضر در دسترس نیست.")
-        return
-    
-    user_data = db.get_user(message.from_user.id)
-    is_vip = db.is_vip(message.from_user.id)
-    if not is_vip and user_data.get('free_trial_used', 0) == 0:
-        db.use_free_trial(message.from_user.id)
-        await message.answer("🎁 **نسخه آزمایشی ۳ روزه فعال شد!**\nاز این فرصت استفاده کنید.")
-    elif not is_vip:
-        await message.answer("⛔ برای استفاده از AI، باید اشتراک VIP تهیه کنید.\nاز دکمه خرید VIP استفاده کنید.")
-        return
-    
-    prompt = message.text.replace("/ai", "").strip()
-    if not prompt:
-        await message.answer("🤖 لطفاً یک سوال یا تحلیل مورد نظر را بنویسید.\nمثال: `/ai بیت‌کوین رو تحلیل کن`")
-        return
-    
-    await message.answer("🤖 در حال تحلیل... لطفاً صبر کنید.")
-    result = await ai.analyze(prompt)
-    if result:
-        await message.answer(result)
-    else:
-        await message.answer("❌ خطا در پردازش. لطفاً دوباره تلاش کنید.")
-
-@dp.message(Command("watch"))
-async def cmd_watch(message: Message, state: FSMContext):
-    is_vip = db.is_vip(message.from_user.id)
-    if not is_vip:
-        await message.answer("⛔ این قابلیت فقط برای کاربران VIP است. از دکمه خرید VIP استفاده کنید.")
-        return
-    await state.set_state(WatchState.waiting_symbol)
-    await message.answer("👀 **افزودن به واچ‌لیست**\n\nنام ارز را وارد کنید (مثلاً BTC یا ETH):")
-
-@dp.message(WatchState.waiting_symbol)
-async def watch_symbol(message: Message, state: FSMContext):
-    symbol = message.text.upper().strip()
-    if symbol not in [s.split('/')[0] for s in cfg.COINEX_SYMBOLS]:
-        await message.answer("❌ ارز نامعتبر است. ارزهای پشتیبانی شده:\n" + ", ".join([s.split('/')[0] for s in cfg.COINEX_SYMBOLS]))
-        return
-    await state.update_data(symbol=symbol)
-    await state.set_state(WatchState.waiting_target)
-    await message.answer(f"💰 قیمت هدف برای {symbol} را وارد کنید (عدد):")
-
-@dp.message(WatchState.waiting_target)
-async def watch_target(message: Message, state: FSMContext):
+@router.message(Command("price"))
+async def price(message: types.Message):
+    symbol = message.text.split(maxsplit=1)[1].strip().upper() if len(message.text.split()) > 1 else "BTCUSDT"
     try:
-        target = float(message.text.replace(',', ''))
-    except:
-        await message.answer("❌ لطفاً یک عدد معتبر وارد کنید.")
-        return
-    await state.update_data(target=target)
-    await state.set_state(WatchState.waiting_type)
-    await message.answer("📈 نوع هشدار را انتخاب کنید:", 
-                        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-                            [InlineKeyboardButton(text="⬆️ بالاتر از", callback_data="watch_above"),
-                             InlineKeyboardButton(text="⬇️ پایین‌تر از", callback_data="watch_below")]
-                        ]))
+        data = await coinex_get_ticker(symbol)
+        await message.answer(f"<b>{symbol}</b>
+<code>{json.dumps(data, ensure_ascii=False, indent=2)[:3500]}</code>")
+    except Exception as e:
+        logger.exception("price error")
+        await message.answer(f"خطا در دریافت قیمت: {e}")
 
-@dp.callback_query(F.data.startswith("watch_"))
-async def watch_type(callback: CallbackQuery, state: FSMContext):
-    await callback.answer()
-    alert_type = "above" if callback.data == "watch_above" else "below"
-    data = await state.get_data()
-    symbol = data.get('symbol')
-    target = data.get('target')
-    db.add_watch(callback.from_user.id, symbol, target, alert_type)
-    await state.clear()
-    await callback.message.edit_text(
-        f"✅ هشدار برای {symbol} با هدف {alert_type} ${target:.2f} ثبت شد.",
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="👀 مشاهده واچ‌لیست", callback_data="watchlist")],
-            [InlineKeyboardButton(text="🔙 بازگشت", callback_data="back_main")]
-        ])
-    )
-
-@dp.message(Command("subscribe"))
-async def cmd_subscribe(message: Message):
-    await message.answer(
-        f"💰 **خرید اشتراک VIP**\n\n"
-        f"💎 **مبلغ:** {cfg.VIP_PRICE:,} تومان\n"
-        f"📅 **مدت:** {cfg.VIP_DURATION} روز\n"
-        f"✨ **ویژگی‌ها:**\n"
-        f"• تحلیل پیشرفته با AI\n"
-        f"• هشدار قیمت نامحدود\n"
-        f"• واچ‌لیست ۲۰ ارز\n"
-        f"• اولویت پشتیبانی\n\n"
-        f"💳 **نحوه پرداخت:**\n"
-        f"کارت به کارت به شماره:\n"
-        f"`{cfg.CARD_NUMBER}`\n"
-        f"به نام {cfg.CARD_OWNER}\n\n"
-        f"پس از پرداخت، کد پیگیری را با دستور `/pay [کد]` ارسال کنید.",
-        parse_mode=ParseMode.MARKDOWN
-    )
-
-@dp.message(Command("pay"))
-async def cmd_pay(message: Message):
-    parts = message.text.split(maxsplit=1)
-    if len(parts) < 2:
-        await message.answer("❌ لطفاً کد پیگیری را همراه با دستور ارسال کنید:\n`/pay 123456789`", parse_mode=ParseMode.MARKDOWN)
-        return
-    tracking = parts[1].strip()
-    
-    db.add_payment(message.from_user.id, cfg.VIP_PRICE, tracking)
-    await message.answer(
-        f"✅ کد پیگیری {tracking} ثبت شد.\n"
-        f"پرداخت شما در حال بررسی است. پس از تأیید ادمین، اشتراک VIP فعال خواهد شد.\n\n"
-        f"⏳ لطفاً صبور باشید. در کمتر از ۲۴ ساعت بررسی می‌شود."
-    )
-    for admin_id in cfg.ADMIN_IDS:
-        try:
-            await bot.send_message(
-                admin_id,
-                f"🆕 درخواست پرداخت جدید:\n"
-                f"👤 کاربر: {message.from_user.full_name} (ID: {message.from_user.id})\n"
-                f"💰 مبلغ: {cfg.VIP_PRICE:,} تومان\n"
-                f"📎 کد پیگیری: {tracking}\n\n"
-                f"برای تأیید از پنل ادمین استفاده کنید."
-            )
-        except:
-            pass
-
-@dp.message(Command("me"))
-async def cmd_me(message: Message):
-    user_data = db.get_user(message.from_user.id)
-    if not user_data:
-        await message.answer("❌ اطلاعاتی یافت نشد.")
-        return
-    is_vip = db.is_vip(message.from_user.id)
-    txt = f"👤 **پروفایل کاربری**\n\n"
-    txt += f"🆔 آیدی: {message.from_user.id}\n"
-    txt += f"👤 نام: {message.from_user.full_name}\n"
-    txt += f"🪙 سکه: {user_data.get('balance', 0)}\n"
-    txt += f"💎 وضعیت: {'✅ VIP' if is_vip else '❌ رایگان'}\n"
-    if is_vip:
-        txt += f"📅 انقضا: {user_data['vip_expires']}\n"
-    txt += f"🎁 تعداد دعوت: {db.get_referral_count(message.from_user.id)}\n"
-    await message.answer(txt)
-
-@dp.message(Command("admin"))
-async def cmd_admin(message: Message):
-    if message.from_user.id not in cfg.ADMIN_IDS:
-        await message.answer("⛔ دسترسی غیرمجاز.")
-        return
-    await message.answer("🔧 **پنل ادمین**", reply_markup=admin_keyboard())
-
-# ============================================================
-# CALLBACK HANDLERS
-# ============================================================
-@dp.callback_query(F.data == "back_main")
-async def back_main(callback: CallbackQuery):
-    await callback.answer()
-    await callback.message.edit_text(
-        f"💎 VIP PLATINUM\n\n{p.greet()} {p.full()}",
-        reply_markup=main_keyboard(callback.from_user.id)
-    )
-
-@dp.callback_query(F.data == "prices")
-async def show_prices(callback: CallbackQuery):
-    await callback.answer("📊 دریافت قیمت‌ها...")
-    prices = await coinex.get_all_prices()
-    txt = "📊 **قیمت لحظه‌ای**\n\n"
-    for p in prices:
-        em = "🟢" if p['change'] >= 0 else "🔴"
-        txt += f"{em} {p['symbol']}: ${p['price']:,.2f} ({p['change']:+.2f}%)\n"
-    await callback.message.edit_text(txt, reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🔄 بروزرسانی", callback_data="prices")],
-        [InlineKeyboardButton(text="🔙 بازگشت", callback_data="back_main")]
-    ]))
-
-@dp.callback_query(F.data == "ai_analyze")
-async def ai_analyze(callback: CallbackQuery):
-    await callback.answer()
-    if not ai.enabled:
-        await callback.message.edit_text("❌ سرویس AI در دسترس نیست.", reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="🔙 بازگشت", callback_data="back_main")]
-        ]))
-        return
-    
-    is_vip = db.is_vip(callback.from_user.id)
-    user_data = db.get_user(callback.from_user.id)
-    
-    if not is_vip and user_data.get('free_trial_used', 0) == 0:
-        db.use_free_trial(callback.from_user.id)
-        await callback.message.edit_text(
-            "🎁 **نسخه آزمایشی ۳ روزه فعال شد!**\n"
-            "لطفاً سوال یا تحلیل خود را به صورت متن بنویسید.\n"
-            "مثال: `بیت‌کوین رو تحلیل کن`",
-            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-                [InlineKeyboardButton(text="🔙 بازگشت", callback_data="back_main")]
-            ])
-        )
-        return
-    elif not is_vip:
-        await callback.message.edit_text(
-            "⛔ برای استفاده از AI، باید اشتراک VIP تهیه کنید.\n"
-            "از دکمه خرید VIP استفاده کنید.",
-            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-                [InlineKeyboardButton(text="💰 خرید VIP", callback_data="buy_vip")],
-                [InlineKeyboardButton(text="🔙 بازگشت", callback_data="back_main")]
-            ])
-        )
-        return
-    
-    await callback.message.edit_text(
-        "🤖 **تحلیل هوشمند**\n\n"
-        "سوال یا تحلیل خود را به صورت متن بنویسید.\n"
-        "مثال: `بیت‌کوین رو با اندیکاتورها تحلیل کن`",
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="🔙 بازگشت", callback_data="back_main")]
-        ])
-    )
-
-@dp.callback_query(F.data == "watchlist")
-async def show_watchlist(callback: CallbackQuery):
-    await callback.answer()
-    watches = db.get_watchlist(callback.from_user.id)
-    if not watches:
-        await callback.message.edit_text(
-            "👀 **واچ‌لیست شما خالی است.**\n\n"
-            "برای افزودن ارز به واچ‌لیست، از دستور `/watch` استفاده کنید.",
-            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-                [InlineKeyboardButton(text="🔙 بازگشت", callback_data="back_main")]
-            ])
-        )
-        return
-    txt = "👀 **واچ‌لیست شما**\n\n"
-    for w in watches:
-        txt += f"🔹 {w['symbol']}: هدف {w['alert_type']} ${w['target_price']:.2f}\n"
-    await callback.message.edit_text(txt, reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="➕ افزودن جدید", callback_data="set_alert")],
-        [InlineKeyboardButton(text="🔙 بازگشت", callback_data="back_main")]
-    ]))
-
-@dp.callback_query(F.data == "set_alert")
-async def set_alert(callback: CallbackQuery, state: FSMContext):
-    await callback.answer()
-    is_vip = db.is_vip(callback.from_user.id)
-    if not is_vip:
-        await callback.message.edit_text(
-            "⛔ این قابلیت فقط برای کاربران VIP است.",
-            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-                [InlineKeyboardButton(text="💰 خرید VIP", callback_data="buy_vip")],
-                [InlineKeyboardButton(text="🔙 بازگشت", callback_data="back_main")]
-            ])
-        )
-        return
-    await state.set_state(WatchState.waiting_symbol)
-    await callback.message.edit_text(
-        "👀 **افزودن هشدار قیمت**\n\n"
-        "نام ارز را وارد کنید (مثلاً BTC یا ETH):",
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="🔙 بازگشت", callback_data="back_main")]
-        ])
-    )
-
-@dp.callback_query(F.data == "buy_vip")
-async def buy_vip(callback: CallbackQuery):
-    await callback.answer()
-    await callback.message.edit_text(
-        f"💰 **خرید اشتراک VIP**\n\n"
-        f"💎 **مبلغ:** {cfg.VIP_PRICE:,} تومان\n"
-        f"📅 **مدت:** {cfg.VIP_DURATION} روز\n"
-        f"✨ **ویژگی‌ها:**\n"
-        f"• تحلیل پیشرفته با AI\n"
-        f"• هشدار قیمت نامحدود\n"
-        f"• واچ‌لیست ۲۰ ارز\n"
-        f"• اولویت پشتیبانی\n\n"
-        f"💳 **نحوه پرداخت:**\n"
-        f"کارت به کارت به شماره:\n"
-        f"`{cfg.CARD_NUMBER}`\n"
-        f"به نام {cfg.CARD_OWNER}\n\n"
-        f"پس از پرداخت، کد پیگیری را با دستور `/pay [کد]` ارسال کنید.",
-        parse_mode=ParseMode.MARKDOWN,
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="✅ ارسال کد پیگیری", callback_data="send_payment")],
-            [InlineKeyboardButton(text="🔙 بازگشت", callback_data="back_main")]
-        ])
-    )
-
-@dp.callback_query(F.data == "send_payment")
-async def send_payment(callback: CallbackQuery):
-    await callback.answer()
-    await callback.message.edit_text(
-        "📤 **ارسال کد پیگیری**\n\n"
-        "لطفاً کد پیگیری (رسید) را به صورت متن بنویسید.\n"
-        "مثال: `123456789`",
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="🔙 بازگشت", callback_data="back_main")]
-        ])
-    )
-
-@dp.callback_query(F.data == "profile")
-async def profile(callback: CallbackQuery):
-    await callback.answer()
-    user_data = db.get_user(callback.from_user.id)
-    is_vip = db.is_vip(callback.from_user.id)
-    txt = f"👤 **پروفایل**\n\n"
-    txt += f"🆔 آیدی: {callback.from_user.id}\n"
-    txt += f"👤 نام: {callback.from_user.full_name}\n"
-    txt += f"🪙 سکه: {user_data.get('balance', 0)}\n"
-    txt += f"💎 وضعیت: {'✅ VIP' if is_vip else '❌ رایگان'}\n"
-    if is_vip:
-        txt += f"📅 انقضا: {user_data['vip_expires']}\n"
-    txt += f"🎁 تعداد دعوت: {db.get_referral_count(callback.from_user.id)}\n"
-    await callback.message.edit_text(txt, reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🎁 دعوت از دوستان", callback_data="referral")],
-        [InlineKeyboardButton(text="🔙 بازگشت", callback_data="back_main")]
-    ]))
-
-@dp.callback_query(F.data == "referral")
-async def referral(callback: CallbackQuery):
-    await callback.answer()
-    bot_username = (await bot.get_me()).username
-    ref_link = f"https://t.me/{bot_username}?start={callback.from_user.id}"
-    txt = f"🎁 **سیستم دعوت دوستان**\n\n"
-    txt += f"🔗 لینک دعوت شما:\n`{ref_link}`\n\n"
-    txt += f"👥 تعداد دعوت‌ها: {db.get_referral_count(callback.from_user.id)}\n"
-    txt += f"🪙 سکه فعلی: {db.get_user(callback.from_user.id).get('balance', 0)}\n\n"
-    txt += "✨ **پاداش:**\n"
-    txt += "• هر دعوت: +۵ سکه به شما\n"
-    txt += "• دوست شما: +۱۰ سکه\n"
-    await callback.message.edit_text(txt, parse_mode=ParseMode.MARKDOWN, reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="📋 کپی لینک", callback_data="copy_ref")],
-        [InlineKeyboardButton(text="🔙 بازگشت", callback_data="back_main")]
-    ]))
-
-@dp.callback_query(F.data == "copy_ref")
-async def copy_ref(callback: CallbackQuery):
-    await callback.answer("✅ لینک کپی شد!", show_alert=True)
-    bot_username = (await bot.get_me()).username
-    ref_link = f"https://t.me/{bot_username}?start={callback.from_user.id}"
-    await callback.message.answer(f"🔗 لینک دعوت شما:\n`{ref_link}`", parse_mode=ParseMode.MARKDOWN)
-
-# ============================================================
-# ADMIN CALLBACKS
-# ============================================================
-@dp.callback_query(F.data == "admin_panel")
-async def admin_panel(callback: CallbackQuery):
-    if callback.from_user.id not in cfg.ADMIN_IDS:
-        await callback.answer("⛔ دسترسی غیرمجاز", show_alert=True)
-        return
-    await callback.answer()
-    await callback.message.edit_text("🔧 **پنل ادمین**", reply_markup=admin_keyboard())
-
-@dp.callback_query(F.data == "admin_broadcast")
-async def admin_broadcast(callback: CallbackQuery, state: FSMContext):
-    if callback.from_user.id not in cfg.ADMIN_IDS:
-        await callback.answer("⛔ دسترسی غیرمجاز", show_alert=True)
-        return
-    await callback.answer()
-    await state.set_state(AdminState.waiting_broadcast)
-    await callback.message.edit_text(
-        "📨 **ارسال همگانی**\n\n"
-        "متن پیام خود را وارد کنید.\n\n"
-        "⚠️ پیام به **همه کاربران** ارسال خواهد شد.",
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="🔙 انصراف", callback_data="admin_panel")]
-        ])
-    )
-
-@dp.message(AdminState.waiting_broadcast)
-async def process_broadcast(message: Message, state: FSMContext):
-    if message.from_user.id not in cfg.ADMIN_IDS:
-        await message.answer("⛔ دسترسی غیرمجاز")
-        await state.clear()
-        return
-    conn = sqlite3.connect(cfg.DB_FILE)
-    cur = conn.cursor()
-    cur.execute("SELECT user_id FROM users")
-    users = cur.fetchall()
-    conn.close()
-    
-    success = 0
-    fail = 0
-    for user_id in users:
-        try:
-            await bot.send_message(user_id[0], message.text)
-            success += 1
-        except:
-            fail += 1
-        await asyncio.sleep(0.05)
-    
-    await message.answer(f"✅ ارسال همگانی انجام شد.\n📤 موفق: {success}\n📤 ناموفق: {fail}")
-    await state.clear()
-
-@dp.callback_query(F.data == "admin_verify")
-async def admin_verify(callback: CallbackQuery):
-    if callback.from_user.id not in cfg.ADMIN_IDS:
-        await callback.answer("⛔ دسترسی غیرمجاز", show_alert=True)
-        return
-    await callback.answer()
-    pending = db.get_pending_payments()
-    if not pending:
-        await callback.message.edit_text(
-            "✅ هیچ درخواست پرداختی در انتظار تأیید نیست.",
-            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-                [InlineKeyboardButton(text="🔙 بازگشت", callback_data="admin_panel")]
-            ])
-        )
-        return
-    txt = "💳 **درخواست‌های پرداخت**\n\n"
-    for p in pending[:10]:
-        txt += f"🆔 {p['id']} | کاربر: {p['user_id']} | مبلغ: {p['amount']:,}\n"
-        txt += f"📎 کد: {p['tracking_code']} | تاریخ: {p['created_at']}\n\n"
-    txt += "برای تأیید: `/verify [id]`\nبرای رد: `/reject [id]`"
-    await callback.message.edit_text(txt, reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🔙 بازگشت", callback_data="admin_panel")]
-    ]))
-
-@dp.message(Command("verify"))
-async def verify_payment(message: Message):
-    if message.from_user.id not in cfg.ADMIN_IDS:
-        await message.answer("⛔ دسترسی غیرمجاز")
-        return
+@router.message(Command("watch"))
+async def watch(message: types.Message):
     parts = message.text.split()
     if len(parts) < 2:
-        await message.answer("❌ لطفاً آیدی پرداخت را وارد کنید: `/verify [id]`")
-        return
-    try:
-        payment_id = int(parts[1])
-    except:
-        await message.answer("❌ آیدی نامعتبر")
-        return
-    
-    conn = sqlite3.connect(cfg.DB_FILE)
-    cur = conn.cursor()
-    cur.execute("SELECT user_id FROM payments WHERE id = ? AND status = 'pending'", (payment_id,))
-    row = cur.fetchone()
-    conn.close()
-    
-    if not row:
-        await message.answer("❌ پرداخت یافت نشد یا قبلاً تأیید شده است.")
-        return
-    
-    user_id = row[0]
-    db.verify_payment(payment_id, message.from_user.id)
-    db.activate_vip(user_id)
-    
-    await message.answer(f"✅ پرداخت {payment_id} تأیید شد. اشتراک VIP کاربر {user_id} فعال شد.")
-    try:
-        await bot.send_message(user_id, f"✅ **اشتراک VIP شما فعال شد!**\n\n🎉 تبریک! اشتراک {cfg.VIP_DURATION} روزه شما فعال شد.\nاز تمام قابلیت‌های VIP استفاده کنید.")
-    except:
-        pass
+        return await message.answer("نمونه: /watch BTCUSDT")
+    symbol = parts[1].upper()
+    async with aiosqlite.connect(DATABASE_URL) as conn:
+        await conn.execute(
+            "INSERT INTO watchlists(user_id, symbol, created_at) VALUES(?,?,?)",
+            (message.from_user.id, symbol, int(time.time()))
+        )
+        await conn.commit()
+    await message.answer(f"{symbol} به واچ‌لیست اضافه شد.")
+    await log_action(message.from_user.id, "watch", symbol)
 
-@dp.message(Command("reject"))
-async def reject_payment(message: Message):
-    if message.from_user.id not in cfg.ADMIN_IDS:
-        await message.answer("⛔ دسترسی غیرمجاز")
-        return
+@router.message(Command("subscribe"))
+async def subscribe(message: types.Message):
     parts = message.text.split()
-    if len(parts) < 2:
-        await message.answer("❌ لطفاً آیدی پرداخت را وارد کنید: `/reject [id]`")
-        return
+    plan = parts[1].lower() if len(parts) > 1 else "vip"
+    if plan not in ("vip", "pro", "elite"):
+        return await message.answer("پلن معتبر: vip / pro / elite")
+    await message.answer(
+        f"برای فعال‌سازی {plan.upper()}، روی /buyvip بزن یا از دکمه زیر استفاده کن.",
+        reply_markup=vip_keyboard()
+    )
+
+@router.message(Command("buyvip"))
+async def buyvip(message: types.Message):
+    await message.answer(
+        f"برای فعال‌سازی VIP، مبلغ <b>{VIP_PRICE_TOMAN:,}</b> تومان را به کارت زیر واریز کن:
+
+"
+        f"نام: <b>فرهاد بهمرد</b>
+"
+        f"کارت: <code>6063731196254479</code>
+
+"
+        f"بعد از واریز، رسید یا شماره پیگیری را ارسال کن.",
+        reply_markup=vip_keyboard()
+    )
+
+@router.message(Command("ai"))
+async def ai_cmd(message: types.Message):
+    text = message.text.partition(" ")[2].strip()
+    if not text:
+        return await message.answer("نمونه: /ai روی XRP چه نظری داری؟")
+    user = await get_user(message.from_user.id)
+    if not user:
+        return await message.answer("ابتدا /start")
+    premium = await is_premium(user)
+    count = await get_ai_count(message.from_user.id)
+    if not premium and count >= FREE_DAILY_AI_LIMIT:
+        return await message.answer("سقف AI رایگان امروز پر شده. برای دسترسی بیشتر پلن VIP لازم است.")
+    if not await rate_limit_ok(message.from_user.id):
+        return await message.answer("لطفاً چند ثانیه بعد دوباره تلاش کن.")
+    profile = f"risk={user[3]}, plan={user[4]}, premium={premium}"
     try:
-        payment_id = int(parts[1])
-    except:
-        await message.answer("❌ آیدی نامعتبر")
-        return
-    
-    db.reject_payment(payment_id)
-    await message.answer(f"✅ پرداخت {payment_id} رد شد.")
+        answer = await ask_groq(text, profile)
+        await increase_ai_count(message.from_user.id)
+        await message.answer(answer[:3900])
+        await log_action(message.from_user.id, "ai", text[:200])
+    except Exception as e:
+        logger.exception("groq error")
+        await message.answer(f"AI فعلاً در دسترس نیست: {e}")
 
-@dp.callback_query(F.data == "admin_stats")
-async def admin_stats(callback: CallbackQuery):
-    if callback.from_user.id not in cfg.ADMIN_IDS:
-        await callback.answer("⛔ دسترسی غیرمجاز", show_alert=True)
-        return
-    await callback.answer()
-    conn = sqlite3.connect(cfg.DB_FILE)
-    cur = conn.cursor()
-    cur.execute("SELECT COUNT(*) FROM users")
-    total_users = cur.fetchone()[0]
-    cur.execute("SELECT COUNT(*) FROM users WHERE is_vip = 1")
-    vip_users = cur.fetchone()[0]
-    cur.execute("SELECT COUNT(*) FROM payments WHERE status = 'verified'")
-    total_payments = cur.fetchone()[0]
-    cur.execute("SELECT SUM(amount) FROM payments WHERE status = 'verified'")
-    total_revenue = cur.fetchone()[0] or 0
-    cur.execute("SELECT COUNT(*) FROM payments WHERE status = 'pending'")
-    pending_payments = cur.fetchone()[0]
-    cur.execute("SELECT COUNT(*) FROM watchlist")
-    total_watches = cur.fetchone()[0]
-    conn.close()
-    
-    txt = f"📊 **گزارش عملکرد**\n\n"
-    txt += f"👥 کل کاربران: {total_users}\n"
-    txt += f"💎 کاربران VIP: {vip_users}\n"
-    txt += f"💰 کل پرداخت‌ها: {total_payments}\n"
-    txt += f"📈 درآمد کل: {total_revenue:,} تومان\n"
-    txt += f"⏳ پرداخت‌های در انتظار: {pending_payments}\n"
-    txt += f"👀 واچ‌لیست‌ها: {total_watches}\n"
-    await callback.message.edit_text(txt, reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🔄 بروزرسانی", callback_data="admin_stats")],
-        [InlineKeyboardButton(text="🔙 بازگشت", callback_data="admin_panel")]
-    ]))
+@router.message(Command("admin"))
+async def admin(message: types.Message):
+    if message.from_user.id not in ADMIN_IDS:
+        return await message.answer("دسترسی نداری.")
+    async with aiosqlite.connect(DATABASE_URL) as conn:
+        cur = await conn.execute("SELECT COUNT(*) FROM users")
+        users = (await cur.fetchone())[0]
+        cur = await conn.execute("SELECT COUNT(*) FROM payments")
+        payments = (await cur.fetchone())[0]
+        cur = await conn.execute("SELECT COUNT(*) FROM watchlists")
+        watchs = (await cur.fetchone())[0]
+    await message.answer(
+        f"ادمین فعال است.
+"
+        f"Users: {users}
+Payments: {payments}
+Watchlists: {watchs}
+"
+        f"زمان تهران: {tehran_datetime()}"
+    )
 
-@dp.callback_query(F.data == "admin_users")
-async def admin_users(callback: CallbackQuery):
-    if callback.from_user.id not in cfg.ADMIN_IDS:
-        await callback.answer("⛔ دسترسی غیرمجاز", show_alert=True)
-        return
-    await callback.answer()
-    conn = sqlite3.connect(cfg.DB_FILE)
-    cur = conn.cursor()
-    cur.execute("SELECT user_id, username, first_name, is_vip, vip_expires FROM users ORDER BY joined_at DESC LIMIT 20")
-    users = cur.fetchall()
-    conn.close()
-    
-    txt = "📝 **۲۰ کاربر اخیر**\n\n"
-    for u in users:
-        txt += f"🆔 {u[0]} | {u[1] or u[2] or 'نامشخص'}\n"
-        txt += f"💎 {'✅ VIP' if u[3] else '❌ رایگان'}"
-        if u[4]:
-            txt += f" (تا {u[4]})"
-        txt += "\n\n"
-    await callback.message.edit_text(txt, reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🔙 بازگشت", callback_data="admin_panel")]
-    ]))
+@router.message()
+async def handle_payment_proof(message: types.Message):
+    text = (message.text or "").lower()
+    if "رسید" in text or "شماره پیگیری" in text or "واریز" in text:
+        await message.answer(
+            "رسید دریافت شد. برای تأیید نهایی، ادمین بررسی می‌کند."
+        )
+        if ADMIN_IDS:
+            for admin_id in ADMIN_IDS:
+                try:
+                    await bot.send_message(
+                        admin_id,
+                        f"پرداخت احتمالی VIP از کاربر {message.from_user.id}
+"
+                        f"نام: {message.from_user.full_name}
+"
+                        f"یوزرنیم: @{message.from_user.username or 'none'}
+"
+                        f"متن: {message.text}"
+                    )
+                except Exception:
+                    pass
 
-# ============================================================
-# PRICE ALERT CHECKER
-# ============================================================
-async def price_alert_checker():
+@app.post("/webhook")
+async def telegram_webhook(request: Request):
+    if request.headers.get("X-Telegram-Bot-Api-Secret-Token") != WEBHOOK_SECRET:
+        raise HTTPException(status_code=403, detail="Forbidden")
+    data = await request.json()
+    update = types.Update(**data)
+    await dp.feed_update(bot, update)
+    return {"ok": True}
+
+@app.get("/")
+async def root():
+    return {"status": "ok", "tehran_time": tehran_datetime(), "channel": CHANNEL_USERNAME}
+
+async def daily_channel_post():
     while True:
         try:
-            watches = db.get_all_watchlists()
-            if watches:
-                grouped = defaultdict(list)
-                for w in watches:
-                    grouped[w['symbol']].append(w)
-                
-                for symbol, alerts in grouped.items():
-                    full_symbol = f"{symbol}/USDT"
-                    price_data = await coinex.get_price(full_symbol)
-                    if not price_data:
-                        continue
-                    current_price = price_data['price']
-                    
-                    for alert in alerts:
-                        triggered = False
-                        if alert['alert_type'] == 'above' and current_price >= alert['target_price']:
-                            triggered = True
-                        elif alert['alert_type'] == 'below' and current_price <= alert['target_price']:
-                            triggered = True
-                        
-                        if triggered:
-                            try:
-                                await bot.send_message(
-                                    alert['user_id'],
-                                    f"🔔 **هشدار قیمت**\n\n"
-                                    f"📊 {symbol} به قیمت ${current_price:.2f} رسید.\n"
-                                    f"🎯 هدف شما: {alert['alert_type']} ${alert['target_price']:.2f}\n"
-                                    f"📈 تغییر: {price_data['change']:+.2f}%"
-                                )
-                            except:
-                                pass
+            text = (
+                f"📊 گزارش روزانه CryptoPulse
+"
+                f"⏰ زمان تهران: {tehran_datetime()}
+"
+                f"✅ ربات فعال است
+"
+                f"💎 VIP ماهانه: {VIP_PRICE_TOMAN:,} تومان
+"
+                f"{CHANNEL_USERNAME}"
+            )
+            await channel_post(text)
         except Exception as e:
-            logger.error(f"Alert checker error: {e}")
-        await asyncio.sleep(60)
+            logger.warning(f"channel post error: {e}")
+        await asyncio.sleep(24 * 3600)
 
-# ============================================================
-# MAIN ENTRY POINT
-# ============================================================
-async def polling_main():
-    logger.info("🚀 VIP PLATINUM BOT v46.0 starting in polling mode...")
-    logger.info(f"👤 Owner: {cfg.OWNER_ID}")
-    logger.info(f"📢 Channel: {cfg.CHANNEL_ID}")
-    
-    asyncio.create_task(price_alert_checker())
-    await dp.start_polling(bot)
+@app.on_event("startup")
+async def on_startup():
+    await init_db()
+    await bot.set_webhook(url=WEBHOOK_URL, secret_token=WEBHOOK_SECRET, drop_pending_updates=True)
+    asyncio.create_task(daily_channel_post())
+    logger.info("Webhook set")
 
-if __name__ == "__main__":
-    try:
-        asyncio.run(polling_main())
-    except KeyboardInterrupt:
-        logger.info("🛑 Bot stopped by user")
-    except Exception as e:
-        logger.error(f"❌ Error: {e}")
-        sys.exit(1)
+@app.on_event("shutdown")
+async def on_shutdown():
+    await bot.delete_webhook(drop_pending_updates=True)
+    await bot.session.close()
