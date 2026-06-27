@@ -1,0 +1,5 @@
+BOT_TOKEN=xxx
+GROQ_API_KEY=xxx
+COINEX_KEY=xxx
+COINEX_SECRET=xxx
+WEBHOOK_URL=https://your-app.up.railway.app
