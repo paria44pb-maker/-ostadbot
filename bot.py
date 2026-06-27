@@ -12,18 +12,22 @@ import logging
 import sqlite3
 import random
 from datetime import datetime, timedelta
-from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Any
 from contextlib import asynccontextmanager
 from collections import defaultdict
 
+import httpx
+import pytz
+import aiohttp
+import jdatetime
+from dotenv import load_dotenv
+
 from fastapi import FastAPI, Request, HTTPException, Header
-from fastapi.responses import JSONResponse
 import uvicorn
+
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.types import (
-    Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton,
-    ReplyKeyboardMarkup, KeyboardButton, WebAppInfo, ChatMember
+    Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 )
 from aiogram.filters import Command, CommandStart, CommandObject
 from aiogram.fsm.context import FSMContext
@@ -31,12 +35,6 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.enums import ParseMode
 from aiogram.client.default import DefaultBotProperties
-from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_application
-
-import httpx
-import pytz
-import aiohttp
-from dotenv import load_dotenv
 
 load_dotenv()
 
@@ -159,7 +157,6 @@ class Database:
         conn.commit()
         conn.close()
     
-    # ---- Users ----
     def add_user(self, user_id: int, username: str, first_name: str, last_name: str = ""):
         conn = self._get_conn()
         cur = conn.cursor()
@@ -208,7 +205,6 @@ class Database:
         self.update_user(user_id, free_trial_used=1, is_vip=1, 
                         vip_expires=(datetime.now() + timedelta(days=cfg.FREE_TRIAL_DAYS)).isoformat())
     
-    # ---- Watchlist ----
     def add_watch(self, user_id: int, symbol: str, target_price: float, alert_type: str = "above"):
         conn = self._get_conn()
         cur = conn.cursor()
@@ -242,7 +238,6 @@ class Database:
         conn.close()
         return [dict(row) for row in rows]
     
-    # ---- Payments ----
     def add_payment(self, user_id: int, amount: int, tracking_code: str):
         conn = self._get_conn()
         cur = conn.cursor()
@@ -290,7 +285,6 @@ class Database:
         conn.commit()
         conn.close()
     
-    # ---- Referrals ----
     def add_referral(self, referrer_id: int, referred_id: int):
         conn = self._get_conn()
         cur = conn.cursor()
@@ -309,7 +303,6 @@ class Database:
         conn.close()
         return count
     
-    # ---- Coupons ----
     def get_coupon(self, code: str) -> Optional[Dict]:
         conn = self._get_conn()
         cur = conn.cursor()
@@ -325,7 +318,6 @@ class Database:
         conn.commit()
         conn.close()
     
-    # ---- Price cache ----
     def update_price_cache(self, symbol: str, price: float, change: float):
         conn = self._get_conn()
         cur = conn.cursor()
@@ -349,7 +341,6 @@ db = Database(cfg.DB_FILE)
 # ============================================================
 # PERSIAN TIME
 # ============================================================
-import jdatetime
 TEHRAN_TZ = pytz.timezone('Asia/Tehran')
 
 class Persian:
@@ -386,7 +377,7 @@ class Persian:
 p = Persian()
 
 # ============================================================
-# AI ENGINE (Groq)
+# AI ENGINE
 # ============================================================
 class GroqAI:
     def __init__(self):
@@ -501,9 +492,6 @@ coinex = CoinExAPI()
 # ============================================================
 # FSM STATES
 # ============================================================
-class PaymentState(StatesGroup):
-    waiting_tracking = State()
-
 class WatchState(StatesGroup):
     waiting_symbol = State()
     waiting_target = State()
@@ -511,10 +499,9 @@ class WatchState(StatesGroup):
 
 class AdminState(StatesGroup):
     waiting_broadcast = State()
-    waiting_reply = State()
 
 # ============================================================
-# INLINE KEYBOARDS
+# KEYBOARDS
 # ============================================================
 def main_keyboard(user_id: int):
     is_vip = db.is_vip(user_id)
@@ -544,7 +531,7 @@ def admin_keyboard():
     ])
 
 # ============================================================
-# BOT INITIALIZATION
+# BOT INIT
 # ============================================================
 bot = Bot(
     token=cfg.BOT_TOKEN,
@@ -698,7 +685,7 @@ async def cmd_subscribe(message: Message):
     )
 
 @dp.message(Command("pay"))
-async def cmd_pay(message: Message, state: FSMContext):
+async def cmd_pay(message: Message):
     parts = message.text.split(maxsplit=1)
     if len(parts) < 2:
         await message.answer("❌ لطفاً کد پیگیری را همراه با دستور ارسال کنید:\n`/pay 123456789`", parse_mode=ParseMode.MARKDOWN)
@@ -749,7 +736,7 @@ async def cmd_admin(message: Message):
     await message.answer("🔧 **پنل ادمین**", reply_markup=admin_keyboard())
 
 # ============================================================
-# CALLBACK QUERY HANDLERS
+# CALLBACK HANDLERS
 # ============================================================
 
 @dp.callback_query(F.data == "back_main")
@@ -1184,12 +1171,14 @@ async def price_alert_checker():
         await asyncio.sleep(60)
 
 # ============================================================
-# FASTAPI WEBHOOK SETUP
+# FASTAPI SETUP
 # ============================================================
-
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # شروع تسک‌های پس‌زمینه
     asyncio.create_task(price_alert_checker())
+    
+    # تنظیم وب‌هوک (در صورت وجود آدرس)
     if cfg.WEBHOOK_URL:
         await bot.set_webhook(
             url=f"{cfg.WEBHOOK_URL}/webhook",
@@ -1199,7 +1188,10 @@ async def lifespan(app: FastAPI):
         logger.info(f"✅ Webhook set to {cfg.WEBHOOK_URL}/webhook")
     else:
         logger.warning("⚠️ WEBHOOK_URL not set, running in polling mode")
+    
     yield
+    
+    # پاکسازی در پایان
     await bot.delete_webhook()
     await bot.session.close()
     logger.info("🛑 Bot stopped")
@@ -1221,7 +1213,14 @@ async def health():
     return {"status": "ok", "time": p.full()}
 
 # ============================================================
-# MAIN ENTRY POINT
+# POLLING MODE (برای تست محلی)
+# ============================================================
+async def polling_main():
+    asyncio.create_task(price_alert_checker())
+    await dp.start_polling(bot)
+
+# ============================================================
+# ENTRY POINT
 # ============================================================
 def main():
     if not cfg.BOT_TOKEN:
@@ -1229,15 +1228,12 @@ def main():
         sys.exit(1)
     
     if cfg.WEBHOOK_URL:
+        # حالت وب‌هوک (برای Railway)
         uvicorn.run(app, host="0.0.0.0", port=int(os.getenv("PORT", "8080")))
     else:
-        # Fallback to polling mode
+        # حالت Polling (برای تست محلی)
         logger.info("🚀 Starting in polling mode")
         asyncio.run(polling_main())
-
-async def polling_main():
-    asyncio.create_task(price_alert_checker())
-    await dp.start_polling(bot)
 
 if __name__ == "__main__":
     main()
