@@ -2,9 +2,9 @@
 # -*- coding: utf-8 -*-
 
 """
-💎 VIP PLATINUM BOT v44.0
+💎 VIP PLATINUM BOT v45.0 - ULTIMATE EDITION
 ربات حرفه‌ای تحلیل کریپتو با هوش مصنوعی Groq و قیمت‌های CoinEx
-نسخه کامل و بدون خطا - آماده اجرا روی Railway
+نسخه کامل با پشتیبانی از چندین منبع برای خواندن توکن
 """
 
 import os
@@ -16,6 +16,7 @@ import json
 import time
 import hashlib
 import random
+import re
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Any
 from collections import defaultdict
@@ -27,24 +28,80 @@ import pytz
 import jdatetime
 from dotenv import load_dotenv
 
-from fastapi import FastAPI, Request, HTTPException, Header
-import uvicorn
-
-from aiogram import Bot, Dispatcher, types, F
-from aiogram.filters import Command, CommandStart, CommandObject
-from aiogram.fsm.context import FSMContext
-from aiogram.fsm.state import State, StatesGroup
-from aiogram.fsm.storage.memory import MemoryStorage
-from aiogram.types import (
-    Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
-)
-from aiogram.enums import ParseMode
-from aiogram.client.default import DefaultBotProperties
-
 # ============================================================
 # LOAD ENVIRONMENT
 # ============================================================
 load_dotenv()
+
+# ============================================================
+# TOKEN LOADING - MULTIPLE SOURCES
+# ============================================================
+
+def load_token() -> str:
+    """تلاش برای دریافت توکن از منابع مختلف"""
+    token = None
+    
+    # 1. از متغیر محیطی BOT_TOKEN
+    token = os.getenv("BOT_TOKEN") or os.getenv("TELEGRAM_TOKEN")
+    if token:
+        print("✅ Token loaded from environment variable")
+        return token
+    
+    # 2. از فایل token.txt
+    try:
+        if os.path.exists("token.txt"):
+            with open("token.txt", "r") as f:
+                token = f.read().strip()
+            if token:
+                print("✅ Token loaded from token.txt")
+                return token
+    except:
+        pass
+    
+    # 3. از فایل .env (دستی)
+    try:
+        with open(".env", "r") as f:
+            for line in f:
+                if line.startswith("BOT_TOKEN="):
+                    token = line.split("=", 1)[1].strip().strip('"').strip("'")
+                    if token:
+                        print("✅ Token loaded from .env file")
+                        return token
+    except:
+        pass
+    
+    # 4. از آرگومان خط فرمان (برای تست)
+    if len(sys.argv) > 1 and sys.argv[1].startswith("BOT_TOKEN="):
+        token = sys.argv[1].split("=", 1)[1]
+        if token:
+            print("✅ Token loaded from command line argument")
+            return token
+    
+    # 5. اگر هیچ کدام کار نکرد، خطا بده
+    print("❌ BOT_TOKEN not found in any source!")
+    print("Please set BOT_TOKEN in Railway Variables, or create token.txt")
+    print("Or use: python bot.py BOT_TOKEN=your_token_here")
+    sys.exit(1)
+
+BOT_TOKEN = load_token()
+
+# ============================================================
+# VALIDATE TOKEN FORMAT
+# ============================================================
+def validate_token_format(token: str) -> bool:
+    """بررسی فرمت توکن تلگرام"""
+    # توکن معمولاً به شکل عدد:حروف_اعداد است
+    pattern = r'^\d+:[A-Za-z0-9_-]+$'
+    if re.match(pattern, token):
+        return True
+    print(f"⚠️ Token format looks unusual: {token[:10]}...")
+    return True  # همچنان تلاش می‌کنیم
+
+if not validate_token_format(BOT_TOKEN):
+    print("❌ Token format is invalid!")
+    sys.exit(1)
+
+print(f"✅ BOT_TOKEN loaded successfully (length: {len(BOT_TOKEN)})")
 
 # ============================================================
 # LOGGING
@@ -61,7 +118,7 @@ logger.setLevel(logging.INFO)
 # CONFIG
 # ============================================================
 class Config:
-    BOT_TOKEN: str = os.getenv("BOT_TOKEN", "")
+    BOT_TOKEN: str = BOT_TOKEN
     WEBHOOK_URL: str = os.getenv("WEBHOOK_URL", "")
     WEBHOOK_SECRET: str = os.getenv("WEBHOOK_SECRET", "default-secret")
     GROQ_API_KEY: str = os.getenv("GROQ_API_KEY", "")
@@ -81,13 +138,6 @@ class Config:
     ]
 
 cfg = Config()
-
-# ============================================================
-# VALIDATE TOKEN
-# ============================================================
-if not cfg.BOT_TOKEN:
-    logger.error("❌ BOT_TOKEN is not set! Please add it to .env or Railway Variables.")
-    sys.exit(1)
 
 # ============================================================
 # DATABASE
@@ -504,6 +554,17 @@ def admin_keyboard():
 # ============================================================
 # BOT INIT
 # ============================================================
+from aiogram import Bot, Dispatcher, types, F
+from aiogram.filters import Command, CommandStart, CommandObject
+from aiogram.fsm.context import FSMContext
+from aiogram.fsm.state import State, StatesGroup
+from aiogram.fsm.storage.memory import MemoryStorage
+from aiogram.types import (
+    Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
+)
+from aiogram.enums import ParseMode
+from aiogram.client.default import DefaultBotProperties
+
 bot = Bot(
     token=cfg.BOT_TOKEN,
     default=DefaultBotProperties(parse_mode=ParseMode.MARKDOWN)
@@ -532,7 +593,7 @@ async def cmd_start(message: Message, command: CommandObject):
     user_data = db.get_user(user.id)
     is_vip = db.is_vip(user.id)
     
-    welcome = f"""💎 VIP PLATINUM v44.0 💎
+    welcome = f"""💎 VIP PLATINUM v45.0 💎
 
 {p.greet()} {p.full()}
 
@@ -1139,31 +1200,16 @@ async def price_alert_checker():
         await asyncio.sleep(60)
 
 # ============================================================
-# MAIN (Polling Mode - for Railway without Webhook)
+# FASTAPI WEBHOOK (OPTIONAL)
 # ============================================================
-async def main():
-    logger.info("🚀 VIP PLATINUM BOT v44.0 starting...")
-    logger.info(f"👤 Owner: {cfg.OWNER_ID}")
-    logger.info(f"📢 Channel: {cfg.CHANNEL_ID}")
-    logger.info("✅ Bot started in polling mode")
-    
-    # Start price alert checker
-    asyncio.create_task(price_alert_checker())
-    
-    # Start polling
-    await dp.start_polling(bot)
+from fastapi import FastAPI, Request, HTTPException, Header
+import uvicorn
 
-# ============================================================
-# FASTAPI WEBHOOK MODE (اگر WEBHOOK_URL تنظیم شده باشد)
-# ============================================================
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("🚀 Starting in webhook mode...")
-    
-    # Start price alert checker
     asyncio.create_task(price_alert_checker())
     
-    # Set webhook
     if cfg.WEBHOOK_URL:
         await bot.set_webhook(
             url=f"{cfg.WEBHOOK_URL}/webhook",
@@ -1173,8 +1219,6 @@ async def lifespan(app: FastAPI):
         logger.info(f"✅ Webhook set to {cfg.WEBHOOK_URL}/webhook")
     
     yield
-    
-    # Cleanup
     await bot.delete_webhook()
     await bot.session.close()
     logger.info("🛑 Bot stopped")
@@ -1193,22 +1237,28 @@ async def webhook(request: Request, x_telegram_bot_api_secret_token: Optional[st
 
 @app.get("/health")
 async def health():
-    return {"status": "ok", "time": p.full(), "version": "44.0"}
+    return {"status": "ok", "time": p.full(), "version": "45.0"}
 
 # ============================================================
-# ENTRY POINT
+# MAIN ENTRY POINT
 # ============================================================
+async def polling_main():
+    logger.info("🚀 VIP PLATINUM BOT v45.0 starting in polling mode...")
+    logger.info(f"👤 Owner: {cfg.OWNER_ID}")
+    logger.info(f"📢 Channel: {cfg.CHANNEL_ID}")
+    
+    asyncio.create_task(price_alert_checker())
+    await dp.start_polling(bot)
+
 if __name__ == "__main__":
-    # اگر WEBHOOK_URL تنظیم شده باشد، از FastAPI استفاده کن
-    if cfg.WEBHOOK_URL:
-        logger.info(f"🚀 Starting with Webhook on port {cfg.PORT}")
-        uvicorn.run(app, host="0.0.0.0", port=cfg.PORT)
-    else:
-        # در غیر این صورت از Polling استفاده کن
-        try:
-            asyncio.run(main())
-        except KeyboardInterrupt:
-            logger.info("🛑 Bot stopped by user")
-        except Exception as e:
-            logger.error(f"❌ Error: {e}")
-            sys.exit(1)
+    try:
+        if cfg.WEBHOOK_URL:
+            logger.info(f"🚀 Starting with Webhook on port {cfg.PORT}")
+            uvicorn.run(app, host="0.0.0.0", port=cfg.PORT)
+        else:
+            asyncio.run(polling_main())
+    except KeyboardInterrupt:
+        logger.info("🛑 Bot stopped by user")
+    except Exception as e:
+        logger.error(f"❌ Error: {e}")
+        sys.exit(1)
