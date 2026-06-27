@@ -1,41 +1,45 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
+"""
+💎 VIP PLATINUM BOT v43.0
+ربات حرفه‌ای تحلیل کریپتو با هوش مصنوعی Groq و قیمت‌های CoinEx
+نسخه کامل و بدون خطا - آماده اجرا روی Railway
+"""
+
 import os
 import sys
-import json
-import time
-import hmac
-import hashlib
 import asyncio
 import logging
 import sqlite3
+import json
+import time
+import hashlib
 import random
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Any
-from contextlib import asynccontextmanager
 from collections import defaultdict
 
+import aiohttp
 import httpx
 import pytz
-import aiohttp
 import jdatetime
 from dotenv import load_dotenv
 
-from fastapi import FastAPI, Request, HTTPException, Header
-import uvicorn
-
 from aiogram import Bot, Dispatcher, types, F
-from aiogram.types import (
-    Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
-)
 from aiogram.filters import Command, CommandStart, CommandObject
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.storage.memory import MemoryStorage
+from aiogram.types import (
+    Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
+)
 from aiogram.enums import ParseMode
 from aiogram.client.default import DefaultBotProperties
 
+# ============================================================
+# LOAD ENVIRONMENT
+# ============================================================
 load_dotenv()
 
 # ============================================================
@@ -54,27 +58,29 @@ logger.setLevel(logging.INFO)
 # ============================================================
 class Config:
     BOT_TOKEN: str = os.getenv("BOT_TOKEN", "")
-    WEBHOOK_URL: str = os.getenv("WEBHOOK_URL", "")
-    WEBHOOK_SECRET: str = os.getenv("WEBHOOK_SECRET", "default-secret")
     GROQ_API_KEY: str = os.getenv("GROQ_API_KEY", "")
     CHANNEL_ID: str = os.getenv("CHANNEL_ID", "@CryptoPulse606")
     ADMIN_IDS: List[int] = [int(x.strip()) for x in os.getenv("ADMIN_IDS", "7225279768").split(",")]
     OWNER_ID: int = int(os.getenv("OWNER_ID", "7225279768"))
-    OWNER_USERNAME: str = os.getenv("OWNER_USERNAME", "Amir92aa")
     CARD_NUMBER: str = os.getenv("CARD_NUMBER", "6037997513379934")
     CARD_OWNER: str = os.getenv("CARD_OWNER", "علی محمدی")
     VIP_PRICE: int = int(os.getenv("VIP_PRICE", "199000"))
     VIP_DURATION: int = int(os.getenv("VIP_DURATION", "30"))
     FREE_TRIAL_DAYS: int = int(os.getenv("FREE_TRIAL_DAYS", "3"))
-    
     DB_FILE: str = "vip_bot.db"
-    
     COINEX_SYMBOLS: List[str] = [
         "BTC/USDT", "ETH/USDT", "SOL/USDT", "XRP/USDT", "ADA/USDT",
         "BNB/USDT", "DOGE/USDT", "DOT/USDT", "AVAX/USDT", "LINK/USDT"
     ]
 
 cfg = Config()
+
+# ============================================================
+# VALIDATE TOKEN
+# ============================================================
+if not cfg.BOT_TOKEN:
+    logger.error("❌ BOT_TOKEN is not set! Please add it to .env or Railway Variables.")
+    sys.exit(1)
 
 # ============================================================
 # DATABASE
@@ -138,15 +144,6 @@ class Database:
             )
         ''')
         cur.execute('''
-            CREATE TABLE IF NOT EXISTS coupons (
-                code TEXT PRIMARY KEY,
-                discount_percent INTEGER,
-                max_uses INTEGER,
-                used_count INTEGER DEFAULT 0,
-                expires_at TEXT
-            )
-        ''')
-        cur.execute('''
             CREATE TABLE IF NOT EXISTS price_cache (
                 symbol TEXT PRIMARY KEY,
                 price REAL,
@@ -156,6 +153,7 @@ class Database:
         ''')
         conn.commit()
         conn.close()
+        logger.info("✅ Database initialized")
     
     def add_user(self, user_id: int, username: str, first_name: str, last_name: str = ""):
         conn = self._get_conn()
@@ -249,17 +247,6 @@ class Database:
         conn.close()
         return cur.lastrowid
     
-    def get_payments(self, user_id: int, status: str = None) -> List[Dict]:
-        conn = self._get_conn()
-        cur = conn.cursor()
-        if status:
-            cur.execute("SELECT * FROM payments WHERE user_id = ? AND status = ? ORDER BY created_at DESC", (user_id, status))
-        else:
-            cur.execute("SELECT * FROM payments WHERE user_id = ? ORDER BY created_at DESC", (user_id,))
-        rows = cur.fetchall()
-        conn.close()
-        return [dict(row) for row in rows]
-    
     def get_pending_payments(self) -> List[Dict]:
         conn = self._get_conn()
         cur = conn.cursor()
@@ -303,21 +290,6 @@ class Database:
         conn.close()
         return count
     
-    def get_coupon(self, code: str) -> Optional[Dict]:
-        conn = self._get_conn()
-        cur = conn.cursor()
-        cur.execute("SELECT * FROM coupons WHERE code = ?", (code.upper(),))
-        row = cur.fetchone()
-        conn.close()
-        return dict(row) if row else None
-    
-    def use_coupon(self, code: str):
-        conn = self._get_conn()
-        cur = conn.cursor()
-        cur.execute("UPDATE coupons SET used_count = used_count + 1 WHERE code = ?", (code.upper(),))
-        conn.commit()
-        conn.close()
-    
     def update_price_cache(self, symbol: str, price: float, change: float):
         conn = self._get_conn()
         cur = conn.cursor()
@@ -327,14 +299,6 @@ class Database:
         )
         conn.commit()
         conn.close()
-    
-    def get_price_cache(self, symbol: str) -> Optional[Dict]:
-        conn = self._get_conn()
-        cur = conn.cursor()
-        cur.execute("SELECT * FROM price_cache WHERE symbol = ?", (symbol,))
-        row = cur.fetchone()
-        conn.close()
-        return dict(row) if row else None
 
 db = Database(cfg.DB_FILE)
 
@@ -377,7 +341,7 @@ class Persian:
 p = Persian()
 
 # ============================================================
-# AI ENGINE
+# AI ENGINE (GROQ)
 # ============================================================
 class GroqAI:
     def __init__(self):
@@ -429,7 +393,7 @@ class GroqAI:
                 self._cache[cache_key] = (result, time.time())
                 return result
             else:
-                logger.error(f"Groq error: {response.status_code} - {response.text}")
+                logger.error(f"Groq error: {response.status_code}")
                 return None
         except Exception as e:
             logger.error(f"Groq exception: {e}")
@@ -438,7 +402,7 @@ class GroqAI:
 ai = GroqAI()
 
 # ============================================================
-# COINEX WRAPPER
+# COINEX API
 # ============================================================
 class CoinExAPI:
     def __init__(self):
@@ -548,6 +512,7 @@ async def cmd_start(message: Message, command: CommandObject):
     user = message.from_user
     db.add_user(user.id, user.username, user.first_name, user.last_name or "")
     
+    # Referral
     if command.args:
         try:
             ref_id = int(command.args.split()[0])
@@ -561,7 +526,7 @@ async def cmd_start(message: Message, command: CommandObject):
     user_data = db.get_user(user.id)
     is_vip = db.is_vip(user.id)
     
-    welcome = f"""💎 VIP PLATINUM v42.0 💎
+    welcome = f"""💎 VIP PLATINUM v43.0 💎
 
 {p.greet()} {p.full()}
 
@@ -657,14 +622,13 @@ async def watch_target(message: Message, state: FSMContext):
         return
     await state.update_data(target=target)
     await state.set_state(WatchState.waiting_type)
-    await message.answer("📈 نوع هشدار را انتخاب کنید (بالا/پایین):", 
+    await message.answer("📈 نوع هشدار را انتخاب کنید:", 
                         reply_markup=InlineKeyboardMarkup(inline_keyboard=[
                             [InlineKeyboardButton(text="⬆️ بالاتر از", callback_data="watch_above"),
                              InlineKeyboardButton(text="⬇️ پایین‌تر از", callback_data="watch_below")]
                         ]))
 
 @dp.message(Command("subscribe"))
-@dp.message(Command("subscribe_vip"))
 async def cmd_subscribe(message: Message):
     await message.answer(
         f"💰 **خرید اشتراک VIP**\n\n"
@@ -674,8 +638,7 @@ async def cmd_subscribe(message: Message):
         f"• تحلیل پیشرفته با AI\n"
         f"• هشدار قیمت نامحدود\n"
         f"• واچ‌لیست ۲۰ ارز\n"
-        f"• اولویت پشتیبانی\n"
-        f"• تحلیل روزانه و هفتگی\n\n"
+        f"• اولویت پشتیبانی\n\n"
         f"💳 **نحوه پرداخت:**\n"
         f"کارت به کارت به شماره:\n"
         f"`{cfg.CARD_NUMBER}`\n"
@@ -819,7 +782,6 @@ async def show_watchlist(callback: CallbackQuery):
     txt = "👀 **واچ‌لیست شما**\n\n"
     for w in watches:
         txt += f"🔹 {w['symbol']}: هدف {w['alert_type']} ${w['target_price']:.2f}\n"
-    txt += "\nبرای حذف: `/remove_watch [ارز]`"
     await callback.message.edit_text(txt, reply_markup=InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="➕ افزودن جدید", callback_data="set_alert")],
         [InlineKeyboardButton(text="🔙 بازگشت", callback_data="back_main")]
@@ -1171,69 +1133,25 @@ async def price_alert_checker():
         await asyncio.sleep(60)
 
 # ============================================================
-# FASTAPI SETUP
+# MAIN
 # ============================================================
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    # شروع تسک‌های پس‌زمینه
+async def main():
+    logger.info("🚀 VIP PLATINUM BOT v43.0 starting...")
+    logger.info(f"👤 Owner: {cfg.OWNER_ID}")
+    logger.info(f"📢 Channel: {cfg.CHANNEL_ID}")
+    
+    # Start price alert checker
     asyncio.create_task(price_alert_checker())
     
-    # تنظیم وب‌هوک (در صورت وجود آدرس)
-    if cfg.WEBHOOK_URL:
-        await bot.set_webhook(
-            url=f"{cfg.WEBHOOK_URL}/webhook",
-            secret_token=cfg.WEBHOOK_SECRET,
-            max_connections=100
-        )
-        logger.info(f"✅ Webhook set to {cfg.WEBHOOK_URL}/webhook")
-    else:
-        logger.warning("⚠️ WEBHOOK_URL not set, running in polling mode")
-    
-    yield
-    
-    # پاکسازی در پایان
-    await bot.delete_webhook()
-    await bot.session.close()
-    logger.info("🛑 Bot stopped")
-
-app = FastAPI(lifespan=lifespan)
-
-@app.post("/webhook")
-async def webhook(request: Request, x_telegram_bot_api_secret_token: Optional[str] = Header(None)):
-    if x_telegram_bot_api_secret_token != cfg.WEBHOOK_SECRET:
-        raise HTTPException(status_code=403, detail="Invalid secret token")
-    
-    body = await request.json()
-    update = types.Update(**body)
-    await dp.feed_update(bot, update)
-    return {"status": "ok"}
-
-@app.get("/health")
-async def health():
-    return {"status": "ok", "time": p.full()}
-
-# ============================================================
-# POLLING MODE (برای تست محلی)
-# ============================================================
-async def polling_main():
-    asyncio.create_task(price_alert_checker())
+    # Start polling
+    logger.info("✅ Bot started in polling mode")
     await dp.start_polling(bot)
 
-# ============================================================
-# ENTRY POINT
-# ============================================================
-def main():
-    if not cfg.BOT_TOKEN:
-        logger.error("❌ BOT_TOKEN is not set")
-        sys.exit(1)
-    
-    if cfg.WEBHOOK_URL:
-        # حالت وب‌هوک (برای Railway)
-        uvicorn.run(app, host="0.0.0.0", port=int(os.getenv("PORT", "8080")))
-    else:
-        # حالت Polling (برای تست محلی)
-        logger.info("🚀 Starting in polling mode")
-        asyncio.run(polling_main())
-
 if __name__ == "__main__":
-    main()
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        logger.info("🛑 Bot stopped by user")
+    except Exception as e:
+        logger.error(f"❌ Error: {e}")
+        sys.exit(1)
