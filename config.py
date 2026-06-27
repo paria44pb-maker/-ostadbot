@@ -1,7 +1,7 @@
 import os
 
 class Config:
- #   BOT_TOKEN = os.getenv("BOT_TOKEN")
+    BOT_TOKEN = os.getenv("BOT_TOKEN")
     GROQ_API_KEY = os.getenv("GROQ_API_KEY")
     DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///bot.db")
     REDIS_URL = os.getenv("REDIS_URL")
