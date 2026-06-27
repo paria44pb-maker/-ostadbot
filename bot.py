@@ -5,6 +5,7 @@ import json
 import hashlib
 import asyncio
 import logging
+import sqlite3
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
@@ -17,7 +18,7 @@ from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.client.default import DefaultBotProperties
 
 # ============================================================
-# ✅ Groq - با try/except
+# ✅ Groq
 # ============================================================
 try:
     from groq import Groq
@@ -25,7 +26,7 @@ try:
 except ImportError:
     Groq = None
     GROQ_AVAILABLE = False
-    print("⚠️ Groq library not installed. AI features disabled.")
+    print("⚠️ Groq library not installed.")
 
 # ============================================================
 # ✅ توکن تلگرام
@@ -61,7 +62,6 @@ logger = logging.getLogger("cryptopulse")
 # ============================================================
 app = FastAPI()
 
-# ✅ مقداردهی صحیح Bot
 bot = Bot(
     token=BOT_TOKEN,
     default=DefaultBotProperties(parse_mode=ParseMode.HTML)
@@ -83,69 +83,89 @@ if GROQ_AVAILABLE and GROQ_API_KEY:
         logger.error(f"❌ Groq initialization failed: {e}")
 
 # ============================================================
-# دیتابیس
+# دیتابیس با sqlite3 (همراه با قفل)
 # ============================================================
-CREATE_TABLES = """
-CREATE TABLE IF NOT EXISTS users (
-    user_id INTEGER PRIMARY KEY,
-    username TEXT,
-    full_name TEXT,
-    language TEXT DEFAULT 'fa',
-    risk_level TEXT DEFAULT 'medium',
-    plan TEXT DEFAULT 'free',
-    plan_until INTEGER DEFAULT 0,
-    created_at INTEGER
-);
+DB_LOCK = asyncio.Lock()
 
-CREATE TABLE IF NOT EXISTS user_state (
-    user_id INTEGER PRIMARY KEY,
-    last_ai_at INTEGER DEFAULT 0,
-    daily_ai_count INTEGER DEFAULT 0,
-    last_reset_day TEXT DEFAULT ''
-);
+def get_db():
+    return sqlite3.connect(DATABASE_URL)
 
-CREATE TABLE IF NOT EXISTS watchlists (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_id INTEGER,
-    symbol TEXT,
-    created_at INTEGER
-);
+def init_db_sync():
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute('''
+        CREATE TABLE IF NOT EXISTS users (
+            user_id INTEGER PRIMARY KEY,
+            username TEXT,
+            full_name TEXT,
+            language TEXT DEFAULT 'fa',
+            risk_level TEXT DEFAULT 'medium',
+            plan TEXT DEFAULT 'free',
+            plan_until INTEGER DEFAULT 0,
+            created_at INTEGER
+        )
+    ''')
+    cur.execute('''
+        CREATE TABLE IF NOT EXISTS user_state (
+            user_id INTEGER PRIMARY KEY,
+            last_ai_at INTEGER DEFAULT 0,
+            daily_ai_count INTEGER DEFAULT 0,
+            last_reset_day TEXT DEFAULT ''
+        )
+    ''')
+    cur.execute('''
+        CREATE TABLE IF NOT EXISTS watchlists (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER,
+            symbol TEXT,
+            created_at INTEGER
+        )
+    ''')
+    cur.execute('''
+        CREATE TABLE IF NOT EXISTS alerts (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER,
+            symbol TEXT,
+            target_price REAL,
+            alert_type TEXT,
+            active INTEGER DEFAULT 1,
+            created_at INTEGER
+        )
+    ''')
+    cur.execute('''
+        CREATE TABLE IF NOT EXISTS payments (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER,
+            plan TEXT,
+            amount REAL,
+            status TEXT,
+            reference TEXT,
+            created_at INTEGER
+        )
+    ''')
+    cur.execute('''
+        CREATE TABLE IF NOT EXISTS logs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER,
+            action TEXT,
+            data TEXT,
+            created_at INTEGER
+        )
+    ''')
+    cur.execute('''
+        CREATE TABLE IF NOT EXISTS channel_posts (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            post_type TEXT,
+            content TEXT,
+            created_at INTEGER
+        )
+    ''')
+    conn.commit()
+    conn.close()
+    logger.info("✅ Database initialized")
 
-CREATE TABLE IF NOT EXISTS alerts (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_id INTEGER,
-    symbol TEXT,
-    target_price REAL,
-    alert_type TEXT,
-    active INTEGER DEFAULT 1,
-    created_at INTEGER
-);
-
-CREATE TABLE IF NOT EXISTS payments (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_id INTEGER,
-    plan TEXT,
-    amount REAL,
-    status TEXT,
-    reference TEXT,
-    created_at INTEGER
-);
-
-CREATE TABLE IF NOT EXISTS logs (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_id INTEGER,
-    action TEXT,
-    data TEXT,
-    created_at INTEGER
-);
-
-CREATE TABLE IF NOT EXISTS channel_posts (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    post_type TEXT,
-    content TEXT,
-    created_at INTEGER
-);
-"""
+async def init_db():
+    await asyncio.to_thread(init_db_sync)
 
 def tehran_now():
     return datetime.now(ZoneInfo("Asia/Tehran"))
@@ -153,46 +173,45 @@ def tehran_now():
 def tehran_datetime():
     return tehran_now().strftime("%Y/%m/%d - %H:%M:%S")
 
-async def init_db():
-    async with aiosqlite.connect(DATABASE_URL) as conn:
-        await conn.executescript(CREATE_TABLES)
-        await conn.commit()
+def execute_query(query, params=(), fetch_one=False, fetch_all=False):
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute(query, params)
+    if fetch_one:
+        result = cur.fetchone()
+    elif fetch_all:
+        result = cur.fetchall()
+    else:
+        result = None
+    conn.commit()
+    conn.close()
+    return result
 
 async def log_action(user_id, action, data=""):
-    async with aiosqlite.connect(DATABASE_URL) as conn:
-        await conn.execute(
-            "INSERT INTO logs(user_id, action, data, created_at) VALUES(?,?,?,?)",
-            (user_id, action, data, int(time.time()))
-        )
-        await conn.commit()
+    query = "INSERT INTO logs(user_id, action, data, created_at) VALUES(?,?,?,?)"
+    await asyncio.to_thread(execute_query, query, (user_id, action, data, int(time.time())))
 
 async def get_user(user_id):
-    async with aiosqlite.connect(DATABASE_URL) as conn:
-        cur = await conn.execute("SELECT * FROM users WHERE user_id=?", (user_id,))
-        return await cur.fetchone()
+    query = "SELECT * FROM users WHERE user_id=?"
+    return await asyncio.to_thread(execute_query, query, (user_id,), fetch_one=True)
 
 async def upsert_user(user_id, username, full_name):
-    async with aiosqlite.connect(DATABASE_URL) as conn:
-        await conn.execute(
-            "INSERT INTO users(user_id, username, full_name, created_at) VALUES(?,?,?,?) "
-            "ON CONFLICT(user_id) DO UPDATE SET username=excluded.username, full_name=excluded.full_name",
-            (user_id, username, full_name, int(time.time()))
-        )
-        await conn.execute(
-            "INSERT OR IGNORE INTO user_state(user_id, last_ai_at, daily_ai_count, last_reset_day) VALUES(?,?,?,?)",
-            (user_id, 0, 0, tehran_now().date().isoformat())
-        )
-        await conn.commit()
+    query1 = """
+        INSERT INTO users(user_id, username, full_name, created_at) VALUES(?,?,?,?) 
+        ON CONFLICT(user_id) DO UPDATE SET username=excluded.username, full_name=excluded.full_name
+    """
+    query2 = """
+        INSERT OR IGNORE INTO user_state(user_id, last_ai_at, daily_ai_count, last_reset_day) VALUES(?,?,?,?)
+    """
+    await asyncio.to_thread(execute_query, query1, (user_id, username, full_name, int(time.time())))
+    await asyncio.to_thread(execute_query, query2, (user_id, 0, 0, tehran_now().date().isoformat()))
 
 async def set_plan(user_id, plan, days=30, amount=VIP_PRICE_TOMAN, reference="manual"):
     until = int((tehran_now() + timedelta(days=days)).timestamp())
-    async with aiosqlite.connect(DATABASE_URL) as conn:
-        await conn.execute("UPDATE users SET plan=?, plan_until=? WHERE user_id=?", (plan, until, user_id))
-        await conn.execute(
-            "INSERT INTO payments(user_id, plan, amount, status, reference, created_at) VALUES(?,?,?,?,?,?)",
-            (user_id, plan, amount, "paid", reference, int(time.time()))
-        )
-        await conn.commit()
+    query1 = "UPDATE users SET plan=?, plan_until=? WHERE user_id=?"
+    query2 = "INSERT INTO payments(user_id, plan, amount, status, reference, created_at) VALUES(?,?,?,?,?,?)"
+    await asyncio.to_thread(execute_query, query1, (plan, until, user_id))
+    await asyncio.to_thread(execute_query, query2, (user_id, plan, amount, "paid", reference, int(time.time())))
 
 async def is_premium(user_row):
     if not user_row:
@@ -201,33 +220,25 @@ async def is_premium(user_row):
 
 async def reset_daily_if_needed(user_id):
     today = tehran_now().date().isoformat()
-    async with aiosqlite.connect(DATABASE_URL) as conn:
-        cur = await conn.execute("SELECT last_reset_day FROM user_state WHERE user_id=?", (user_id,))
-        row = await cur.fetchone()
-        if not row:
-            await conn.execute(
-                "INSERT OR IGNORE INTO user_state(user_id,last_ai_at,daily_ai_count,last_reset_day) VALUES(?,?,?,?)",
-                (user_id, 0, 0, today)
-            )
-        elif row[0] != today:
-            await conn.execute("UPDATE user_state SET daily_ai_count=0,last_reset_day=? WHERE user_id=?", (today, user_id))
-        await conn.commit()
+    query1 = "SELECT last_reset_day FROM user_state WHERE user_id=?"
+    row = await asyncio.to_thread(execute_query, query1, (user_id,), fetch_one=True)
+    if not row:
+        query2 = "INSERT OR IGNORE INTO user_state(user_id,last_ai_at,daily_ai_count,last_reset_day) VALUES(?,?,?,?)"
+        await asyncio.to_thread(execute_query, query2, (user_id, 0, 0, today))
+    elif row[0] != today:
+        query3 = "UPDATE user_state SET daily_ai_count=0,last_reset_day=? WHERE user_id=?"
+        await asyncio.to_thread(execute_query, query3, (today, user_id))
 
 async def increase_ai_count(user_id):
     await reset_daily_if_needed(user_id)
-    async with aiosqlite.connect(DATABASE_URL) as conn:
-        await conn.execute(
-            "UPDATE user_state SET daily_ai_count = daily_ai_count + 1, last_ai_at=? WHERE user_id=?",
-            (int(time.time()), user_id)
-        )
-        await conn.commit()
+    query = "UPDATE user_state SET daily_ai_count = daily_ai_count + 1, last_ai_at=? WHERE user_id=?"
+    await asyncio.to_thread(execute_query, query, (int(time.time()), user_id))
 
 async def get_ai_count(user_id):
     await reset_daily_if_needed(user_id)
-    async with aiosqlite.connect(DATABASE_URL) as conn:
-        cur = await conn.execute("SELECT daily_ai_count FROM user_state WHERE user_id=?", (user_id,))
-        row = await cur.fetchone()
-        return row[0] if row else 0
+    query = "SELECT daily_ai_count FROM user_state WHERE user_id=?"
+    row = await asyncio.to_thread(execute_query, query, (user_id,), fetch_one=True)
+    return row[0] if row else 0
 
 def coinex_sign(method: str, path: str, body: str = "", timestamp: str = ""):
     msg = f"{method.upper()}{path}{timestamp}{body}"
@@ -271,11 +282,10 @@ async def ask_groq(prompt: str, user_profile: str = ""):
     return res.choices[0].message.content.strip()
 
 async def rate_limit_ok(user_id):
-    async with aiosqlite.connect(DATABASE_URL) as conn:
-        cur = await conn.execute("SELECT last_ai_at FROM user_state WHERE user_id=?", (user_id,))
-        row = await cur.fetchone()
-        last = row[0] if row else 0
-        return (int(time.time()) - int(last)) >= RATE_LIMIT_SECONDS
+    query = "SELECT last_ai_at FROM user_state WHERE user_id=?"
+    row = await asyncio.to_thread(execute_query, query, (user_id,), fetch_one=True)
+    last = row[0] if row else 0
+    return (int(time.time()) - int(last)) >= RATE_LIMIT_SECONDS
 
 async def channel_post(text: str):
     try:
@@ -349,11 +359,8 @@ async def ai_analyze_callback(callback: types.CallbackQuery):
 @router.callback_query(lambda c: c.data == "watchlist")
 async def watchlist_callback(callback: types.CallbackQuery):
     await callback.answer("👀 واچ‌لیست...")
-    async with aiosqlite.connect(DATABASE_URL) as conn:
-        cur = await conn.execute(
-            "SELECT symbol FROM watchlists WHERE user_id=?", (callback.from_user.id,)
-        )
-        rows = await cur.fetchall()
+    query = "SELECT symbol FROM watchlists WHERE user_id=?"
+    rows = await asyncio.to_thread(execute_query, query, (callback.from_user.id,), fetch_all=True)
     if rows:
         text = "👀 <b>واچ‌لیست شما</b>\n\n"
         for row in rows:
@@ -456,12 +463,8 @@ async def watch(message: types.Message):
     if len(parts) < 2:
         return await message.answer("❌ نمونه: /watch BTCUSDT")
     symbol = parts[1].upper()
-    async with aiosqlite.connect(DATABASE_URL) as conn:
-        await conn.execute(
-            "INSERT INTO watchlists(user_id, symbol, created_at) VALUES(?,?,?)",
-            (message.from_user.id, symbol, int(time.time()))
-        )
-        await conn.commit()
+    query = "INSERT INTO watchlists(user_id, symbol, created_at) VALUES(?,?,?)"
+    await asyncio.to_thread(execute_query, query, (message.from_user.id, symbol, int(time.time())))
     await message.answer(f"✅ {symbol} به واچ‌لیست اضافه شد.")
     await log_action(message.from_user.id, "watch", symbol)
 
@@ -529,13 +532,15 @@ async def ai_cmd(message: types.Message):
 async def admin(message: types.Message):
     if message.from_user.id not in ADMIN_IDS:
         return await message.answer("⛔ دسترسی غیرمجاز.")
-    async with aiosqlite.connect(DATABASE_URL) as conn:
-        cur = await conn.execute("SELECT COUNT(*) FROM users")
-        users = (await cur.fetchone())[0]
-        cur = await conn.execute("SELECT COUNT(*) FROM payments WHERE status='paid'")
-        payments = (await cur.fetchone())[0]
-        cur = await conn.execute("SELECT COUNT(*) FROM watchlists")
-        watchs = (await cur.fetchone())[0]
+    
+    query1 = "SELECT COUNT(*) FROM users"
+    query2 = "SELECT COUNT(*) FROM payments WHERE status='paid'"
+    query3 = "SELECT COUNT(*) FROM watchlists"
+    
+    users = (await asyncio.to_thread(execute_query, query1, (), fetch_one=True))[0]
+    payments = (await asyncio.to_thread(execute_query, query2, (), fetch_one=True))[0]
+    watchs = (await asyncio.to_thread(execute_query, query3, (), fetch_one=True))[0]
+    
     text = (
         f"🔧 <b>پنل ادمین</b>\n\n"
         f"👥 کاربران: {users}\n"
@@ -552,7 +557,8 @@ async def admin(message: types.Message):
 @router.message()
 async def handle_payment_proof(message: types.Message):
     text = (message.text or "").lower()
-    if any(keyword in text for keyword in ["رسید", "شماره پیگیری", "واریز", "پرداخت", "کارت به کارت"]):
+    keywords = ["رسید", "شماره پیگیری", "واریز", "پرداخت", "کارت به کارت"]
+    if any(kw in text for kw in keywords):
         await message.answer(
             "✅ رسید شما دریافت شد.\n"
             "⏳ برای تأیید نهایی، ادمین بررسی می‌کند.\n"
@@ -661,19 +667,32 @@ async def daily_channel_post():
 # ============================================================
 @app.on_event("startup")
 async def on_startup():
+    logger.info("🚀 Starting bot...")
     await init_db()
+    
     if WEBHOOK_URL:
-        await bot.set_webhook(url=WEBHOOK_URL, secret_token=WEBHOOK_SECRET, drop_pending_updates=True)
-        logger.info(f"✅ Webhook set to {WEBHOOK_URL}")
+        try:
+            await bot.set_webhook(
+                url=WEBHOOK_URL,
+                secret_token=WEBHOOK_SECRET,
+                drop_pending_updates=True
+            )
+            logger.info(f"✅ Webhook set to {WEBHOOK_URL}")
+        except Exception as e:
+            logger.error(f"❌ Webhook error: {e}")
     else:
-        logger.warning("⚠️ WEBHOOK_URL not set, webhook disabled")
+        logger.warning("⚠️ WEBHOOK_URL not set")
+    
     asyncio.create_task(daily_channel_post())
-    logger.info("🚀 Bot started successfully!")
+    logger.info("✅ Bot started successfully!")
 
 @app.on_event("shutdown")
 async def on_shutdown():
-    await bot.delete_webhook(drop_pending_updates=True)
-    await bot.session.close()
+    try:
+        await bot.delete_webhook(drop_pending_updates=True)
+        await bot.session.close()
+    except:
+        pass
     logger.info("🛑 Bot stopped")
 
 if __name__ == "__main__":
