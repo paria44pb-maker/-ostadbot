@@ -1,56 +1,22 @@
 import asyncio
-import logging
 from fastapi import FastAPI
 
 from core.startup import init_app
-from telegram.bot import start_bot
+from telegram.bot_runner import start_bot
 
-# =========================
-# LOGGING
-# =========================
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s | %(levelname)s | %(message)s"
-)
+app = FastAPI()
 
-logger = logging.getLogger("CryptoPulse")
-
-# =========================
-# APP
-# =========================
-app = FastAPI(title="CryptoPulse AI")
-
-# =========================
-# STARTUP EVENT
-# =========================
 @app.on_event("startup")
-async def startup_event():
-    logger.info("🚀 Starting CryptoPulse AI...")
-
-    # 1. init core systems (db, cache, etc.)
+async def startup():
     await init_app()
 
-    # 2. start telegram bot in background (NON-BLOCKING)
+    # bot جدا اجرا می‌شود (بدون قفل کردن server)
     asyncio.create_task(start_bot())
 
-    logger.info("✅ Startup completed")
-
-# =========================
-# HEALTH CHECK
-# =========================
 @app.get("/")
 def home():
-    return {
-        "status": "running",
-        "service": "CryptoPulse AI",
-        "version": "ULTRA"
-    }
+    return {"status": "CryptoPulse SAFE RUNNING 🚀"}
 
-# =========================
-# READY CHECK (Railway friendly)
-# =========================
 @app.get("/health")
 def health():
-    return {
-        "status": "ok"
-    }
+    return {"ok": True}
