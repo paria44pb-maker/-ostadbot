@@ -1,4 +1,4 @@
-print("🔥 MAIN FILE IS RUNNING")
+
 import asyncio
 import os
 from fastapi import FastAPI
