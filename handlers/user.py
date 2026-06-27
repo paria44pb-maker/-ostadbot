@@ -52,11 +52,7 @@ async def rate_limit_ok(user_id: int):
 
 @router.message(CommandStart())
 async def start(message: types.Message):
-    await upsert_user(
-        message.from_user.id,
-        message.from_user.username or "",
-        message.from_user.full_name or ""
-    )
+    await upsert_user(message.from_user.id, message.from_user.username or "", message.from_user.full_name or "")
     user = await get_user(message.from_user.id)
     plan = user[5] if user else "free"
 
@@ -77,11 +73,12 @@ async def start(message: types.Message):
 
 @router.message(Command("time"))
 async def time_cmd(message: types.Message):
-    await message.answer("
+    text = "
 ".join([
         "🕐 زمان فعلی تهران:",
         f"<b>{fmt_dt()}</b>",
-    ]))
+    ])
+    await message.answer(text)
 
 @router.message(Command("me"))
 async def me(message: types.Message):
