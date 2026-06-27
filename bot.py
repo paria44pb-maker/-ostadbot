@@ -15,7 +15,17 @@ from aiogram import Bot, Dispatcher, Router, types
 from aiogram.enums import ParseMode
 from aiogram.filters import CommandStart, Command
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-from groq import Groq
+
+# ============================================================
+# ✅ Groq - با try/except برای جلوگیری از خطا
+# ============================================================
+try:
+    from groq import Groq
+    GROQ_AVAILABLE = True
+except ImportError:
+    Groq = None
+    GROQ_AVAILABLE = False
+    print("⚠️ Groq library not installed. AI features disabled.")
 
 # ============================================================
 # ✅ توکن تلگرام مستقیم در کد
@@ -43,9 +53,6 @@ VIP_PRICE_TOMAN = 199000
 if not BOT_TOKEN or len(BOT_TOKEN) < 30:
     raise RuntimeError("BOT_TOKEN is invalid or not set!")
 
-if not GROQ_API_KEY:
-    print("⚠️ GROQ_API_KEY not set. AI features will be limited.")
-
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger("cryptopulse")
 
@@ -58,7 +65,21 @@ dp = Dispatcher()
 router = Router()
 dp.include_router(router)
 
-groq_client = Groq(api_key=GROQ_API_KEY) if GROQ_API_KEY else None
+# ============================================================
+# راه‌اندازی Groq (در صورت موجود بودن)
+# ============================================================
+groq_client = None
+if GROQ_AVAILABLE and GROQ_API_KEY:
+    try:
+        groq_client = Groq(api_key=GROQ_API_KEY)
+        logger.info("✅ Groq client initialized")
+    except Exception as e:
+        logger.error(f"❌ Groq initialization failed: {e}")
+else:
+    if not GROQ_AVAILABLE:
+        logger.warning("⚠️ Groq library not available")
+    if not GROQ_API_KEY:
+        logger.warning("⚠️ GROQ_API_KEY not set")
 
 # ============================================================
 # دیتابیس
@@ -472,15 +493,29 @@ async def ai_cmd(message: types.Message):
     text = message.text.partition(" ")[2].strip()
     if not text:
         return await message.answer("❌ نمونه: /ai بیت‌کوین رو تحلیل کن")
+    
+    # چک کردن کاربر
     user = await get_user(message.from_user.id)
     if not user:
         return await message.answer("❌ ابتدا /start را بزنید.")
+    
+    # چک کردن پریمیوم و محدودیت
     premium = await is_premium(user)
     count = await get_ai_count(message.from_user.id)
+    
+    # اگر Groq دردسترس نیست
+    if not groq_client:
+        return await message.answer("❌ سرویس AI در دسترس نیست. لطفاً بعداً تلاش کنید.")
+    
     if not premium and count >= FREE_DAILY_AI_LIMIT:
-        return await message.answer(f"⚠️ سقف AI رایگان امروز ({FREE_DAILY_AI_LIMIT}) پر شده. برای دسترسی بیشتر پلن VIP تهیه کنید.")
+        return await message.answer(
+            f"⚠️ سقف AI رایگان امروز ({FREE_DAILY_AI_LIMIT}) پر شده.\n"
+            f"برای دسترسی بیشتر پلن VIP تهیه کنید."
+        )
+    
     if not await rate_limit_ok(message.from_user.id):
         return await message.answer(f"⏳ لطفاً {RATE_LIMIT_SECONDS} ثانیه بعد دوباره تلاش کن.")
+    
     profile = f"risk={user[3]}, plan={user[4]}, premium={premium}"
     try:
         await message.answer("🤖 در حال تحلیل...")
@@ -519,7 +554,7 @@ async def admin(message: types.Message):
 @router.message()
 async def handle_payment_proof(message: types.Message):
     text = (message.text or "").lower()
-    if "رسید" in text or "شماره پیگیری" in text or "واریز" in text or "پرداخت" in text:
+    if any(keyword in text for keyword in ["رسید", "شماره پیگیری", "واریز", "پرداخت", "کارت به کارت"]):
         await message.answer(
             "✅ رسید شما دریافت شد.\n"
             "⏳ برای تأیید نهایی، ادمین بررسی می‌کند.\n"
@@ -642,3 +677,7 @@ async def on_shutdown():
     await bot.delete_webhook(drop_pending_updates=True)
     await bot.session.close()
     logger.info("🛑 Bot stopped")
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=int(os.getenv("PORT", "8080")))
