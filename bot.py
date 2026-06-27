@@ -420,9 +420,7 @@ Watchlists: {watchs}
 async def handle_payment_proof(message: types.Message):
     text = (message.text or "").lower()
     if "رسید" in text or "شماره پیگیری" in text or "واریز" in text:
-        await message.answer(
-            "رسید دریافت شد. برای تأیید نهایی، ادمین بررسی می‌کند."
-        )
+        await message.answer("رسید دریافت شد. برای تأیید نهایی، ادمین بررسی می‌کند.")
         if ADMIN_IDS:
             for admin_id in ADMIN_IDS:
                 try:
