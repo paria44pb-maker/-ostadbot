@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 """
-💎 VIP PLATINUM BOT v43.0
+💎 VIP PLATINUM BOT v44.0
 ربات حرفه‌ای تحلیل کریپتو با هوش مصنوعی Groq و قیمت‌های CoinEx
 نسخه کامل و بدون خطا - آماده اجرا روی Railway
 """
@@ -19,12 +19,16 @@ import random
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Any
 from collections import defaultdict
+from contextlib import asynccontextmanager
 
 import aiohttp
 import httpx
 import pytz
 import jdatetime
 from dotenv import load_dotenv
+
+from fastapi import FastAPI, Request, HTTPException, Header
+import uvicorn
 
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import Command, CommandStart, CommandObject
@@ -58,6 +62,8 @@ logger.setLevel(logging.INFO)
 # ============================================================
 class Config:
     BOT_TOKEN: str = os.getenv("BOT_TOKEN", "")
+    WEBHOOK_URL: str = os.getenv("WEBHOOK_URL", "")
+    WEBHOOK_SECRET: str = os.getenv("WEBHOOK_SECRET", "default-secret")
     GROQ_API_KEY: str = os.getenv("GROQ_API_KEY", "")
     CHANNEL_ID: str = os.getenv("CHANNEL_ID", "@CryptoPulse606")
     ADMIN_IDS: List[int] = [int(x.strip()) for x in os.getenv("ADMIN_IDS", "7225279768").split(",")]
@@ -67,6 +73,7 @@ class Config:
     VIP_PRICE: int = int(os.getenv("VIP_PRICE", "199000"))
     VIP_DURATION: int = int(os.getenv("VIP_DURATION", "30"))
     FREE_TRIAL_DAYS: int = int(os.getenv("FREE_TRIAL_DAYS", "3"))
+    PORT: int = int(os.getenv("PORT", "8080"))
     DB_FILE: str = "vip_bot.db"
     COINEX_SYMBOLS: List[str] = [
         "BTC/USDT", "ETH/USDT", "SOL/USDT", "XRP/USDT", "ADA/USDT",
@@ -512,7 +519,6 @@ async def cmd_start(message: Message, command: CommandObject):
     user = message.from_user
     db.add_user(user.id, user.username, user.first_name, user.last_name or "")
     
-    # Referral
     if command.args:
         try:
             ref_id = int(command.args.split()[0])
@@ -526,7 +532,7 @@ async def cmd_start(message: Message, command: CommandObject):
     user_data = db.get_user(user.id)
     is_vip = db.is_vip(user.id)
     
-    welcome = f"""💎 VIP PLATINUM v43.0 💎
+    welcome = f"""💎 VIP PLATINUM v44.0 💎
 
 {p.greet()} {p.full()}
 
@@ -627,6 +633,23 @@ async def watch_target(message: Message, state: FSMContext):
                             [InlineKeyboardButton(text="⬆️ بالاتر از", callback_data="watch_above"),
                              InlineKeyboardButton(text="⬇️ پایین‌تر از", callback_data="watch_below")]
                         ]))
+
+@dp.callback_query(F.data.startswith("watch_"))
+async def watch_type(callback: CallbackQuery, state: FSMContext):
+    await callback.answer()
+    alert_type = "above" if callback.data == "watch_above" else "below"
+    data = await state.get_data()
+    symbol = data.get('symbol')
+    target = data.get('target')
+    db.add_watch(callback.from_user.id, symbol, target, alert_type)
+    await state.clear()
+    await callback.message.edit_text(
+        f"✅ هشدار برای {symbol} با هدف {alert_type} ${target:.2f} ثبت شد.",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="👀 مشاهده واچ‌لیست", callback_data="watchlist")],
+            [InlineKeyboardButton(text="🔙 بازگشت", callback_data="back_main")]
+        ])
+    )
 
 @dp.message(Command("subscribe"))
 async def cmd_subscribe(message: Message):
@@ -805,23 +828,6 @@ async def set_alert(callback: CallbackQuery, state: FSMContext):
         "👀 **افزودن هشدار قیمت**\n\n"
         "نام ارز را وارد کنید (مثلاً BTC یا ETH):",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="🔙 بازگشت", callback_data="back_main")]
-        ])
-    )
-
-@dp.callback_query(F.data.startswith("watch_"))
-async def watch_type(callback: CallbackQuery, state: FSMContext):
-    await callback.answer()
-    alert_type = "above" if callback.data == "watch_above" else "below"
-    data = await state.get_data()
-    symbol = data.get('symbol')
-    target = data.get('target')
-    db.add_watch(callback.from_user.id, symbol, target, alert_type)
-    await state.clear()
-    await callback.message.edit_text(
-        f"✅ هشدار برای {symbol} با هدف {alert_type} ${target:.2f} ثبت شد.",
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="👀 مشاهده واچ‌لیست", callback_data="watchlist")],
             [InlineKeyboardButton(text="🔙 بازگشت", callback_data="back_main")]
         ])
     )
@@ -1133,25 +1139,76 @@ async def price_alert_checker():
         await asyncio.sleep(60)
 
 # ============================================================
-# MAIN
+# MAIN (Polling Mode - for Railway without Webhook)
 # ============================================================
 async def main():
-    logger.info("🚀 VIP PLATINUM BOT v43.0 starting...")
+    logger.info("🚀 VIP PLATINUM BOT v44.0 starting...")
     logger.info(f"👤 Owner: {cfg.OWNER_ID}")
     logger.info(f"📢 Channel: {cfg.CHANNEL_ID}")
+    logger.info("✅ Bot started in polling mode")
     
     # Start price alert checker
     asyncio.create_task(price_alert_checker())
     
     # Start polling
-    logger.info("✅ Bot started in polling mode")
     await dp.start_polling(bot)
 
+# ============================================================
+# FASTAPI WEBHOOK MODE (اگر WEBHOOK_URL تنظیم شده باشد)
+# ============================================================
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    logger.info("🚀 Starting in webhook mode...")
+    
+    # Start price alert checker
+    asyncio.create_task(price_alert_checker())
+    
+    # Set webhook
+    if cfg.WEBHOOK_URL:
+        await bot.set_webhook(
+            url=f"{cfg.WEBHOOK_URL}/webhook",
+            secret_token=cfg.WEBHOOK_SECRET,
+            max_connections=100
+        )
+        logger.info(f"✅ Webhook set to {cfg.WEBHOOK_URL}/webhook")
+    
+    yield
+    
+    # Cleanup
+    await bot.delete_webhook()
+    await bot.session.close()
+    logger.info("🛑 Bot stopped")
+
+app = FastAPI(lifespan=lifespan)
+
+@app.post("/webhook")
+async def webhook(request: Request, x_telegram_bot_api_secret_token: Optional[str] = Header(None)):
+    if x_telegram_bot_api_secret_token != cfg.WEBHOOK_SECRET:
+        raise HTTPException(status_code=403, detail="Invalid secret token")
+    
+    body = await request.json()
+    update = types.Update(**body)
+    await dp.feed_update(bot, update)
+    return {"status": "ok"}
+
+@app.get("/health")
+async def health():
+    return {"status": "ok", "time": p.full(), "version": "44.0"}
+
+# ============================================================
+# ENTRY POINT
+# ============================================================
 if __name__ == "__main__":
-    try:
-        asyncio.run(main())
-    except KeyboardInterrupt:
-        logger.info("🛑 Bot stopped by user")
-    except Exception as e:
-        logger.error(f"❌ Error: {e}")
-        sys.exit(1)
+    # اگر WEBHOOK_URL تنظیم شده باشد، از FastAPI استفاده کن
+    if cfg.WEBHOOK_URL:
+        logger.info(f"🚀 Starting with Webhook on port {cfg.PORT}")
+        uvicorn.run(app, host="0.0.0.0", port=cfg.PORT)
+    else:
+        # در غیر این صورت از Polling استفاده کن
+        try:
+            asyncio.run(main())
+        except KeyboardInterrupt:
+            logger.info("🛑 Bot stopped by user")
+        except Exception as e:
+            logger.error(f"❌ Error: {e}")
+            sys.exit(1)
