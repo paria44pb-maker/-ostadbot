@@ -3,7 +3,7 @@
 
 """
 💎 VIP PLATINUM BOT v46.0 - COMPLETE EDITION
-ربات کامل VIP با تمام قابلیت‌ها
+ربات کامل VIP با تمام قابلیت‌ها - توکن در کد قرار داده شده
 """
 
 import os
@@ -19,7 +19,6 @@ import re
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Any
 from collections import defaultdict
-from contextlib import asynccontextmanager
 
 import aiohttp
 import httpx
@@ -27,33 +26,21 @@ import pytz
 import jdatetime
 from dotenv import load_dotenv
 
-# ============================================================
-# LOAD ENVIRONMENT
-# ============================================================
 load_dotenv()
 
 # ============================================================
-# TOKEN LOADING
+# ✅ توکن مستقیماً در کد قرار داده شده
 # ============================================================
-def load_token() -> str:
-    # 1. از فایل token.txt
-    if os.path.exists("token.txt"):
-        with open("token.txt", "r") as f:
-            token = f.read().strip()
-            if token and not token.startswith("#") and len(token) > 30:
-                print(f"✅ Token loaded from token.txt (length: {len(token)})")
-                return token
-    
-    # 2. از متغیر محیطی
-    token = os.getenv("BOT_TOKEN")
-    if token and len(token) > 30:
-        print(f"✅ Token loaded from environment (length: {len(token)})")
-        return token
-    
-    print("❌ No valid token found!")
+BOT_TOKEN = "7225279768:AAHB8ZQdgzhFoeV8tPryyReJ-Gq_Y8pI90U"
+
+# ============================================================
+# VALIDATE TOKEN
+# ============================================================
+if not BOT_TOKEN or len(BOT_TOKEN) < 30:
+    print("❌ Invalid token!")
     sys.exit(1)
 
-BOT_TOKEN = load_token()
+print(f"✅ Token loaded (length: {len(BOT_TOKEN)})")
 
 # ============================================================
 # LOGGING
