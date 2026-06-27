@@ -15,6 +15,7 @@ from aiogram import Bot, Dispatcher, Router, types
 from aiogram.enums import ParseMode
 from aiogram.filters import CommandStart, Command
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.client.default import DefaultBotProperties
 
 # ============================================================
 # ✅ Groq - با try/except برای جلوگیری از خطا
@@ -60,7 +61,13 @@ logger = logging.getLogger("cryptopulse")
 # برنامه FastAPI و ربات
 # ============================================================
 app = FastAPI()
-bot = Bot(BOT_TOKEN, parse_mode=ParseMode.HTML)
+
+# ✅ روش صحیح مقداردهی Bot در نسخه جدید
+bot = Bot(
+    token=BOT_TOKEN,
+    default=DefaultBotProperties(parse_mode=ParseMode.HTML)
+)
+
 dp = Dispatcher()
 router = Router()
 dp.include_router(router)
@@ -494,16 +501,13 @@ async def ai_cmd(message: types.Message):
     if not text:
         return await message.answer("❌ نمونه: /ai بیت‌کوین رو تحلیل کن")
     
-    # چک کردن کاربر
     user = await get_user(message.from_user.id)
     if not user:
         return await message.answer("❌ ابتدا /start را بزنید.")
     
-    # چک کردن پریمیوم و محدودیت
     premium = await is_premium(user)
     count = await get_ai_count(message.from_user.id)
     
-    # اگر Groq دردسترس نیست
     if not groq_client:
         return await message.answer("❌ سرویس AI در دسترس نیست. لطفاً بعداً تلاش کنید.")
     
