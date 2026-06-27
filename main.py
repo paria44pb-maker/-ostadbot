@@ -1,34 +1,33 @@
-
 import asyncio
 import os
 from fastapi import FastAPI
 
-from config import Config
+# bot runner (اختیاری)
+try:
+    from telegram.bot_runner import start_bot
+    BOT_AVAILABLE = True
+except Exception as e:
+    print(f"⚠️ Bot import failed: {e}")
+    BOT_AVAILABLE = False
 
-# Bot runner (اگر داری)
-from telegram.bot_runner import start_bot
 
 app = FastAPI(title="CryptoPulse AI")
 
+
 # -------------------------
-# Startup Event
+# Startup
 # -------------------------
 @app.on_event("startup")
 async def startup():
     print("🚀 CryptoPulse starting...")
 
-    # چک env بدون crash
-    bot_token = os.getenv("BOT_TOKEN")
-
-    if not bot_token:
-        print("⚠️ WARNING: BOT_TOKEN not found (bot will NOT start)")
-    else:
-        print("✅ BOT_TOKEN loaded")
-
-        # bot را در background اجرا کن
+    if os.getenv("BOT_TOKEN") and BOT_AVAILABLE:
+        print("✅ Starting bot...")
         asyncio.create_task(start_bot())
+    else:
+        print("⚠️ Bot disabled (missing token or module)")
 
-    print("✅ FastAPI started successfully")
+    print("✅ API started")
 
 
 # -------------------------
@@ -38,7 +37,7 @@ async def startup():
 def home():
     return {
         "status": "CryptoPulse AI Running 🚀",
-        "bot": "active" if os.getenv("BOT_TOKEN") else "inactive"
+        "bot": bool(os.getenv("BOT_TOKEN"))
     }
 
 
@@ -54,7 +53,7 @@ def health():
 
 
 # -------------------------
-# Debug entry (Railway friendly)
+# Railway entry
 # -------------------------
 if __name__ == "__main__":
     import uvicorn
@@ -64,7 +63,5 @@ if __name__ == "__main__":
     uvicorn.run(
         "main:app",
         host="0.0.0.0",
-        port=port,
-        reload=False
+        port=port
     )
-print
