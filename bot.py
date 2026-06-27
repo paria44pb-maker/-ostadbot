@@ -2,25 +2,20 @@ import os
 import time
 import hmac
 import json
-import base64
 import hashlib
 import asyncio
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import datetime
+from zoneinfo import ZoneInfo
 
 import aiohttp
 import aiosqlite
 from fastapi import FastAPI, Request, HTTPException
-from aiogram import Bot, Dispatcher, F, Router
-from aiogram.filters import CommandStart, Command
-from aiogram.types import Message, CallbackQuery
+from aiogram import Bot, Dispatcher, Router, types
 from aiogram.enums import ParseMode
-from aiogram.methods import SetWebhook
+from aiogram.filters import CommandStart, Command
 from groq import Groq
 
-# =========================
-# CONFIG
-# =========================
 BOT_TOKEN = os.getenv("BOT_TOKEN", "")
 WEBHOOK_URL = os.getenv("WEBHOOK_URL", "")
 WEBHOOK_SECRET = os.getenv("WEBHOOK_SECRET", "change_me")
@@ -38,9 +33,6 @@ if not BOT_TOKEN or not WEBHOOK_URL or not GROQ_API_KEY:
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger("vip_bot")
 
-# =========================
-# APP OBJECTS
-# =========================
 app = FastAPI()
 bot = Bot(BOT_TOKEN, parse_mode=ParseMode.HTML)
 dp = Dispatcher()
@@ -48,9 +40,6 @@ router = Router()
 dp.include_router(router)
 groq_client = Groq(api_key=GROQ_API_KEY)
 
-# =========================
-# DB
-# =========================
 CREATE_TABLES = """
 CREATE TABLE IF NOT EXISTS users (
     user_id INTEGER PRIMARY KEY,
@@ -62,21 +51,18 @@ CREATE TABLE IF NOT EXISTS users (
     plan_until INTEGER DEFAULT 0,
     created_at INTEGER
 );
-
 CREATE TABLE IF NOT EXISTS user_state (
     user_id INTEGER PRIMARY KEY,
     last_ai_at INTEGER DEFAULT 0,
     daily_ai_count INTEGER DEFAULT 0,
     last_reset_day TEXT DEFAULT ''
 );
-
 CREATE TABLE IF NOT EXISTS watchlists (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id INTEGER,
     symbol TEXT,
     created_at INTEGER
 );
-
 CREATE TABLE IF NOT EXISTS alerts (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id INTEGER,
@@ -86,7 +72,6 @@ CREATE TABLE IF NOT EXISTS alerts (
     active INTEGER DEFAULT 1,
     created_at INTEGER
 );
-
 CREATE TABLE IF NOT EXISTS payments (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id INTEGER,
@@ -95,7 +80,6 @@ CREATE TABLE IF NOT EXISTS payments (
     status TEXT,
     created_at INTEGER
 );
-
 CREATE TABLE IF NOT EXISTS logs (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id INTEGER,
@@ -105,10 +89,8 @@ CREATE TABLE IF NOT EXISTS logs (
 );
 """
 
-DB_LOCK = asyncio.Lock()
-
-async def db():
-    return await aiosqlite.connect(DATABASE_URL)
+def tehran_datetime():
+    return datetime.now(ZoneInfo("Asia/Tehran")).strftime("%Y/%m/%d - %H:%M:%S")
 
 async def init_db():
     async with aiosqlite.connect(DATABASE_URL) as conn:
@@ -116,58 +98,56 @@ async def init_db():
         await conn.commit()
 
 async def log_action(user_id, action, data=""):
-    async with DB_LOCK:
-        async with aiosqlite.connect(DATABASE_URL) as conn:
-            await conn.execute(
-                "INSERT INTO logs(user_id, action, data, created_at) VALUES(?,?,?,?)",
-                (user_id, action, data, int(time.time()))
-            )
-            await conn.commit()
+    async with aiosqlite.connect(DATABASE_URL) as conn:
+        await conn.execute(
+            "INSERT INTO logs(user_id, action, data, created_at) VALUES(?,?,?,?)",
+            (user_id, action, data, int(time.time()))
+        )
+        await conn.commit()
 
 async def get_user(user_id):
     async with aiosqlite.connect(DATABASE_URL) as conn:
         cur = await conn.execute("SELECT * FROM users WHERE user_id=?", (user_id,))
-        row = await cur.fetchone()
-        return row
+        return await cur.fetchone()
 
 async def upsert_user(user_id, username, full_name):
-    now = int(time.time())
     async with aiosqlite.connect(DATABASE_URL) as conn:
-        await conn.execute("""
-        INSERT INTO users(user_id, username, full_name, created_at)
-        VALUES(?,?,?,?)
-        ON CONFLICT(user_id) DO UPDATE SET username=excluded.username, full_name=excluded.full_name
-        """, (user_id, username, full_name, now))
-        await conn.execute("""
-        INSERT INTO user_state(user_id, last_ai_at, daily_ai_count, last_reset_day)
-        VALUES(?,?,?,?)
-        ON CONFLICT(user_id) DO NOTHING
-        """, (user_id, 0, 0, datetime.now(timezone.utc).date().isoformat()))
+        await conn.execute(
+            "INSERT INTO users(user_id, username, full_name, created_at) VALUES(?,?,?,?) "
+            "ON CONFLICT(user_id) DO UPDATE SET username=excluded.username, full_name=excluded.full_name",
+            (user_id, username, full_name, int(time.time()))
+        )
+        await conn.execute(
+            "INSERT OR IGNORE INTO user_state(user_id, last_ai_at, daily_ai_count, last_reset_day) VALUES(?,?,?,?)",
+            (user_id, 0, 0, datetime.now(ZoneInfo('Asia/Tehran')).date().isoformat())
+        )
         await conn.commit()
 
 async def set_plan(user_id, plan, days=30):
-    until = int((datetime.now(timezone.utc) + timedelta(days=days)).timestamp())
+    until = int((datetime.now(ZoneInfo("Asia/Tehran"))).timestamp()) + days * 24 * 3600
     async with aiosqlite.connect(DATABASE_URL) as conn:
         await conn.execute("UPDATE users SET plan=?, plan_until=? WHERE user_id=?", (plan, until, user_id))
-        await conn.execute("INSERT INTO payments(user_id, plan, amount, status, created_at) VALUES(?,?,?,?,?)",
-                           (user_id, plan, 0, "manual", int(time.time())))
+        await conn.execute(
+            "INSERT INTO payments(user_id, plan, amount, status, created_at) VALUES(?,?,?,?,?)",
+            (user_id, plan, 0, "manual", int(time.time()))
+        )
         await conn.commit()
 
 async def is_premium(user_row):
     if not user_row:
         return False
-    plan_until = user_row[5]
-    plan = user_row[4]
-    return plan in ("vip", "pro", "elite") and int(time.time()) < int(plan_until or 0)
+    return user_row[4] in ("vip", "pro", "elite") and int(time.time()) < int(user_row[5] or 0)
 
 async def reset_daily_if_needed(user_id):
-    today = datetime.now(timezone.utc).date().isoformat()
+    today = datetime.now(ZoneInfo("Asia/Tehran")).date().isoformat()
     async with aiosqlite.connect(DATABASE_URL) as conn:
         cur = await conn.execute("SELECT last_reset_day FROM user_state WHERE user_id=?", (user_id,))
         row = await cur.fetchone()
         if not row:
-            await conn.execute("INSERT OR IGNORE INTO user_state(user_id,last_ai_at,daily_ai_count,last_reset_day) VALUES(?,?,?,?)",
-                               (user_id, 0, 0, today))
+            await conn.execute(
+                "INSERT OR IGNORE INTO user_state(user_id,last_ai_at,daily_ai_count,last_reset_day) VALUES(?,?,?,?)",
+                (user_id, 0, 0, today)
+            )
         elif row[0] != today:
             await conn.execute("UPDATE user_state SET daily_ai_count=0,last_reset_day=? WHERE user_id=?", (today, user_id))
         await conn.commit()
@@ -186,9 +166,6 @@ async def get_ai_count(user_id):
         row = await cur.fetchone()
         return row[0] if row else 0
 
-# =========================
-# COINEX
-# =========================
 def coinex_sign(method: str, path: str, body: str = "", timestamp: str = ""):
     msg = f"{method.upper()}{path}{timestamp}{body}"
     return hmac.new(COINEX_SECRET.encode(), msg.encode(), hashlib.sha256).hexdigest()
@@ -209,15 +186,8 @@ async def coinex_get_ticker(symbol="BTCUSDT"):
         async with session.get(url, headers=headers, timeout=15) as resp:
             return await resp.json()
 
-# =========================
-# GROQ
-# =========================
 async def ask_groq(prompt: str, user_profile: str = ""):
-    system = (
-        "You are a professional Persian crypto trading assistant. "
-        "Be concise, practical, risk-aware, and avoid guarantees. "
-        "Give structured, high-value analysis."
-    )
+    system = "You are a professional Persian crypto assistant. Be concise, practical, and risk-aware."
     messages = [
         {"role": "system", "content": system},
         {"role": "user", "content": f"Profile: {user_profile}
@@ -234,21 +204,6 @@ Question: {prompt}"}
     res = await loop.run_in_executor(None, _call)
     return res.choices[0].message.content.strip()
 
-# =========================
-# HELPERS
-# =========================
-def premium_text():
-    return (
-        "پلن‌ها:
-"
-        "• Free: 5 سوال AI در روز + هشدار محدود
-"
-        "• VIP: تحلیل بیشتر + واچ‌لیست + هشدار فوری
-"
-        "• Pro: AI عمیق + گزارش روزانه + سیگنال‌های بیشتر
-"
-    )
-
 async def rate_limit_ok(user_id):
     async with aiosqlite.connect(DATABASE_URL) as conn:
         cur = await conn.execute("SELECT last_ai_at FROM user_state WHERE user_id=?", (user_id,))
@@ -256,23 +211,17 @@ async def rate_limit_ok(user_id):
         last = row[0] if row else 0
         return (int(time.time()) - int(last)) >= RATE_LIMIT_SECONDS
 
-# =========================
-# COMMANDS
-# =========================
 @router.message(CommandStart())
-async def start(message: Message):
+async def start(message: types.Message):
     await upsert_user(message.from_user.id, message.from_user.username or "", message.from_user.full_name or "")
     user = await get_user(message.from_user.id)
-    plan = user[4] if user else "free"
     await message.answer(
         f"سلام {message.from_user.full_name} 👋
 "
-        f"پلن شما: <b>{plan}</b>
+        f"زمان تهران: <b>{tehran_datetime()}</b>
+"
+        f"پلن شما: <b>{user[4] if user else 'free'}</b>
 
-"
-        f"این ربات تحلیل، هشدار و ابزار پول‌سازی دارد.
-"
-        f"{premium_text()}
 "
         f"دستورها:
 "
@@ -282,15 +231,21 @@ async def start(message: Message):
 "
         f"/watch BTCUSDT
 "
+        f"/time
+"
         f"/subscribe vip
 "
-        f"/me
-"
+        f"/me"
     )
     await log_action(message.from_user.id, "start")
 
+@router.message(Command("time"))
+async def time_cmd(message: types.Message):
+    await message.answer(f"زمان فعلی تهران:
+<b>{tehran_datetime()}</b>")
+
 @router.message(Command("me"))
-async def me(message: Message):
+async def me(message: types.Message):
     user = await get_user(message.from_user.id)
     if not user:
         return await message.answer("ابتدا /start")
@@ -303,26 +258,24 @@ async def me(message: Message):
 "
         f"پریمیوم: <b>{'بله' if premium else 'خیر'}</b>
 "
-        f"استایل ریسک: <b>{user[3]}</b>
-"
         f"AI امروز: <b>{ai_count}</b>
 "
+        f"زمان تهران: <b>{tehran_datetime()}</b>"
     )
 
 @router.message(Command("price"))
-async def price(message: Message):
-    symbol = (message.text.split(maxsplit=1)[1].strip().upper() if len(message.text.split()) > 1 else "BTCUSDT")
+async def price(message: types.Message):
+    symbol = message.text.split(maxsplit=1)[1].strip().upper() if len(message.text.split()) > 1 else "BTCUSDT"
     try:
         data = await coinex_get_ticker(symbol)
-        await message.answer(f"داده CoinEx برای <b>{symbol}</b>:
+        await message.answer(f"<b>{symbol}</b>
 <code>{json.dumps(data, ensure_ascii=False, indent=2)[:3500]}</code>")
-        await log_action(message.from_user.id, "price", symbol)
     except Exception as e:
         logger.exception("price error")
         await message.answer(f"خطا در دریافت قیمت: {e}")
 
 @router.message(Command("watch"))
-async def watch(message: Message):
+async def watch(message: types.Message):
     parts = message.text.split()
     if len(parts) < 2:
         return await message.answer("نمونه: /watch BTCUSDT")
@@ -331,21 +284,19 @@ async def watch(message: Message):
         await conn.execute("INSERT INTO watchlists(user_id, symbol, created_at) VALUES(?,?,?)",
                            (message.from_user.id, symbol, int(time.time())))
         await conn.commit()
-    await message.answer(f"{symbol} به واچ‌لیست شما اضافه شد.")
-    await log_action(message.from_user.id, "watch", symbol)
+    await message.answer(f"{symbol} به واچ‌لیست اضافه شد.")
 
 @router.message(Command("subscribe"))
-async def subscribe(message: Message):
+async def subscribe(message: types.Message):
     parts = message.text.split()
     plan = parts[1].lower() if len(parts) > 1 else "vip"
     if plan not in ("vip", "pro", "elite"):
         return await message.answer("پلن معتبر: vip / pro / elite")
     await set_plan(message.from_user.id, plan, 30)
     await message.answer(f"پلن شما به <b>{plan}</b> برای 30 روز فعال شد.")
-    await log_action(message.from_user.id, "subscribe", plan)
 
 @router.message(Command("ai"))
-async def ai_cmd(message: Message):
+async def ai_cmd(message: types.Message):
     text = message.text.partition(" ")[2].strip()
     if not text:
         return await message.answer("نمونه: /ai روی XRP چه نظری داری؟")
@@ -363,97 +314,44 @@ async def ai_cmd(message: Message):
         answer = await ask_groq(text, profile)
         await increase_ai_count(message.from_user.id)
         await message.answer(answer[:3900])
-        await log_action(message.from_user.id, "ai", text[:200])
     except Exception as e:
         logger.exception("groq error")
         await message.answer(f"AI فعلاً در دسترس نیست: {e}")
 
-# =========================
-# ADMIN
-# =========================
 @router.message(Command("admin"))
-async def admin(message: Message):
+async def admin(message: types.Message):
     if message.from_user.id not in ADMIN_IDS:
         return await message.answer("دسترسی نداری.")
     async with aiosqlite.connect(DATABASE_URL) as conn:
         cur = await conn.execute("SELECT COUNT(*) FROM users")
         users = (await cur.fetchone())[0]
-        cur = await conn.execute("SELECT COUNT(*) FROM payments")
-        pays = (await cur.fetchone())[0]
-    await message.answer(f"ادمین:
+    await message.answer(f"ادمین فعال است.
 Users: {users}
-Payments: {pays}
+زمان تهران: {tehran_datetime()}")
 
-/usevip USER_ID
-/stat")
-
-@router.message(Command("usevip"))
-async def usevip(message: Message):
-    if message.from_user.id not in ADMIN_IDS:
-        return await message.answer("دسترسی نداری.")
-    parts = message.text.split()
-    if len(parts) < 2 or not parts[1].isdigit():
-        return await message.answer("نمونه: /usevip 123456")
-    uid = int(parts[1])
-    await set_plan(uid, "vip", 30)
-    await message.answer(f"کاربر {uid} به VIP ارتقا یافت.")
-
-# =========================
-# ALERT WORKER
-# =========================
-async def alert_worker():
-    while True:
-        try:
-            async with aiosqlite.connect(DATABASE_URL) as conn:
-                cur = await conn.execute("SELECT id, user_id, symbol, target_price, alert_type FROM alerts WHERE active=1")
-                rows = await cur.fetchall()
-            for a_id, user_id, symbol, target_price, alert_type in rows:
-                try:
-                    data = await coinex_get_ticker(symbol)
-                    await bot.send_message(user_id, f"هشدار {symbol}: بررسی قیمت انجام شد.
-<code>{json.dumps(data, ensure_ascii=False)[:1500]}</code>")
-                except Exception as e:
-                    logger.warning(f"alert failed for {user_id}: {e}")
-            await asyncio.sleep(60)
-        except Exception as e:
-            logger.exception(f"worker error {e}")
-            await asyncio.sleep(10)
-
-# =========================
-# WEBHOOK
-# =========================
 @app.post("/webhook")
 async def telegram_webhook(request: Request):
-    secret = request.headers.get("X-Telegram-Bot-Api-Secret-Token", "")
-    if secret != WEBHOOK_SECRET:
+    if request.headers.get("X-Telegram-Bot-Api-Secret-Token") != WEBHOOK_SECRET:
         raise HTTPException(status_code=403, detail="Forbidden")
     data = await request.json()
-    update = aiogram.types.Update.model_validate(data)
+    update = types.Update(**data)
     await dp.feed_update(bot, update)
     return {"ok": True}
 
 @app.get("/")
 async def root():
-    return {"status": "ok"}
+    return {"status": "ok", "tehran_time": tehran_datetime()}
 
 @app.on_event("startup")
 async def on_startup():
     await init_db()
-    await bot.set_webhook(
-        url=WEBHOOK_URL,
-        secret_token=WEBHOOK_SECRET,
-        drop_pending_updates=True,
-        allowed_updates=["message", "callback_query"]
-    )
-    asyncio.create_task(alert_worker())
-    logger.info("Bot started")
+    await bot.set_webhook(url=WEBHOOK_URL, secret_token=WEBHOOK_SECRET, drop_pending_updates=True)
+    logger.info("Webhook set")
 
 @app.on_event("shutdown")
 async def on_shutdown():
     await bot.delete_webhook(drop_pending_updates=True)
     await bot.session.close()
 
-# =========================
-# MAIN
-# =========================
-# Run with: uvicorn bot:app --host 0.0.0.0 --port 8000
+# run:
+# uvicorn bot:app --host 0.0.0.0 --port 8000
