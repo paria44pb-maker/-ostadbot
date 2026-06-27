@@ -93,7 +93,8 @@ AI امروز: {ai_count}"
 
 @router.message(Command("price"))
 async def price(message: types.Message):
-    symbol = message.text.split(maxsplit=1)[1].strip().upper() if len(message.text.split()) > 1 else "BTCUSDT"
+    parts = message.text.split(maxsplit=1)
+    symbol = parts[1].strip().upper() if len(parts) > 1 else "BTCUSDT"
     data = await get_ticker(symbol)
     ticker = data.get("data") or {}
     await message.answer(
@@ -121,4 +122,14 @@ async def ai_cmd(message: types.Message):
         return await message.answer("مثال: /ai بیت‌کوین را تحلیل کن")
     user = await get_user(message.from_user.id)
     if not user:
-        return await message.answer("❌ ابتدا /s
+        return await message.answer("❌ ابتدا /start را بزنید.")
+    premium = await is_premium(user)
+    count = await get_ai_count(message.from_user.id)
+    if not premium and count >= FREE_DAILY_AI_LIMIT:
+        return await message.answer("⚠️ سقف AI رایگان امروز پر شده.")
+    if not await rate_limit_ok(message.from_user.id):
+        return await message.answer("⏳ چند ثانیه صبر کن.")
+    await message.answer("🤖 در حال تحلیل...")
+    answer = await ask_groq(prompt, f"plan={user[5]}, premium={premium}, risk={user[4]}")
+    await increase_ai_count(message.from_user.id)
+    await message.answer(answer[:3900])
