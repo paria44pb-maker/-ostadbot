@@ -5,7 +5,6 @@ import json
 import hashlib
 import asyncio
 import logging
-import sqlite3
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
@@ -18,7 +17,7 @@ from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.client.default import DefaultBotProperties
 
 # ============================================================
-# ✅ Groq - با try/except برای جلوگیری از خطا
+# ✅ Groq - با try/except
 # ============================================================
 try:
     from groq import Groq
@@ -29,12 +28,12 @@ except ImportError:
     print("⚠️ Groq library not installed. AI features disabled.")
 
 # ============================================================
-# ✅ توکن تلگرام مستقیم در کد
+# ✅ توکن تلگرام
 # ============================================================
 BOT_TOKEN = "7225279768:AAHB8ZQdgzhFoeV8tPryyReJ-Gq_Y8pI90U"
 
 # ============================================================
-# متغیرهای محیطی (اختیاری)
+# متغیرهای محیطی
 # ============================================================
 WEBHOOK_URL = os.getenv("WEBHOOK_URL", "")
 WEBHOOK_SECRET = os.getenv("WEBHOOK_SECRET", "change_me")
@@ -62,7 +61,7 @@ logger = logging.getLogger("cryptopulse")
 # ============================================================
 app = FastAPI()
 
-# ✅ روش صحیح مقداردهی Bot در نسخه جدید
+# ✅ مقداردهی صحیح Bot
 bot = Bot(
     token=BOT_TOKEN,
     default=DefaultBotProperties(parse_mode=ParseMode.HTML)
@@ -73,7 +72,7 @@ router = Router()
 dp.include_router(router)
 
 # ============================================================
-# راه‌اندازی Groq (در صورت موجود بودن)
+# راه‌اندازی Groq
 # ============================================================
 groq_client = None
 if GROQ_AVAILABLE and GROQ_API_KEY:
@@ -82,11 +81,6 @@ if GROQ_AVAILABLE and GROQ_API_KEY:
         logger.info("✅ Groq client initialized")
     except Exception as e:
         logger.error(f"❌ Groq initialization failed: {e}")
-else:
-    if not GROQ_AVAILABLE:
-        logger.warning("⚠️ Groq library not available")
-    if not GROQ_API_KEY:
-        logger.warning("⚠️ GROQ_API_KEY not set")
 
 # ============================================================
 # دیتابیس
