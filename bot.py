@@ -1,5 +1,5 @@
-# bot.py - ربات VIP پلاتینیوم با aiogram و FastAPI
-# نسخه v42.0 - طراحی حرفه‌ای برای محصول اشتراکی
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 
 import os
 import sys
@@ -10,6 +10,7 @@ import hashlib
 import asyncio
 import logging
 import sqlite3
+import random
 from datetime import datetime, timedelta
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Any
@@ -70,7 +71,6 @@ class Config:
     
     DB_FILE: str = "vip_bot.db"
     
-    # CoinEx (عمومی)
     COINEX_SYMBOLS: List[str] = [
         "BTC/USDT", "ETH/USDT", "SOL/USDT", "XRP/USDT", "ADA/USDT",
         "BNB/USDT", "DOGE/USDT", "DOT/USDT", "AVAX/USDT", "LINK/USDT"
@@ -94,7 +94,6 @@ class Database:
     def _init_db(self):
         conn = self._get_conn()
         cur = conn.cursor()
-        # Users
         cur.execute('''
             CREATE TABLE IF NOT EXISTS users (
                 user_id INTEGER PRIMARY KEY,
@@ -109,7 +108,6 @@ class Database:
                 referred_by INTEGER
             )
         ''')
-        # Watchlist
         cur.execute('''
             CREATE TABLE IF NOT EXISTS watchlist (
                 user_id INTEGER,
@@ -120,7 +118,6 @@ class Database:
                 PRIMARY KEY (user_id, symbol)
             )
         ''')
-        # Payments
         cur.execute('''
             CREATE TABLE IF NOT EXISTS payments (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -133,7 +130,6 @@ class Database:
                 verified_by INTEGER
             )
         ''')
-        # Referrals
         cur.execute('''
             CREATE TABLE IF NOT EXISTS referrals (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -143,7 +139,6 @@ class Database:
                 reward_given INTEGER DEFAULT 0
             )
         ''')
-        # Coupons
         cur.execute('''
             CREATE TABLE IF NOT EXISTS coupons (
                 code TEXT PRIMARY KEY,
@@ -153,7 +148,6 @@ class Database:
                 expires_at TEXT
             )
         ''')
-        # Price cache
         cur.execute('''
             CREATE TABLE IF NOT EXISTS price_cache (
                 symbol TEXT PRIMARY KEY,
@@ -392,11 +386,6 @@ class Persian:
 p = Persian()
 
 # ============================================================
-# RANDOM HELPER
-# ============================================================
-import random
-
-# ============================================================
 # AI ENGINE (Groq)
 # ============================================================
 class GroqAI:
@@ -405,9 +394,9 @@ class GroqAI:
         self.enabled = bool(self.api_key)
         self._client = httpx.AsyncClient(timeout=60.0)
         self._last_request = 0
-        self._min_interval = 1.0  # حداقل فاصله برای جلوگیری از rate limit
+        self._min_interval = 1.0
         self._cache = {}
-        self._cache_ttl = 300  # 5 دقیقه
+        self._cache_ttl = 300
     
     async def _wait(self):
         now = time.time()
@@ -419,8 +408,6 @@ class GroqAI:
     async def analyze(self, prompt: str) -> Optional[str]:
         if not self.enabled:
             return None
-        
-        # چک کردن کش
         cache_key = hashlib.md5(prompt.encode()).hexdigest()
         if cache_key in self._cache:
             cached, ts = self._cache[cache_key]
@@ -465,7 +452,7 @@ ai = GroqAI()
 class CoinExAPI:
     def __init__(self):
         self._cache = {}
-        self._cache_ttl = 30  # ثانیه
+        self._cache_ttl = 30
     
     async def _fetch_ticker(self, symbol: str) -> Optional[Dict]:
         try:
@@ -498,7 +485,6 @@ class CoinExAPI:
         result = await self._fetch_ticker(symbol)
         if result:
             self._cache[cache_key] = (result, time.time())
-            # Update DB cache
             db.update_price_cache(symbol, result['price'], result['change'])
         return result
     
@@ -575,19 +561,16 @@ async def cmd_start(message: Message, command: CommandObject):
     user = message.from_user
     db.add_user(user.id, user.username, user.first_name, user.last_name or "")
     
-    # بررسی ریفرال
     if command.args:
         try:
             ref_id = int(command.args.split()[0])
             if ref_id != user.id:
                 db.add_referral(ref_id, user.id)
-                # پاداش به ریفرر
                 db.update_user(ref_id, balance=db.get_user(ref_id)['balance'] + 5)
                 await bot.send_message(ref_id, f"🎁 یک کاربر جدید با لینک شما عضو شد! +۵ سکه")
         except:
             pass
     
-    # بررسی VIP یا Trial
     user_data = db.get_user(user.id)
     is_vip = db.is_vip(user.id)
     
@@ -638,7 +621,6 @@ async def cmd_ai(message: Message):
         await message.answer("❌ سرویس AI در حال حاضر در دسترس نیست.")
         return
     
-    # Check VIP or free trial
     user_data = db.get_user(message.from_user.id)
     is_vip = db.is_vip(message.from_user.id)
     if not is_vip and user_data.get('free_trial_used', 0) == 0:
@@ -648,7 +630,6 @@ async def cmd_ai(message: Message):
         await message.answer("⛔ برای استفاده از AI، باید اشتراک VIP تهیه کنید.\nاز دکمه خرید VIP استفاده کنید.")
         return
     
-    # Get the rest of the message as prompt
     prompt = message.text.replace("/ai", "").strip()
     if not prompt:
         await message.answer("🤖 لطفاً یک سوال یا تحلیل مورد نظر را بنویسید.\nمثال: `/ai بیت‌کوین رو تحلیل کن`")
@@ -724,14 +705,12 @@ async def cmd_pay(message: Message, state: FSMContext):
         return
     tracking = parts[1].strip()
     
-    # Save payment
     db.add_payment(message.from_user.id, cfg.VIP_PRICE, tracking)
     await message.answer(
         f"✅ کد پیگیری {tracking} ثبت شد.\n"
         f"پرداخت شما در حال بررسی است. پس از تأیید ادمین، اشتراک VIP فعال خواهد شد.\n\n"
         f"⏳ لطفاً صبور باشید. در کمتر از ۲۴ ساعت بررسی می‌شود."
     )
-    # Notify admins
     for admin_id in cfg.ADMIN_IDS:
         try:
             await bot.send_message(
@@ -933,7 +912,6 @@ async def send_payment(callback: CallbackQuery):
             [InlineKeyboardButton(text="🔙 بازگشت", callback_data="back_main")]
         ])
     )
-    # We'll handle this via /pay command in message handler
 
 @dp.callback_query(F.data == "profile")
 async def profile(callback: CallbackQuery):
@@ -1011,7 +989,6 @@ async def process_broadcast(message: Message, state: FSMContext):
         await message.answer("⛔ دسترسی غیرمجاز")
         await state.clear()
         return
-    # Get all users from DB
     conn = sqlite3.connect(cfg.DB_FILE)
     cur = conn.cursor()
     cur.execute("SELECT user_id FROM users")
@@ -1026,7 +1003,7 @@ async def process_broadcast(message: Message, state: FSMContext):
             success += 1
         except:
             fail += 1
-        await asyncio.sleep(0.05)  # جلوگیری از rate limit
+        await asyncio.sleep(0.05)
     
     await message.answer(f"✅ ارسال همگانی انجام شد.\n📤 موفق: {success}\n📤 ناموفق: {fail}")
     await state.clear()
@@ -1070,7 +1047,6 @@ async def verify_payment(message: Message):
         await message.answer("❌ آیدی نامعتبر")
         return
     
-    # Get payment
     conn = sqlite3.connect(cfg.DB_FILE)
     cur = conn.cursor()
     cur.execute("SELECT user_id FROM payments WHERE id = ? AND status = 'pending'", (payment_id,))
@@ -1167,24 +1143,13 @@ async def admin_users(callback: CallbackQuery):
     ]))
 
 # ============================================================
-# MESSAGE HANDLERS (for AI chat)
-# ============================================================
-
-@dp.message(F.text & ~F.text.startswith("/"))
-async def handle_ai_chat(message: Message):
-    # Only respond if user is in AI mode (we'll keep it simple)
-    # For now, just pass through
-    pass
-
-# ============================================================
-# PRICE ALERT CHECKER (Background task)
+# PRICE ALERT CHECKER
 # ============================================================
 async def price_alert_checker():
     while True:
         try:
             watches = db.get_all_watchlists()
             if watches:
-                # Group by symbol
                 grouped = defaultdict(list)
                 for w in watches:
                     grouped[w['symbol']].append(w)
@@ -1216,7 +1181,7 @@ async def price_alert_checker():
                                 pass
         except Exception as e:
             logger.error(f"Alert checker error: {e}")
-        await asyncio.sleep(60)  # هر دقیقه چک کن
+        await asyncio.sleep(60)
 
 # ============================================================
 # FASTAPI WEBHOOK SETUP
@@ -1224,17 +1189,17 @@ async def price_alert_checker():
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Start background tasks
     asyncio.create_task(price_alert_checker())
-    # Set webhook
-    await bot.set_webhook(
-        url=f"{cfg.WEBHOOK_URL}/webhook",
-        secret_token=cfg.WEBHOOK_SECRET,
-        max_connections=100
-    )
-    logger.info(f"✅ Webhook set to {cfg.WEBHOOK_URL}/webhook")
+    if cfg.WEBHOOK_URL:
+        await bot.set_webhook(
+            url=f"{cfg.WEBHOOK_URL}/webhook",
+            secret_token=cfg.WEBHOOK_SECRET,
+            max_connections=100
+        )
+        logger.info(f"✅ Webhook set to {cfg.WEBHOOK_URL}/webhook")
+    else:
+        logger.warning("⚠️ WEBHOOK_URL not set, running in polling mode")
     yield
-    # Cleanup
     await bot.delete_webhook()
     await bot.session.close()
     logger.info("🛑 Bot stopped")
@@ -1246,7 +1211,6 @@ async def webhook(request: Request, x_telegram_bot_api_secret_token: Optional[st
     if x_telegram_bot_api_secret_token != cfg.WEBHOOK_SECRET:
         raise HTTPException(status_code=403, detail="Invalid secret token")
     
-    # Get request body
     body = await request.json()
     update = types.Update(**body)
     await dp.feed_update(bot, update)
@@ -1264,17 +1228,14 @@ def main():
         logger.error("❌ BOT_TOKEN is not set")
         sys.exit(1)
     
-    if not cfg.WEBHOOK_URL:
-        logger.warning("⚠️ WEBHOOK_URL is not set, running in polling mode")
-        # Run with polling for local testing
-        import asyncio
-        asyncio.run(polling_main())
-    else:
-        # Run with webhook
+    if cfg.WEBHOOK_URL:
         uvicorn.run(app, host="0.0.0.0", port=int(os.getenv("PORT", "8080")))
+    else:
+        # Fallback to polling mode
+        logger.info("🚀 Starting in polling mode")
+        asyncio.run(polling_main())
 
 async def polling_main():
-    # Start background tasks
     asyncio.create_task(price_alert_checker())
     await dp.start_polling(bot)
 
