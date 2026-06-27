@@ -1,3 +1,4 @@
+print("🔥 MAIN FILE IS RUNNING")
 import asyncio
 import os
 from fastapi import FastAPI
@@ -66,4 +67,4 @@ if __name__ == "__main__":
         port=port,
         reload=False
     )
-print("🔥 MAIN IS RUNNING")
+print
