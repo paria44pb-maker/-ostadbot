@@ -240,14 +240,14 @@ class DatabaseEngine:
     """
     
     def __init__(self, db_path: str = "ostadbot.db"):
-        self.db_path = db_path
-        self._write_lock = asyncio.Lock()
-        self._connection_pool: List = []
-        self._max_connections = 10
-        self._query_count = 0
-        self._error_count = 0
-    
-    async def initialize(self) -> bool:
+    self.db_path = db_path
+    self._write_lock = asyncio.Lock()
+    self._connection_pool: List = []
+    self._max_connections = 10
+    self._query_count = 0
+    self._error_count = 0
+
+async def initialize(self) -> bool:
     """Initialize database with full schema and optimizations"""
     try:
         async with self._write_lock:
@@ -270,20 +270,20 @@ class DatabaseEngine:
     except Exception as e:
         logger.error(f"Database initialization failed: {e}")
         return False
-    
-    async def execute(self, query: str, params: tuple = ()) -> int:
-        """Execute SQL and return lastrowid"""
-        self._query_count += 1
-        try:
-            async with self._write_lock:
-                async with aiosqlite.connect(self.db_path) as conn:
-                    cursor = await conn.execute(query, params)
-                    await conn.commit()
-                    return cursor.lastrowid
-        except Exception as e:
-            self._error_count += 1
-            logger.error(f"SQL execute error: {e}\nQuery: {query[:200]}")
-            raise
+
+async def execute(self, query: str, params: tuple = ()) -> int:
+    """Execute SQL and return lastrowid"""
+    self._query_count += 1
+    try:
+        async with self._write_lock:
+            async with aiosqlite.connect(self.db_path) as conn:
+                cursor = await conn.execute(query, params)
+                await conn.commit()
+                return cursor.lastrowid
+    except Exception as e:
+        self._error_count += 1
+        logger.error(f"SQL execute error: {e}\nQuery: {query[:200]}")
+        raise
     
     async def execute_many(self, query: str, params_list: List[tuple]) -> int:
         """Execute multiple SQL statements"""
