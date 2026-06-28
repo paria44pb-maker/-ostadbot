@@ -2500,7 +2500,10 @@ async def set_bot_commands():
 # Bot start time
 bot_start_time = TT.now()
 
-# Background alert checker
+# ═══════════════════════════════════════════════════════════
+# BACKGROUND TASK: Alert Checker
+# ═══════════════════════════════════════════════════════════
+
 async def alert_checker_task():
     """Background task to check price alerts"""
     logger.info("Alert checker started")
