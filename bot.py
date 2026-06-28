@@ -2550,6 +2550,7 @@ async def alert_checker_task():
             await asyncio.sleep(60)
 
 # Application lifespan
+# Application lifespan
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan manager"""
@@ -2560,11 +2561,11 @@ async def lifespan(app: FastAPI):
     logger.info(f"Port: {PORT}")
     
     # Initialize database
-try:
-    await db.initialize()
-except Exception as e:
-    logger.error(f"Database initialization failed: {e}")
-    raise
+    try:
+        await db.initialize()
+    except Exception as e:
+        logger.error(f"Database initialization failed: {e}")
+        raise
     
     # Set webhook
     if WEBHOOK_URL and bot:
