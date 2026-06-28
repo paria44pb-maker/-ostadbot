@@ -1,27 +1,15 @@
 # ═══════════════════════════════════════════════════════════
-# PART 2: DATABASE, AI ENGINE, EXCHANGE, TECHNICAL ANALYSIS
-# ═══════════════════════════════════════════════════════════
-
 # IMPORTS FOR PART 2
-import os
-import json
-import time
-import hmac
-import hashlib
-import asyncio
-import logging
-import traceback
+import os, json, time, hmac, hashlib, asyncio, logging, traceback
 from datetime import datetime, timedelta, timezone
 from typing import Optional, Dict, Any, List, Tuple
 from collections import OrderedDict, deque
 
-import aiosqlite
-import aiohttp
+import aiosqlite, aiohttp
 import numpy as np
 from groq import Groq, RateLimitError as GroqRateLimitError
 from groq import APIStatusError as GroqAPIError, APIConnectionError as GroqConnectionError
 
-# Import shared components from part1
 from part1 import *
 
 logger = logging.getLogger("OstadBot")
