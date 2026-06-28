@@ -1909,10 +1909,8 @@ async def callback_alerts(callback: CallbackQuery):
 # ═══════════════════════════════════════════════════════════
 
 # Create bot and dispatcher
-try:
-    from aiogram.client.default import DefaultBotProperties
 
-bot = Bot(token=BOT_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
+    bot = Bot(token=BOT_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
 except Exception as e:
     logger.error(f"Failed to create bot instance: {e}")
     bot = None
