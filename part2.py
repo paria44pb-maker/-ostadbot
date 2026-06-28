@@ -239,13 +239,13 @@ class DatabaseEngine:
     CREATE INDEX IF NOT EXISTS idx_market_cache ON market_data_cache(symbol, data_type);
     """
     
-    def __init__(self, db_path: str = "ostadbot.db"):
-    self.db_path = db_path
-    self._write_lock = asyncio.Lock()
-    self._connection_pool: List = []
-    self._max_connections = 10
-    self._query_count = 0
-    self._error_count = 0
+def __init__(self, db_path: str = "ostadbot.db"):
+    self.db_path = db_path          # ۸ فاصله
+    self._write_lock = asyncio.Lock()  # ۸ فاصله
+    self._connection_pool: List = []   # ۸ فاصله
+    self._max_connections = 10          # ۸ فاصله
+    self._query_count = 0               # ۸ فاصله
+    self._error_count = 0               # ۸ فاصله
 
 async def initialize(self) -> bool:
     """Initialize database with full schema and optimizations"""
