@@ -3,6 +3,9 @@
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 """
 
+import logging
+logger = logging.getLogger("OstadBot")
+
 # Import all parts
 from part1 import *
 from part2 import *
