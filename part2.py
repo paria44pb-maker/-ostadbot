@@ -704,6 +704,7 @@ async def get_watchlist(self, user_id: int) -> List[Dict]:
         return await self.count("logs")
     
     async def cleanup_old_cache(self, hours: int = 24) -> int:
+        async def cleanup_old_cache(self, hours: int = 24) -> int:
         """Delete expired market data cache"""
         cutoff = time.time() - (hours * 3600)
         await self.execute("DELETE FROM market_data_cache WHERE cached_at < ?", (cutoff,))
