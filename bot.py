@@ -2074,7 +2074,26 @@ async def stats(request: Request):
     if auth != f"Bearer {WEBHOOK_SECRET}":
         raise HTTPException(403)
     return await db.get_stats()
-
+# اگر Webhook تنظیم نشده، از Polling استفاده کن
+if __name__ == "__main__":
+    import uvicorn
+    import threading
+    
+    # Run bot polling in background if no webhook
+    if not WEBHOOK_URL and bot is not None and dp is not None:
+        async def start_polling():
+            logger.info("Starting bot polling...")
+            await dp.start_polling(bot)
+        
+        def run_polling():
+            asyncio.run(start_polling())
+        
+        threading.Thread(target=run_polling, daemon=True).start()
+        logger.info("Bot polling started in background")
+    
+    logger.info(f"Starting {APP_NAME} on port {PORT}")
+    uvicorn.run("bot:app", host="0.0.0.0", port=PORT, log_level="info")
+    
 # ═══════════════════════════════════════════════════════════
 # MAIN ENTRY POINT
 # ═══════════════════════════════════════════════════════════
