@@ -1288,7 +1288,7 @@ class DatabaseEngine:
     async def create_alert(self, user_id: int, symbol: str, target_price: float, alert_type: str = "above") -> int:
         """Create a price alert"""
         return await self.execute(
-            "INSERT INTO alerts(user_id, symbol, target_price, alert_type) VALUES(
+            "INSERT INTO alerts(user_id, symbol, target_price, alert_type) VALUES
         # ═══════════════════════════════════════════════════════════
 # SECTION 15: FSM STATES
 # ═══════════════════════════════════════════════════════════
