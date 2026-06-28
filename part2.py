@@ -477,35 +477,35 @@ class DatabaseEngine:
         return True
     
     # ════════════════════════════════════════
-    # WATCHLIST OPERATIONS
-    # ════════════════════════════════════════
+# WATCHLIST OPERATIONS
+# ════════════════════════════════════════
 
 async def add_to_watchlist(self, user_id: int, symbol: str, note: str = "") -> bool:
-        """Add symbol to user's watchlist"""
-        max_items = 999 if await self.is_premium(user_id) else 5
-        current = await self.count("watchlists", "user_id = ?", (user_id,))
-        if current >= max_items:
-            return False
-        await self.execute(
-            "INSERT OR IGNORE INTO watchlists(user_id, symbol, note) VALUES(?, ?, ?)",
-            (user_id, symbol.upper(), note)
-        )
-        return True
-    
-    async def remove_from_watchlist(self, user_id: int, symbol: str) -> bool:
-        """Remove symbol from watchlist"""
-        await self.execute(
-            "DELETE FROM watchlists WHERE user_id = ? AND symbol = ?",
-            (user_id, symbol.upper())
-        )
-        return True
-    
-    async def get_watchlist(self, user_id: int) -> List[Dict]:
-        """Get user's watchlist"""
-        return await self.fetchall(
-            "SELECT * FROM watchlists WHERE user_id = ? ORDER BY added_at DESC",
-            (user_id,)
-        )
+    """Add symbol to user's watchlist"""
+    max_items = 999 if await self.is_premium(user_id) else 5
+    current = await self.count("watchlists", "user_id = ?", (user_id,))
+    if current >= max_items:
+        return False
+    await self.execute(
+        "INSERT OR IGNORE INTO watchlists(user_id, symbol, note) VALUES(?, ?, ?)",
+        (user_id, symbol.upper(), note)
+    )
+    return True
+
+async def remove_from_watchlist(self, user_id: int, symbol: str) -> bool:
+    """Remove symbol from watchlist"""
+    await self.execute(
+        "DELETE FROM watchlists WHERE user_id = ? AND symbol = ?",
+        (user_id, symbol.upper())
+    )
+    return True
+
+async def get_watchlist(self, user_id: int) -> List[Dict]:
+    """Get user's watchlist"""
+    return await self.fetchall(
+        "SELECT * FROM watchlists WHERE user_id = ? ORDER BY added_at DESC",
+        (user_id,)
+    )
     
     # ════════════════════════════════════════
     # ALERT OPERATIONS
