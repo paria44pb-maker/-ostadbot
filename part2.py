@@ -264,12 +264,12 @@ class DatabaseEngine:
                 await conn.executescript(self.FULL_SCHEMA)
                 
                 await conn.commit()
-            
-            logger.info(f"Database initialized (v{self.SCHEMA_VERSION}): {self.db_path}")
-            return True
+        
+        logger.info(f"Database initialized (v{self.SCHEMA_VERSION}): {self.db_path}")
+        return True
     except Exception as e:
-        logger.error(f"Database initialization failed: {e}\n{traceback.format_exc()}")
-        raise
+        logger.error(f"Database initialization failed: {e}")
+        return False
     
     async def execute(self, query: str, params: tuple = ()) -> int:
         """Execute SQL and return lastrowid"""
