@@ -1908,7 +1908,11 @@ async def callback_alerts(callback: CallbackQuery):
 # ═══════════════════════════════════════════════════════════
 
 # Create bot and dispatcher
-bot = Bot(token=BOT_TOKEN, parse_mode=ParseMode.HTML) if Bot is not None else None
+try:
+    bot = Bot(token=BOT_TOKEN, parse_mode=ParseMode.HTML)
+except Exception as e:
+    logger.error(f"Failed to create bot instance: {e}")
+    bot = None
 dp = Dispatcher(storage=MemoryStorage()) if Dispatcher is not None else None
 
 if dp is not None:
