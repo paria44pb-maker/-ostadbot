@@ -248,38 +248,28 @@ class DatabaseEngine:
         self._error_count = 0
     
     async def initialize(self) -> bool:
-        """Initialize database with full schema and optimizations"""
-        try:
-            async with self._write_lock:
-                async with aiosqlite.connect(self.db_path) as conn:
-                    await conn.execute("PRAGMA journal_mode=WAL")
-                    await conn.execute("PRAGMA synchronous=NORMAL")
-                    await conn.execute("PRAGMA cache_size=-16000")
-                    await conn.execute("PRAGMA foreign_keys=ON")
-                    await conn.execute("PRAGMA busy_timeout=5000")
-                    await conn.execute("PRAGMA temp_store=MEMORY")
-                    await conn.execute("PRAGMA mmap_size=268435456")
-                    await conn.execute("PRAGMA page_size=4096")
-                    
-                    await conn.executescript(self.FULL_SCHEMA)
-                    
-                    cursor = await conn.execute("SELECT MAX(version) FROM schema_version")
-                    row = await cursor.fetchone()
-                    current_version = row[0] if row and row[0] else 0
-                    
-                    if current_version < self.SCHEMA_VERSION:
-                        await conn.execute(
-                            "INSERT INTO schema_version(version, applied_at) VALUES(?, ?)",
-                            (self.SCHEMA_VERSION, time.time())
-                        )
-                    
-                    await conn.commit()
+    """Initialize database with full schema and optimizations"""
+    try:
+        async with self._write_lock:
+            async with aiosqlite.connect(self.db_path) as conn:
+                await conn.execute("PRAGMA journal_mode=WAL")
+                await conn.execute("PRAGMA synchronous=NORMAL")
+                await conn.execute("PRAGMA cache_size=-16000")
+                await conn.execute("PRAGMA foreign_keys=ON")
+                await conn.execute("PRAGMA busy_timeout=5000")
+                await conn.execute("PRAGMA temp_store=MEMORY")
+                await conn.execute("PRAGMA mmap_size=268435456")
+                await conn.execute("PRAGMA page_size=4096")
                 
-                logger.info(f"Database initialized (v{self.SCHEMA_VERSION}): {self.db_path}")
-                return True
-        except Exception as e:
-            logger.error(f"Database initialization failed: {e}\n{traceback.format_exc()}")
-            raise
+                await conn.executescript(self.FULL_SCHEMA)
+                
+                await conn.commit()
+            
+            logger.info(f"Database initialized (v{self.SCHEMA_VERSION}): {self.db_path}")
+            return True
+    except Exception as e:
+        logger.error(f"Database initialization failed: {e}\n{traceback.format_exc()}")
+        raise
     
     async def execute(self, query: str, params: tuple = ()) -> int:
         """Execute SQL and return lastrowid"""
