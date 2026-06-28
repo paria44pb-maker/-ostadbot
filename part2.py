@@ -703,11 +703,24 @@ async def get_watchlist(self, user_id: int) -> List[Dict]:
         await self.execute("DELETE FROM logs WHERE created_at < ?", (cutoff,))
         return await self.count("logs")
     
-async def cleanup_old_cache(self, hours: int = 24) -> int:
-    """Delete expired market data cache"""
-    cutoff = time.time() - (hours * 3600)
-    await self.execute("DELETE FROM market_data_cache WHERE cached_at < ?", (cutoff,))
-    return await self.count("market_data_cache")
+    # ════════════════════════════════════════
+    # CLEANUP OPERATIONS
+    # ════════════════════════════════════════
+    
+    async def cleanup_old_logs(self, days: int = 30) -> int:
+        """Delete logs older than specified days"""
+        cutoff = time.time() - (days * 86400)
+        await self.execute("DELETE FROM logs WHERE created_at < ?", (cutoff,))
+        return await self.count("logs")
+    
+    async def cleanup_old_cache(self, hours: int = 24) -> int:
+        """Delete expired market data cache"""
+        cutoff = time.time() - (hours * 3600)
+        await self.execute("DELETE FROM market_data_cache WHERE cached_at < ?", (cutoff,))
+        return await self.count("market_data_cache")
+
+# Initialize database (بیرون کلاس - ۰ فاصله)
+db = DatabaseEngine(DATABASE_PATH)
 
 # ════════════════════════════════════════
 # SECTION 11: GROQ AI ENGINE (ADVANCED)
