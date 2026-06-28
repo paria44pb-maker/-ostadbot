@@ -2501,12 +2501,12 @@ async def set_bot_commands():
 bot_start_time = TT.now()
 
 # Background alert checker
-async def alert_checker_task(database=None):
+async def alert_checker_task():
     """Background task to check price alerts"""
     logger.info("Alert checker started")
     while True:
         try:
-            active_alerts = await database.get_active_alerts()
+            active_alerts = await db.get_active_alerts()
             
             for alert in active_alerts:
                 try:
@@ -2525,7 +2525,7 @@ async def alert_checker_task(database=None):
                         triggered = True
                     
                     if triggered:
-                        await database.trigger_alert(alert['id'])
+                        await db.trigger_alert(alert['id'])
                         
                         if bot:
                             try:
@@ -2548,7 +2548,6 @@ async def alert_checker_task(database=None):
         except Exception as e:
             logger.error(f"Alert checker error: {e}")
             await asyncio.sleep(60)
-
 # Application lifespan
 @asynccontextmanager
 async def lifespan(app: FastAPI):
