@@ -2548,6 +2548,7 @@ async def alert_checker_task():
         except Exception as e:
             logger.error(f"Alert checker error: {e}")
             await asyncio.sleep(60)
+            
 # Application lifespan
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -2555,16 +2556,17 @@ async def lifespan(app: FastAPI):
     global bot_start_time
     
     logger.info(f"{E.ROCKET} Starting {APP_NAME} v{APP_VERSION}...")
+    logger.info(f"Environment: {ENVIRONMENT}")
+    logger.info(f"Port: {PORT}")
     
-    # Initialize database safely
+    # Initialize database
     try:
         await db.initialize()
         logger.info("Database initialized successfully")
     except Exception as e:
         logger.error(f"Database initialization failed: {e}")
-        # Don't raise - continue anyway
     
-    # Set webhook if configured
+    # Set webhook
     if WEBHOOK_URL and bot:
         try:
             await bot.set_webhook(
@@ -2572,19 +2574,22 @@ async def lifespan(app: FastAPI):
                 secret_token=WEBHOOK_SECRET,
                 drop_pending_updates=True
             )
-            logger.info(f"Webhook set: {WEBHOOK_URL}/webhook")
+            logger.info(f"Webhook set to: {WEBHOOK_URL}/webhook")
         except Exception as e:
             logger.error(f"Webhook setup failed: {e}")
     
-    # Start alert checker
+    # Set bot commands
+    await set_bot_commands()
+    
+    # Start background tasks
     alert_task = asyncio.create_task(alert_checker_task())
     
-    logger.info(f"{E.ROCKET} {APP_NAME} started!")
+    logger.info(f"{E.ROCKET} {APP_NAME} is ready!")
     logger.info(f"Time: {TT.format(TT.now(), 'full')}")
     
     yield
     
-    # Cleanup on shutdown
+    # Cleanup
     logger.info("Shutting down...")
     
     alert_task.cancel()
