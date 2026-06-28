@@ -2550,24 +2550,22 @@ async def alert_checker_task():
             await asyncio.sleep(60)
 
 # Application lifespan
-# Application lifespan
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan manager"""
     global bot_start_time
     
     logger.info(f"{E.ROCKET} Starting {APP_NAME} v{APP_VERSION}...")
-    logger.info(f"Environment: {ENVIRONMENT}")
-    logger.info(f"Port: {PORT}")
     
-    # Initialize database
+    # Initialize database safely
     try:
         await db.initialize()
+        logger.info("Database initialized successfully")
     except Exception as e:
         logger.error(f"Database initialization failed: {e}")
-        raise
+        # Don't raise - continue anyway
     
-    # Set webhook
+    # Set webhook if configured
     if WEBHOOK_URL and bot:
         try:
             await bot.set_webhook(
@@ -2575,26 +2573,26 @@ async def lifespan(app: FastAPI):
                 secret_token=WEBHOOK_SECRET,
                 drop_pending_updates=True
             )
-            logger.info(f"Webhook set to: {WEBHOOK_URL}/webhook")
+            logger.info(f"Webhook set: {WEBHOOK_URL}/webhook")
         except Exception as e:
             logger.error(f"Webhook setup failed: {e}")
     
-    # Set bot commands
-    await set_bot_commands()
-    
-    # Start background tasks
+    # Start alert checker
     alert_task = asyncio.create_task(alert_checker_task())
     
-    logger.info(f"{E.ROCKET} {APP_NAME} is ready!")
+    logger.info(f"{E.ROCKET} {APP_NAME} started!")
     logger.info(f"Time: {TT.format(TT.now(), 'full')}")
-    logger.info(f"Uptime: {TT.uptime_string(bot_start_time)}")
     
     yield
     
-    # Cleanup
+    # Cleanup on shutdown
     logger.info("Shutting down...")
     
     alert_task.cancel()
+    try:
+        await alert_task
+    except asyncio.CancelledError:
+        pass
     
     if bot:
         try:
@@ -2606,7 +2604,10 @@ async def lifespan(app: FastAPI):
         except:
             pass
     
-    await exchange.close()
+    try:
+        await exchange.close()
+    except:
+        pass
     
     logger.info(f"{E.WAVE} {APP_NAME} stopped")
 
