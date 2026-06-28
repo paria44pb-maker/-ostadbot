@@ -26,6 +26,7 @@ import hashlib
 import asyncio
 import logging
 import re
+from aiogram.client.default import DefaultBotProperties
 from datetime import datetime, timedelta, timezone
 from typing import Optional, Dict, Any, List, Tuple
 from contextlib import asynccontextmanager
@@ -1909,7 +1910,9 @@ async def callback_alerts(callback: CallbackQuery):
 
 # Create bot and dispatcher
 try:
-    bot = Bot(token=BOT_TOKEN, parse_mode=ParseMode.HTML)
+    from aiogram.client.default import DefaultBotProperties
+
+bot = Bot(token=BOT_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
 except Exception as e:
     logger.error(f"Failed to create bot instance: {e}")
     bot = None
