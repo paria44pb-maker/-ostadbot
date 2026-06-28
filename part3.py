@@ -2,6 +2,40 @@
 # PART 3: HANDLERS, KEYBOARDS, MESSAGES, FASTAPI, MAIN
 # ═══════════════════════════════════════════════════════════
 
+# IMPORTS FOR PART 3
+import os
+import json
+import time
+import asyncio
+import logging
+import traceback
+from datetime import datetime, timezone
+from typing import Optional, Dict, Any, List, Tuple
+from functools import wraps
+
+from fastapi import FastAPI, Request, HTTPException
+from fastapi.responses import JSONResponse, HTMLResponse
+from fastapi.middleware.cors import CORSMiddleware
+
+from aiogram import Bot, Dispatcher, Router, F
+from aiogram.filters import CommandStart, StateFilter
+from aiogram.fsm.context import FSMContext
+from aiogram.fsm.state import State, StatesGroup
+from aiogram.fsm.storage.memory import MemoryStorage
+from aiogram.types import (
+    Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton,
+    Update, BotCommand, BotCommandScopeDefault
+)
+from aiogram.enums import ParseMode, ChatAction
+from aiogram.utils.keyboard import InlineKeyboardBuilder
+from aiogram.client.default import DefaultBotProperties
+
+# Import shared components from part1 and part2
+from part1 import *
+from part2 import *
+
+logger = logging.getLogger("OstadBot")
+
 # ════════════════════════════════════════
 # SECTION 14: FSM STATES
 # ════════════════════════════════════════
