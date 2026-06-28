@@ -2561,11 +2561,10 @@ async def lifespan(app: FastAPI):
     
     # Initialize database
     try:
-        await db.initialize()
-        logger.info("Database initialized")
-    except Exception as e:
-        logger.error(f"Database init failed: {e}")
-        raise
+    await db.initialize()
+except Exception as e:
+    logger.error(f"Database initialization failed: {e}")
+    raise
     
     # Set webhook
     if WEBHOOK_URL and bot:
