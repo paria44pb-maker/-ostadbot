@@ -2501,12 +2501,12 @@ async def set_bot_commands():
 bot_start_time = TT.now()
 
 # Background alert checker
-async def alert_checker_task():
+async def alert_checker_task(database=None):
     """Background task to check price alerts"""
     logger.info("Alert checker started")
     while True:
         try:
-            active_alerts = await db.get_active_alerts()
+            active_alerts = await database.get_active_alerts()
             
             for alert in active_alerts:
                 try:
@@ -2525,7 +2525,7 @@ async def alert_checker_task():
                         triggered = True
                     
                     if triggered:
-                        await db.trigger_alert(alert['id'])
+                        await database.trigger_alert(alert['id'])
                         
                         if bot:
                             try:
@@ -2544,7 +2544,7 @@ async def alert_checker_task():
                 except:
                     pass
             
-            await asyncio.sleep(30)  # Check every 30 seconds
+            await asyncio.sleep(30)
         except Exception as e:
             logger.error(f"Alert checker error: {e}")
             await asyncio.sleep(60)
