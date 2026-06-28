@@ -633,6 +633,43 @@ async def get_watchlist(self, user_id: int) -> List[Dict]:
             (user_id, action, level, details)
         )
     
+        # ════════════════════════════════════════
+    # ALERT OPERATIONS
+    # ════════════════════════════════════════
+    
+    async def create_alert(self, user_id: int, symbol: str, target_price: float, alert_type: str = "above") -> int:
+        """Create a price alert"""
+        return await self.execute(
+            "INSERT INTO alerts(user_id, symbol, target_price, alert_type) VALUES(?, ?, ?, ?)",
+            (user_id, symbol.upper(), target_price, alert_type)
+        )
+    
+    async def get_active_alerts(self, user_id: int = None) -> List[Dict]:
+        """Get active (untriggered) alerts"""
+        if user_id:
+            return await self.fetchall(
+                "SELECT * FROM alerts WHERE user_id = ? AND active = 1 AND triggered = 0 ORDER BY created_at DESC",
+                (user_id,)
+            )
+        return await self.fetchall(
+            "SELECT * FROM alerts WHERE active = 1 AND triggered = 0"
+        )
+    
+    async def trigger_alert(self, alert_id: int) -> None:
+        """Mark alert as triggered"""
+        await self.execute(
+            "UPDATE alerts SET triggered = 1, triggered_at = ? WHERE id = ?",
+            (time.time(), alert_id)
+        )
+    
+    async def delete_alert(self, alert_id: int, user_id: int) -> bool:
+        """Delete an alert"""
+        await self.execute(
+            "DELETE FROM alerts WHERE id = ? AND user_id = ?",
+            (alert_id, user_id)
+        )
+        return True
+    
     # ════════════════════════════════════════
     # STATISTICS
     # ════════════════════════════════════════
