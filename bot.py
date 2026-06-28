@@ -2560,7 +2560,7 @@ async def lifespan(app: FastAPI):
     logger.info(f"Port: {PORT}")
     
     # Initialize database
-    try:
+try:
     await db.initialize()
 except Exception as e:
     logger.error(f"Database initialization failed: {e}")
