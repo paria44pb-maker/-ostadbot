@@ -709,9 +709,6 @@ async def cleanup_old_cache(self, hours: int = 24) -> int:
     await self.execute("DELETE FROM market_data_cache WHERE cached_at < ?", (cutoff,))
     return await self.count("market_data_cache")
 
-# Initialize database
-db = DatabaseEngine(DATABASE_PATH)
-
 # ════════════════════════════════════════
 # SECTION 11: GROQ AI ENGINE (ADVANCED)
 # ════════════════════════════════════════
