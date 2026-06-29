@@ -157,10 +157,22 @@ class ChannelNotifier:
 {E.POINT_RIGHT} همین حالا شروع کنید 👇
 """)
     
-    @classmethod
+        @classmethod
     async def signal_alert(cls, bot_instance, symbol: str, direction: str, entry: float, sl: float, tp: float):
         dir_text = "LONG 🟢" if direction.upper() == "LONG" else "SHORT 🔴"
         await cls._send(bot_instance, f"""
+{E.TARGET} *سیگنال جدید!*
+
+{E.CHART} *{symbol}*
+{E.BULL} *نوع:* {dir_text}
+{E.MONEY} *ورود:* ${entry:,.4f}
+{E.SHIELD} *حد ضرر:* ${sl:,.4f}
+{E.TARGET} *هدف:* ${tp:,.4f}
+
+{E.CLOCK} {TT.format(TT.now(), 'full')}
+
+{E.WARNING} *سلب مسئولیت:* این یک سیگنال آموزشی است.
+""")
 {E.TARGET} *سیگنال جدید!*
 
 {E.CHART} *{symbol}*
