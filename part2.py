@@ -372,36 +372,211 @@ class CoinExClient:
                 tickers[sym] = result
         return tickers
     
-    async def get_price(self, symbol: str) -> float:
-        """Get just the current price for a symbol"""
-        ticker = await self.get_ticker(symbol)
-        try:
-            return float(ticker.get("last", 0))
-        except:
-            return 0.0
+async def get_price(self, symbol: str) -> float:
+    """
+    Get current price for a symbol with multiple fallback methods.
+    Tries: cached ticker -> klines -> direct HTTP -> returns 0.0
+    """
+    if not symbol:
+        return 0.0
     
-    async def get_24h_change(self, symbol: str) -> float:
-        """Get 24h price change percentage"""
-        ticker = await self.get_ticker(symbol)
-        try:
-            return float(ticker.get("change_percentage", 0))
-        except:
-            return 0.0
+    symbol = symbol.upper().strip()
     
-    async def close(self):
-        """Close HTTP session"""
+    # Method 1: Get from cached ticker data
+    try:
+        ticker = await self.get_ticker(symbol)
+        if ticker and isinstance(ticker, dict):
+            price = float(ticker.get("last", 0))
+            if price > 0:
+                return price
+    except Exception:
+        pass
+    
+    # Method 2: Try to get from latest kline close price
+    try:
+        klines = await self.get_klines(symbol, "1min", 1)
+        if klines and isinstance(klines, list) and len(klines) > 0:
+            latest = klines[-1]
+            if isinstance(latest, dict):
+                price = float(latest.get("close", 0))
+                if price > 0:
+                    return price
+    except Exception:
+        pass
+    
+    # Method 3: Direct synchronous HTTP request as last resort
+    try:
+        import urllib.request
+        import ssl
+        
+        url = f"https://api.coinex.com/v2/spot/ticker?market={symbol}"
+        
+        # Create request with proper headers
+        req = urllib.request.Request(url)
+        req.add_header("User-Agent", "Mozilla/5.0 (compatible; OstadBot/10.0)")
+        req.add_header("Accept", "application/json")
+        req.add_header("Accept-Encoding", "gzip, deflate")
+        
+        # Create SSL context that doesn't verify (for restricted networks)
+        ssl_context = ssl.create_default_context()
+        ssl_context.check_hostname = False
+        ssl_context.verify_mode = ssl.CERT_NONE
+        
+        # Make request with timeout
+        with urllib.request.urlopen(req, timeout=15, context=ssl_context) as response:
+            raw_data = response.read().decode('utf-8')
+            data = json.loads(raw_data)
+            
+            if data.get("code") == 0:
+                ticker_data = data.get("data", {})
+                
+                # Handle both list and dict responses
+                if isinstance(ticker_data, list) and len(ticker_data) > 0:
+                    item = ticker_data[0]
+                    if isinstance(item, dict):
+                        price = float(item.get("last", 0))
+                        if price > 0:
+                            # Cache this price for future use
+                            self._cache[f"price_{symbol}"] = {
+                                'data': price,
+                                'time': time.time()
+                            }
+                            return price
+                
+                elif isinstance(ticker_data, dict):
+                    price = float(ticker_data.get("last", 0))
+                    if price > 0:
+                        self._cache[f"price_{symbol}"] = {
+                            'data': price,
+                            'time': time.time()
+                        }
+                        return price
+    
+    except urllib.error.URLError as url_err:
+        logger.debug(f"CoinEx URL error for {symbol}: {url_err}")
+    except urllib.error.HTTPError as http_err:
+        logger.debug(f"CoinEx HTTP error for {symbol}: {http_err}")
+    except json.JSONDecodeError as json_err:
+        logger.debug(f"CoinEx JSON error for {symbol}: {json_err}")
+    except Exception as e:
+        logger.debug(f"CoinEx fallback error for {symbol}: {e}")
+    
+    # Method 4: Check if we have a cached price (not expired)
+    cache_key = f"price_{symbol}"
+    if cache_key in self._cache:
+        cached = self._cache[cache_key]
+        if time.time() - cached['time'] < 300:  # 5 minutes cache
+            return float(cached['data'])
+    
+    # All methods failed
+    return 0.0
+
+
+async def get_24h_change(self, symbol: str) -> float:
+    """
+    Get 24h price change percentage with fallback.
+    """
+    if not symbol:
+        return 0.0
+    
+    symbol = symbol.upper().strip()
+    
+    # Method 1: From ticker
+    try:
+        ticker = await self.get_ticker(symbol)
+        if ticker and isinstance(ticker, dict):
+            change = float(ticker.get("change_percentage", 0))
+            return change
+    except Exception:
+        pass
+    
+    # Method 2: Direct HTTP
+    try:
+        import urllib.request
+        import ssl
+        
+        url = f"https://api.coinex.com/v2/spot/ticker?market={symbol}"
+        req = urllib.request.Request(url)
+        req.add_header("User-Agent", "Mozilla/5.0")
+        
+        ssl_context = ssl.create_default_context()
+        ssl_context.check_hostname = False
+        ssl_context.verify_mode = ssl.CERT_NONE
+        
+        with urllib.request.urlopen(req, timeout=10, context=ssl_context) as resp:
+            data = json.loads(resp.read().decode())
+            if data.get("code") == 0:
+                ticker_list = data.get("data", [])
+                if isinstance(ticker_list, list) and len(ticker_list) > 0:
+                    return float(ticker_list[0].get("change_percentage", 0))
+                elif isinstance(ticker_list, dict):
+                    return float(ticker_list.get("change_percentage", 0))
+    except Exception:
+        pass
+    
+    return 0.0
+
+
+async def get_multiple_tickers(self, symbols: List[str]) -> Dict[str, Dict]:
+    """
+    Get tickers for multiple symbols with parallel requests.
+    Returns dict of symbol -> ticker_data.
+    """
+    if not symbols:
+        return {}
+    
+    # Validate and clean symbols
+    valid_symbols = [s.upper().strip() for s in symbols if s and isinstance(s, str)]
+    if not valid_symbols:
+        return {}
+    
+    # Make parallel requests
+    tasks = []
+    for sym in valid_symbols:
+        tasks.append(self.get_ticker(sym))
+    
+    results = await asyncio.gather(*tasks, return_exceptions=True)
+    
+    # Build result dict
+    tickers = {}
+    for sym, result in zip(valid_symbols, results):
+        if isinstance(result, dict) and result:
+            tickers[sym] = result
+        elif isinstance(result, Exception):
+            logger.debug(f"Failed to get ticker for {sym}: {result}")
+    
+    return tickers
+
+
+async def close(self) -> None:
+    """
+    Close the HTTP session properly.
+    Should be called when the application shuts down.
+    """
+    try:
         if self._session and not self._session.closed:
             await self._session.close()
+            logger.debug("CoinEx HTTP session closed")
+    except Exception as e:
+        logger.debug(f"Error closing CoinEx session: {e}")
     
-    def get_stats(self) -> Dict:
-        """Get client statistics"""
-        return {
-            "total_requests": self._request_count,
-            "total_errors": self._error_count,
-            "cache_size": len(self._cache),
-            "session_active": self._session is not None and not self._session.closed,
-        }
+    # Clear cache
+    self._cache.clear()
 
+
+def get_stats(self) -> Dict[str, Any]:
+    """
+    Get exchange client statistics for monitoring.
+    """
+    return {
+        "total_requests": self._request_count,
+        "total_errors": self._error_count,
+        "cache_size": len(self._cache),
+        "cache_ttl": self._cache_ttl,
+        "session_active": self._session is not None and not self._session.closed,
+        "last_request_time": self._last_request_time,
+                        }
+    
 # Initialize exchange client
 exchange = CoinExClient()
 
