@@ -691,6 +691,237 @@ async def get_watchlist(self, user_id: int) -> List[Dict]:
         await self.execute("DELETE FROM logs WHERE created_at < ?", (cutoff,))
         return await self.count("logs")
 
+class DatabaseEngine:
+    """
+    High-performance async SQLite database manager.
+    """
+    
+    SCHEMA_VERSION = 8
+    
+    FULL_SCHEMA = """
+    CREATE TABLE IF NOT EXISTS users (
+        user_id INTEGER PRIMARY KEY,
+        username TEXT DEFAULT '',
+        full_name TEXT DEFAULT '',
+        plan TEXT DEFAULT 'free',
+        plan_until REAL DEFAULT 0,
+        welcome_bonus INTEGER DEFAULT 0,
+        created_at REAL DEFAULT (strftime('%s', 'now')),
+        last_active REAL DEFAULT (strftime('%s', 'now'))
+    );
+    """
+    
+    def __init__(self, db_path: str = "ostadbot.db"):
+        self.db_path = db_path
+        self._write_lock = asyncio.Lock()
+        self._query_count = 0
+        self._error_count = 0
+    
+    async def initialize(self) -> bool:
+        try:
+            async with aiosqlite.connect(self.db_path) as conn:
+                await conn.execute("PRAGMA journal_mode=WAL")
+                await conn.executescript(self.FULL_SCHEMA)
+                await conn.commit()
+            logger.info(f"Database initialized: {self.db_path}")
+            return True
+        except Exception as e:
+            logger.error(f"Database initialization failed: {e}")
+            return False
+    
+    async def execute(self, query: str, params: tuple = ()) -> int:
+        self._query_count += 1
+        try:
+            async with aiosqlite.connect(self.db_path) as conn:
+                cursor = await conn.execute(query, params)
+                await conn.commit()
+                return cursor.lastrowid
+        except Exception as e:
+            self._error_count += 1
+            logger.error(f"SQL error: {e}")
+            raise
+    
+    async def fetchone(self, query: str, params: tuple = ()):
+        async with aiosqlite.connect(self.db_path) as conn:
+            conn.row_factory = aiosqlite.Row
+            async with conn.execute(query, params) as cursor:
+                row = await cursor.fetchone()
+                return dict(row) if row else None
+    
+    async def fetchall(self, query: str, params: tuple = ()):
+        async with aiosqlite.connect(self.db_path) as conn:
+            conn.row_factory = aiosqlite.Row
+            async with conn.execute(query, params) as cursor:
+                rows = await cursor.fetchall()
+                return [dict(row) for row in rows]
+    
+    async def fetchval(self, query: str, params: tuple = (), default=None):
+        row = await self.fetchone(query, params)
+        return list(row.values())[0] if row else default
+    
+    async def count(self, table: str, where: str = "1=1", params: tuple = ()) -> int:
+        return await self.fetchval(f"SELECT COUNT(*) FROM {table} WHERE {where}", params, 0)
+    
+    async def get_user(self, user_id: int):
+        return await self.fetchone("SELECT * FROM users WHERE user_id = ?", (user_id,))
+    
+    async def upsert_user(self, user_id: int, username: str = "", full_name: str = ""):
+        now = time.time()
+        await self.execute(
+            """INSERT INTO users(user_id, username, full_name, last_active)
+               VALUES(?, ?, ?, ?)
+               ON CONFLICT(user_id) DO UPDATE SET
+               username = COALESCE(NULLIF(?, ''), users.username),
+               full_name = COALESCE(NULLIF(?, ''), users.full_name),
+               last_active = ?""",
+            (user_id, username, full_name, now, username, full_name, now)
+        )
+    
+    async def get_user_plan(self, user_id: int) -> str:
+        user = await self.get_user(user_id)
+        if not user:
+            return "free"
+        if user.get('plan') in ('vip', 'pro', 'elite'):
+            if user.get('plan_until') and time.time() < user['plan_until']:
+                return user['plan']
+        return "free"
+    
+    async def is_premium(self, user_id: int) -> bool:
+        return await self.get_user_plan(user_id) not in ("free", "banned")
+    
+    async def set_user_plan(self, user_id: int, plan: str, days: int = 30):
+        plan_until = time.time() + (days * 86400)
+        await self.execute(
+            "UPDATE users SET plan = ?, plan_until = ? WHERE user_id = ?",
+            (plan, plan_until, user_id)
+        )
+    
+    async def get_ai_limit(self, user_id: int) -> int:
+        plan = await self.get_user_plan(user_id)
+        limits = {"free": 5, "vip": 50, "pro": 200, "elite": 999999}
+        return limits.get(plan, 5)
+    
+    async def get_ai_usage(self, user_id: int) -> int:
+        today = datetime.now(timezone.utc).strftime('%Y-%m-%d')
+        await self.execute(
+            "INSERT OR IGNORE INTO user_state(user_id, last_reset_day) VALUES(?, ?)",
+            (user_id, today)
+        )
+        state = await self.fetchone("SELECT * FROM user_state WHERE user_id = ?", (user_id,))
+        if state and state.get('last_reset_day') != today:
+            await self.execute(
+                "UPDATE user_state SET daily_ai_count = 0, last_reset_day = ? WHERE user_id = ?",
+                (today, user_id)
+            )
+            return 0
+        return state.get('daily_ai_count', 0) if state else 0
+    
+    async def increment_ai_usage(self, user_id: int) -> int:
+        today = datetime.now(timezone.utc).strftime('%Y-%m-%d')
+        await self.execute(
+            "UPDATE user_state SET daily_ai_count = daily_ai_count + 1, last_reset_day = ? WHERE user_id = ?",
+            (today, user_id)
+        )
+        return await self.fetchval("SELECT daily_ai_count FROM user_state WHERE user_id = ?", (user_id,), 0)
+    
+    async def can_use_ai(self, user_id: int):
+        used = await self.get_ai_usage(user_id)
+        limit = await self.get_ai_limit(user_id)
+        return (used < limit, used, limit)
+    
+    async def create_payment(self, user_id: int, plan: str, amount: float, method: str = "card") -> int:
+        return await self.execute(
+            "INSERT INTO payments(user_id, plan, amount, payment_method) VALUES(?, ?, ?, ?)",
+            (user_id, plan, amount, method)
+        )
+    
+    async def approve_payment(self, payment_id: int, admin_id: int) -> bool:
+        payment = await self.fetchone("SELECT * FROM payments WHERE id = ? AND status = 'pending'", (payment_id,))
+        if not payment:
+            return False
+        await self.set_user_plan(payment['user_id'], payment['plan'])
+        await self.execute(
+            "UPDATE payments SET status = 'approved', processed_at = ?, processed_by = ? WHERE id = ?",
+            (time.time(), admin_id, payment_id)
+        )
+        return True
+    
+    async def reject_payment(self, payment_id: int, admin_id: int, reason: str = ""):
+        await self.execute(
+            "UPDATE payments SET status = 'rejected', processed_at = ?, processed_by = ?, admin_note = ? WHERE id = ?",
+            (time.time(), admin_id, reason, payment_id)
+        )
+    
+    async def add_to_watchlist(self, user_id: int, symbol: str) -> bool:
+        max_items = 999 if await self.is_premium(user_id) else 5
+        current = await self.count("watchlists", "user_id = ?", (user_id,))
+        if current >= max_items:
+            return False
+        await self.execute(
+            "INSERT OR IGNORE INTO watchlists(user_id, symbol) VALUES(?, ?)",
+            (user_id, symbol.upper())
+        )
+        return True
+    
+    async def get_watchlist(self, user_id: int):
+        return await self.fetchall(
+            "SELECT * FROM watchlists WHERE user_id = ? ORDER BY added_at DESC",
+            (user_id,)
+        )
+    
+    async def create_alert(self, user_id: int, symbol: str, target_price: float, alert_type: str = "above") -> int:
+        return await self.execute(
+            "INSERT INTO alerts(user_id, symbol, target_price, alert_type) VALUES(?, ?, ?, ?)",
+            (user_id, symbol.upper(), target_price, alert_type)
+        )
+    
+    async def get_active_alerts(self, user_id: int = None):
+        if user_id:
+            return await self.fetchall(
+                "SELECT * FROM alerts WHERE user_id = ? AND active = 1 AND triggered = 0 ORDER BY created_at DESC",
+                (user_id,)
+            )
+        return await self.fetchall("SELECT * FROM alerts WHERE active = 1 AND triggered = 0")
+    
+    async def trigger_alert(self, alert_id: int):
+        await self.execute(
+            "UPDATE alerts SET triggered = 1, triggered_at = ? WHERE id = ?",
+            (time.time(), alert_id)
+        )
+    
+    async def save_ai_conversation(self, user_id: int, question: str, answer: str):
+        await self.execute(
+            "INSERT INTO ai_conversations(user_id, question, answer) VALUES(?, ?, ?)",
+            (user_id, question[:500], answer[:2000])
+        )
+    
+    async def log(self, user_id: int, action: str, details: str = ""):
+        await self.execute(
+            "INSERT INTO logs(user_id, action, details) VALUES(?, ?, ?)",
+            (user_id, action, details)
+        )
+    
+    async def get_full_stats(self) -> Dict:
+        total_users = await self.count("users")
+        premium_users = await self.count("users", "plan != 'free' AND plan_until > ?", (time.time(),))
+        total_revenue = await self.fetchval(
+            "SELECT COALESCE(SUM(amount), 0) FROM payments WHERE status = 'approved'", default=0
+        )
+        pending_payments = await self.count("payments", "status = 'pending'")
+        total_ai_queries = await self.fetchval(
+            "SELECT COALESCE(SUM(total_ai_count), 0) FROM user_state", default=0
+        )
+        
+        return {
+            "total_users": total_users,
+            "premium_users": premium_users,
+            "total_revenue": total_revenue,
+            "pending_payments": pending_payments,
+            "total_ai_queries": total_ai_queries,
+            "conversion_rate": round((premium_users / total_users * 100), 2) if total_users > 0 else 0,
+            "version": APP_VERSION
+        }
+
 # Initialize database
 db = DatabaseEngine(DATABASE_PATH)
 
