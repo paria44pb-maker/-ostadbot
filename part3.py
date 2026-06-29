@@ -504,7 +504,6 @@ async def command_start(message: Message, state: FSMContext):
             f"🚀🔥🚀 *OstadBot* 🚀🔥🚀\n\n🤖 سلام! به ربات خوش آمدید!\n⚠️ خطای موقت. /start رو دوباره بزنید.",
             parse_mode="HTML"
         )
-            pass
     
     # Welcome bonus
     user = await db.get_user(user_id)
