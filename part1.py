@@ -9,7 +9,6 @@
 PART 1: Core Engine - Config, Emoji, Time, Database
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 """
-from part1 import *
 from typing import Optional, Dict, Any, List, Tuple
 import os, sys, json, time, hmac, hashlib, asyncio, logging, re, math, base64, uuid, random, traceback
 from datetime import datetime, timedelta, timezone
