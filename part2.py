@@ -3,14 +3,121 @@ from typing import Optional, Dict, Any, List, Tuple
 # ═══════════════════════════════════════════════════════════
 # PART 2: AI ENGINE, EXCHANGE CLIENT, TECHNICAL ANALYSIS
 # ═══════════════════════════════════════════════════════════
+        
+ g
+                        return price
+    
+    except urllib.error.URLError as url_err:
+        logger.debug(f"CoinEx URL error for {symbol}: {url_err}")
+    except urllib.error.HTTPError as http_err:
+        logger.debug(f"CoinEx HTTP error for {symbol}: {http_err}")
+    except json.JSONDecodeError as json_err:
+        logger.debug(f"CoinEx JSON error for {symbol}: {json_err}")
+    except Exception as e:
+        logger.debug(f"CoinEx fallback error for {symbol}: {e}")
+    
+    # Method 4: Check if we have a cached price (not expired)
+    cache_key = f"price_{symbol}"
+    if cache_key in self._cache:
+        cached = self._cache[cache_key]
+        if time.time() - cached['time'] < 300:  # 5 minutes cache
+            return float(cached['data'])
+    
+    # All methods failed
+    return 0.0
 
+
+async def get_24h_change(self, symbol: str) -> float:
+    """
+    Get 24h price change percentage with fallback.
+    """
+    if not symbol:
+        return 0.0
+    
+    symbol = symbol.upper().strip()
+    
+    # Method 1: From ticker
+    try:
+        ticker = await self.get_ticker(symbol)
+        if ticker and isinstance(ticker, dict):
+            change = float(ticker.get("change_percentage", 0))
+            return change
+    except Exception:
+        pass
+    
+    # Method 2: Direct HTTP
+    try:
+        import urllib.request
+        import ssl
+        
+        url = f"https://api.coinex.com/v2/spot/ticker?market={symbol}"
+        req = urllib.request.Request(url)
+        req.add_header("User-Agent", "Mozilla/5.0")
+        
+        ssl_context = ssl.create_default_context()
+        ssl_context.check_hostname = False
+        ssl_context.verify_mode = ssl.CERT_NONE
+        
+        with urllib.request.urlopen(req, timeout=10, context=ssl_context) as resp:
+            data = json.loads(resp.read().decode())
+            if data.get("code") == 0:
+                ticker_list = data.get("data", [])
+                if isinstance(ticker_list, list) and len(ticker_list) > 0:
+                    return float(ticker_list[0].get("change_percentage", 0))
+                elif isinstance(ticker_list, dict):
+                    return float(ticker_list.get("change_percentage", 0))
+    except Exception:
+        pass
+    
+    return 0.0
+
+
+async def get_multiple_tickers(self, symbols: List[str]) -> Dict[str, Dict]:
+    """
+    Get tickers for multiple symbols with parallel requests.
+    Returns dict of symbol -> ticker_data.
+    """
+    if not symbols:
+        return {}
+    
+    # Validate and clean symbols
+    valid_symbols = [s.upper().strip() for s in symbols if s and isinstance(s, str)]
+    if not valid_symbols:
+        return {}
+    
+    # Make parallel requests
+    tasks = []
+    for sym in valid_symbols:
+        tasks.append(self.get_ticker(sym))
+    
+    results = await asyncio.gather(*tasks, return_exceptions=True)
+    
+    # Build result dict
+    tickers = {}
+    for sym, result in zip(valid_symbols, results):
+        if isinstance(result, dict) and result:
+            tickers[sym] = result
+        elif isinstance(result, Exception):
+            logger.debug(f"Failed to get ticker for {sym}: {result}")
+    
+    return tickers
+
+
+async def close(self) -> None:
+    """
+    Close the HTTP session properly.
+    Should be called when the application shuts down.
+    """
+    try:
+        if self._session and not self._session.closed:
+            await self._session.close()
 # ════════════════════════════════════════
 # GROQ AI ENGINE (ADVANCED)
 # ════════════════════════════════════════
 class GroqAIEngine:
     """
     Advanced Groq AI integration with:
-    - Rate limiting & exponential backoff
+    - Rate limiting and exponential backoff
     - Response caching with LRU eviction
     - Multiple system prompt templates
     - Token tracking and statistics
@@ -105,7 +212,7 @@ class GroqAIEngine:
         return hashlib.md5(content.encode()).hexdigest()
     
     def _check_rate_limit(self) -> bool:
-        """Check if we're within rate limits"""
+        """Check if we are within rate limits"""
         now = time.time()
         while self._request_times and now - self._request_times[0] >= 60:
             self._request_times.popleft()
@@ -251,349 +358,6 @@ class GroqAIEngine:
 
 # Initialize AI engine
 ai = GroqAIEngine()
-
-# ════════════════════════════════════════
-# COINEX EXCHANGE CLIENT
-# ════════════════════════════════════════
-class CoinExClient:
-    """Professional CoinEx exchange API client with caching"""
-    
-    BASE_URL = "https://api.coinex.com/v2"
-    
-    def __init__(self):
-        self._session = None
-        self._request_count = 0
-        self._error_count = 0
-        self._last_request_time = 0
-        self._cache = {}
-        self._cache_ttl = 30  # 30 seconds cache
-    
-    async def _get_session(self) -> aiohttp.ClientSession:
-        """Get or create HTTP session"""
-        if self._session is None or self._session.closed:
-            timeout = aiohttp.ClientTimeout(total=30, connect=10)
-            headers = {
-                "User-Agent": f"OstadBot/{cfg.APP_VERSION}",
-                "Accept": "application/json",
-                "Accept-Encoding": "gzip, deflate",
-            }
-            self._session = aiohttp.ClientSession(timeout=timeout, headers=headers)
-        return self._session
-    
-    async def _rate_limit(self):
-        """Apply rate limiting between requests"""
-        now = time.time()
-        elapsed = now - self._last_request_time
-        if elapsed < 0.1:  # 100ms minimum between requests
-            await asyncio.sleep(0.1 - elapsed)
-        self._last_request_time = time.time()
-    
-    async def _make_request(self, endpoint: str, params: Dict = None) -> Dict[str, Any]:
-        """Make API request with caching and error handling"""
-        await self._rate_limit()
-        
-        # Check cache
-        cache_key = f"{endpoint}:{json.dumps(params or {})}"
-        if cache_key in self._cache:
-            cached = self._cache[cache_key]
-            if time.time() - cached['time'] < self._cache_ttl:
-                return cached['data']
-        
-        url = f"{self.BASE_URL}{endpoint}"
-        
-        for attempt in range(2):
-            try:
-                session = await self._get_session()
-                async with session.get(url, params=params) as response:
-                    self._request_count += 1
-                    
-                    if response.status == 200:
-                        data = await response.json()
-                        if data.get("code") == 0:
-                            # Cache successful response
-                            self._cache[cache_key] = {'data': data, 'time': time.time()}
-                            return data
-                        else:
-                            return {"code": -1, "message": data.get("message", "Unknown error")}
-                    elif response.status == 429:
-                        await asyncio.sleep(1)
-                        continue
-                    else:
-                        if attempt < 1:
-                            await asyncio.sleep(0.5)
-                            continue
-                        return {"code": -1, "message": f"HTTP {response.status}"}
-                        
-            except asyncio.TimeoutError:
-                self._error_count += 1
-                if attempt < 1:
-                    continue
-                return {"code": -1, "message": "Timeout"}
-            except Exception as e:
-                self._error_count += 1
-                logger.error(f"CoinEx request error: {e}")
-                return {"code": -1, "message": str(e)}
-        
-        return {"code": -1, "message": "Max retries exceeded"}
-    
-    async def get_ticker(self, symbol: str = "BTCUSDT") -> Dict[str, Any]:
-    """Get ticker data for a symbol"""
-    result = await self._make_request("/spot/ticker", {"market": symbol.upper()})
-    if result.get("code") == 0:
-        data = result.get("data", {})
-        # If data is a list, return first item
-        if isinstance(data, list) and len(data) > 0:
-            return data[0]
-        elif isinstance(data, dict):
-            return data
-    return {}
-    
-    async def get_klines(
-        self, symbol: str = "BTCUSDT", period: str = "1hour", limit: int = 100
-    ) -> List[Dict]:
-        """Get kline/candlestick data"""
-        result = await self._make_request("/spot/kline", {
-            "market": symbol.upper(),
-            "period": period,
-            "limit": str(limit)
-        })
-        return result.get("data", []) if result.get("code") == 0 else []
-    
-    async def get_orderbook(self, symbol: str = "BTCUSDT", limit: int = 20) -> Dict:
-        """Get order book depth"""
-        result = await self._make_request("/spot/depth", {
-            "market": symbol.upper(),
-            "limit": str(limit),
-            "interval": "0"
-        })
-        return result.get("data", {}) if result.get("code") == 0 else {}
-    
-    async def get_multiple_tickers(self, symbols: List[str]) -> Dict[str, Dict]:
-        """Get tickers for multiple symbols efficiently"""
-        tasks = [self.get_ticker(sym) for sym in symbols]
-        results = await asyncio.gather(*tasks, return_exceptions=True)
-        
-        tickers = {}
-        for sym, result in zip(symbols, results):
-            if isinstance(result, dict) and result:
-                tickers[sym] = result
-        return tickers
-    
-async def get_price(self, symbol: str) -> float:
-    """Get current price for a symbol"""
-    if not symbol:
-        return 0.0
-    
-    symbol = symbol.upper().strip()
-    
-    try:
-        ticker = await self.get_ticker(symbol)
-        
-        # Handle if ticker is a list
-        if isinstance(ticker, list):
-            if len(ticker) > 0:
-                ticker = ticker[0]
-            else:
-                return 0.0
-        
-        # Handle if ticker is a dict
-        if isinstance(ticker, dict):
-            price = float(ticker.get("last", 0))
-            if price > 0:
-                return price
-        
-    except Exception:
-        pass
-    
-    return 0.0
-    
-    # Method 2: Try to get from latest kline close price
-    try:
-        klines = await self.get_klines(symbol, "1min", 1)
-        if klines and isinstance(klines, list) and len(klines) > 0:
-            latest = klines[-1]
-            if isinstance(latest, dict):
-                price = float(latest.get("close", 0))
-                if price > 0:
-                    return price
-    except Exception:
-        pass
-    
-    # Method 3: Direct synchronous HTTP request as last resort
-    try:
-        import urllib.request
-        import ssl
-        
-        url = f"https://api.coinex.com/v2/spot/ticker?market={symbol}"
-        
-        # Create request with proper headers
-        req = urllib.request.Request(url)
-        req.add_header("User-Agent", "Mozilla/5.0 (compatible; OstadBot/10.0)")
-        req.add_header("Accept", "application/json")
-        req.add_header("Accept-Encoding", "gzip, deflate")
-        
-        # Create SSL context that doesn't verify (for restricted networks)
-        ssl_context = ssl.create_default_context()
-        ssl_context.check_hostname = False
-        ssl_context.verify_mode = ssl.CERT_NONE
-        
-        # Make request with timeout
-        with urllib.request.urlopen(req, timeout=15, context=ssl_context) as response:
-            raw_data = response.read().decode('utf-8')
-            data = json.loads(raw_data)
-            
-            if data.get("code") == 0:
-                ticker_data = data.get("data", {})
-                
-                # Handle both list and dict responses
-                if isinstance(ticker_data, list) and len(ticker_data) > 0:
-                    item = ticker_data[0]
-                    if isinstance(item, dict):
-                        price = float(item.get("last", 0))
-                        if price > 0:
-                            # Cache this price for future use
-                            self._cache[f"price_{symbol}"] = {
-                                'data': price,
-                                'time': time.time()
-                            }
-                            return price
-                
-                elif isinstance(ticker_data, dict):
-                    price = float(ticker_data.get("last", 0))
-                    if price > 0:
-                        self._cache[f"price_{symbol}"] = {
-                            'data': price,
-                            'time': time.time()
-                        }
-                        return price
-    
-    except urllib.error.URLError as url_err:
-        logger.debug(f"CoinEx URL error for {symbol}: {url_err}")
-    except urllib.error.HTTPError as http_err:
-        logger.debug(f"CoinEx HTTP error for {symbol}: {http_err}")
-    except json.JSONDecodeError as json_err:
-        logger.debug(f"CoinEx JSON error for {symbol}: {json_err}")
-    except Exception as e:
-        logger.debug(f"CoinEx fallback error for {symbol}: {e}")
-    
-    # Method 4: Check if we have a cached price (not expired)
-    cache_key = f"price_{symbol}"
-    if cache_key in self._cache:
-        cached = self._cache[cache_key]
-        if time.time() - cached['time'] < 300:  # 5 minutes cache
-            return float(cached['data'])
-    
-    # All methods failed
-    return 0.0
-
-
-async def get_24h_change(self, symbol: str) -> float:
-    """
-    Get 24h price change percentage with fallback.
-    """
-    if not symbol:
-        return 0.0
-    
-    symbol = symbol.upper().strip()
-    
-    # Method 1: From ticker
-    try:
-        ticker = await self.get_ticker(symbol)
-        if ticker and isinstance(ticker, dict):
-            change = float(ticker.get("change_percentage", 0))
-            return change
-    except Exception:
-        pass
-    
-    # Method 2: Direct HTTP
-    try:
-        import urllib.request
-        import ssl
-        
-        url = f"https://api.coinex.com/v2/spot/ticker?market={symbol}"
-        req = urllib.request.Request(url)
-        req.add_header("User-Agent", "Mozilla/5.0")
-        
-        ssl_context = ssl.create_default_context()
-        ssl_context.check_hostname = False
-        ssl_context.verify_mode = ssl.CERT_NONE
-        
-        with urllib.request.urlopen(req, timeout=10, context=ssl_context) as resp:
-            data = json.loads(resp.read().decode())
-            if data.get("code") == 0:
-                ticker_list = data.get("data", [])
-                if isinstance(ticker_list, list) and len(ticker_list) > 0:
-                    return float(ticker_list[0].get("change_percentage", 0))
-                elif isinstance(ticker_list, dict):
-                    return float(ticker_list.get("change_percentage", 0))
-    except Exception:
-        pass
-    
-    return 0.0
-
-
-async def get_multiple_tickers(self, symbols: List[str]) -> Dict[str, Dict]:
-    """
-    Get tickers for multiple symbols with parallel requests.
-    Returns dict of symbol -> ticker_data.
-    """
-    if not symbols:
-        return {}
-    
-    # Validate and clean symbols
-    valid_symbols = [s.upper().strip() for s in symbols if s and isinstance(s, str)]
-    if not valid_symbols:
-        return {}
-    
-    # Make parallel requests
-    tasks = []
-    for sym in valid_symbols:
-        tasks.append(self.get_ticker(sym))
-    
-    results = await asyncio.gather(*tasks, return_exceptions=True)
-    
-    # Build result dict
-    tickers = {}
-    for sym, result in zip(valid_symbols, results):
-        if isinstance(result, dict) and result:
-            tickers[sym] = result
-        elif isinstance(result, Exception):
-            logger.debug(f"Failed to get ticker for {sym}: {result}")
-    
-    return tickers
-
-
-async def close(self) -> None:
-    """
-    Close the HTTP session properly.
-    Should be called when the application shuts down.
-    """
-    try:
-        if self._session and not self._session.closed:
-            await self._session.close()
-            logger.debug("CoinEx HTTP session closed")
-    except Exception as e:
-        logger.debug(f"Error closing CoinEx session: {e}")
-    
-    # Clear cache
-    self._cache.clear()
-
-
-def get_stats(self) -> Dict[str, Any]:
-    """
-    Get exchange client statistics for monitoring.
-    """
-    return {
-        "total_requests": self._request_count,
-        "total_errors": self._error_count,
-        "cache_size": len(self._cache),
-        "cache_ttl": self._cache_ttl,
-        "session_active": self._session is not None and not self._session.closed,
-        "last_request_time": self._last_request_time,
-                        }
-    
-# Initialize exchange client
-exchange = CoinExClient()
 
 # ════════════════════════════════════════
 # TECHNICAL ANALYSIS ENGINE (COMPLETE)
