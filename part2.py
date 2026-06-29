@@ -690,8 +690,7 @@ async def get_watchlist(self, user_id: int) -> List[Dict]:
         cutoff = time.time() - (days * 86400)
         await self.execute("DELETE FROM logs WHERE created_at < ?", (cutoff,))
         return await self.count("logs")
-    
-    # ════════════════════════════════════════
+        # ════════════════════════════════════════
     # CLEANUP OPERATIONS
     # ════════════════════════════════════════
     
@@ -707,9 +706,8 @@ async def get_watchlist(self, user_id: int) -> List[Dict]:
         await self.execute("DELETE FROM market_data_cache WHERE cached_at < ?", (cutoff,))
         return await self.count("market_data_cache")
 
-# Initialize database (بیرون کلاس - ۰ فاصله)
+# Initialize database
 db = DatabaseEngine(DATABASE_PATH)
-
 # ════════════════════════════════════════
 # SECTION 11: GROQ AI ENGINE (ADVANCED)
 # ════════════════════════════════════════
