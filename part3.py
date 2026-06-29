@@ -842,9 +842,15 @@ async def cb_analyze(callback: CallbackQuery):
 # ── TIME ──
 @router.callback_query(F.data == "time")
 async def cb_time(callback: CallbackQuery):
-    await callback.message.edit_text(MSG.time_info(), reply_markup=KB.back_to_main(), parse_mode="HTML")
+    try:
+        await callback.message.edit_text(
+            MSG.time_info(),
+            reply_markup=KB.back_to_main(),
+            parse_mode="HTML"
+        )
+    except:
+        pass
     await callback.answer()
-
 # ── VIP ──
 @router.callback_query(F.data == "vip")
 async def cb_vip(callback: CallbackQuery):
