@@ -122,6 +122,102 @@ class DatabaseEngine:
         processed_at REAL DEFAULT 0,
         processed_by INTEGER DEFAULT 0
     );
+FULL_SCHEMA = """
+    CREATE TABLE IF NOT EXISTS users (
+        user_id INTEGER PRIMARY KEY,
+        username TEXT DEFAULT '',
+        full_name TEXT DEFAULT '',
+        phone TEXT DEFAULT '',
+        email TEXT DEFAULT '',
+        language TEXT DEFAULT 'fa',
+        plan TEXT DEFAULT 'free',
+        plan_until REAL DEFAULT 0,
+        welcome_bonus INTEGER DEFAULT 0,
+        risk_level TEXT DEFAULT 'medium',
+        total_paid REAL DEFAULT 0,
+        total_earnings REAL DEFAULT 0,
+        referral_code TEXT DEFAULT '',
+        referred_by INTEGER DEFAULT 0,
+        total_referrals INTEGER DEFAULT 0,
+        referral_earnings REAL DEFAULT 0,
+        is_banned INTEGER DEFAULT 0,
+        is_admin INTEGER DEFAULT 0,
+        notifications_enabled INTEGER DEFAULT 1,
+        created_at REAL DEFAULT (strftime('%s', 'now')),
+        last_active REAL DEFAULT (strftime('%s', 'now')),
+        metadata TEXT DEFAULT '{}'
+    );
+    
+    CREATE TABLE IF NOT EXISTS user_state (
+        user_id INTEGER PRIMARY KEY,
+        daily_ai_count INTEGER DEFAULT 0,
+        total_ai_count INTEGER DEFAULT 0,
+        daily_signal_count INTEGER DEFAULT 0,
+        total_signal_count INTEGER DEFAULT 0,
+        last_ai_at REAL DEFAULT 0,
+        last_signal_at REAL DEFAULT 0,
+        last_reset_day TEXT DEFAULT '',
+        last_active_at REAL DEFAULT 0
+    );
+    
+    CREATE TABLE IF NOT EXISTS watchlists (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        symbol TEXT NOT NULL,
+        note TEXT DEFAULT '',
+        target_price REAL DEFAULT 0,
+        added_at REAL DEFAULT (strftime('%s', 'now')),
+        UNIQUE(user_id, symbol)
+    );
+    
+    CREATE TABLE IF NOT EXISTS alerts (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        symbol TEXT NOT NULL,
+        target_price REAL NOT NULL,
+        alert_type TEXT DEFAULT 'above',
+        note TEXT DEFAULT '',
+        active INTEGER DEFAULT 1,
+        triggered INTEGER DEFAULT 0,
+        triggered_at REAL DEFAULT 0,
+        notification_sent INTEGER DEFAULT 0,
+        created_at REAL DEFAULT (strftime('%s', 'now'))
+    );
+    
+    CREATE TABLE IF NOT EXISTS signals (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        symbol TEXT NOT NULL,
+        direction TEXT NOT NULL,
+        entry_price REAL NOT NULL,
+        stop_loss REAL NOT NULL,
+        take_profit1 REAL,
+        take_profit2 REAL,
+        take_profit3 REAL,
+        confidence REAL DEFAULT 0.5,
+        timeframe TEXT DEFAULT '4h',
+        analysis_type TEXT DEFAULT 'ai',
+        status TEXT DEFAULT 'active',
+        result TEXT DEFAULT '',
+        profit_percent REAL DEFAULT 0,
+        created_at REAL DEFAULT (strftime('%s', 'now')),
+        closed_at REAL DEFAULT 0
+    );
+    
+    CREATE TABLE IF NOT EXISTS payments (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        plan TEXT NOT NULL,
+        amount REAL NOT NULL,
+        payment_method TEXT DEFAULT 'card',
+        status TEXT DEFAULT 'pending',
+        receipt_file_id TEXT DEFAULT '',
+        receipt_message_id INTEGER DEFAULT 0,
+        admin_note TEXT DEFAULT '',
+        transaction_id TEXT DEFAULT '',
+        created_at REAL DEFAULT (strftime('%s', 'now')),
+        processed_at REAL DEFAULT 0,
+        processed_by INTEGER DEFAULT 0
+    );
     
     CREATE TABLE IF NOT EXISTS ai_conversations (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
