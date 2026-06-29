@@ -458,11 +458,26 @@ async def health_check():
         # Check database connectivity
         user_count = await db.count("users")
         
-        # Check exchange connectivity
-        btc_price = await exchange.get_price("BTCUSDT")
+        # Check exchange connectivity with fallback
+        btc_price = 0.0
+        exchange_status = "error"
+        try:
+            btc_price = await exchange.get_price("BTCUSDT")
+            if btc_price > 0:
+                exchange_status = "ok"
+        except:
+            pass
         
         # Check bot connectivity
-        bot_info = await bot.get_me() if bot else None
+        bot_status = "error"
+        bot_info = None
+        if bot:
+            try:
+                bot_info = await bot.get_me()
+                if bot_info:
+                    bot_status = "ok"
+            except:
+                pass
         
         return {
             "status": "healthy",
@@ -472,8 +487,8 @@ async def health_check():
             "uptime": TT.uptime(bot_start_time),
             "checks": {
                 "database": "ok" if user_count >= 0 else "error",
-                "exchange": "ok" if btc_price > 0 else "error",
-                "telegram": "ok" if bot_info else "error",
+                "exchange": exchange_status,
+                "telegram": bot_status,
                 "users": user_count,
                 "btc_price": btc_price,
             }
@@ -486,7 +501,7 @@ async def health_check():
             "version": cfg.APP_VERSION,
             "uptime": TT.uptime(bot_start_time),
             "error": str(e)[:200],
-        }
+}
 
 
 @app.get("/stats")
