@@ -670,14 +670,54 @@ async def cmd_start(message: Message, state: FSMContext):
 @router.callback_query(F.data == "main_menu")
 @rate_limit(0.3)
 async def cb_main_menu(callback: CallbackQuery):
+    """Return to main menu - with error handling for unchanged messages"""
     user_id = callback.from_user.id
     plan = await db.get_plan(user_id)
+    
+    # Owner always gets elite plan for free
     if is_owner(user_id) and plan != "elite":
         await db.set_plan(user_id, "elite", 36500)
         plan = "elite"
-    await callback.message.edit_text(f"{E.HOME} *منوی اصلی*\n{E.POINT_DOWN} انتخاب کنید:", reply_markup=KB.main_menu(plan, user_id), parse_mode="HTML")
-    await callback.answer()
+    
+    # Get fresh plan info
+    user = await db.get_user(user_id)
+    days_left = 0
+    if user and user.get('plan_until'):
+        days_left = max(0, int((user['plan_until'] - time.time()) / 86400))
+    
+    # Get AI usage
+    ai_used = await db.get_ai_count(user_id)
+    ai_limit = await db.get_ai_limit(user_id)
+    ai_left = ai_limit - ai_used
+    
+    # Build menu text with status
+    plan_icon = E.plan_icon(plan)
+    plan_name = {"free": "رایگان 🆓", "vip": "VIP 👑", "pro": "PRO 💎", "elite": "ELITE 👑💎"}.get(plan, "رایگان")
+    
+    menu_text = f"""
+{E.HOME} *منوی اصلی*
 
+{plan_icon} *پلن:* {plan_name}
+{E.CALENDAR} *اعتبار:* {days_left} روز
+{E.BRAIN} *AI باقی‌مانده:* {ai_left} عدد
+
+{E.POINT_DOWN} *گزینه مورد نظر را انتخاب کنید:*
+"""
+    
+    try:
+        await callback.message.edit_text(
+            menu_text,
+            reply_markup=KB.main_menu(plan, user_id),
+            parse_mode="HTML"
+        )
+    except TelegramAPIError:
+        # Message not modified - content is the same
+        pass
+    except Exception as e:
+        logger.error(f"Main menu error: {e}")
+    
+    await callback.answer()
+    
 # ── MARKET ──
 @router.callback_query(F.data == "market")
 @rate_limit(0.5)
