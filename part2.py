@@ -1,3 +1,4 @@
+from collections import OrderedDict, deque
 # ═══════════════════════════════════════════════════════════
 # PART 2: AI ENGINE, EXCHANGE CLIENT, TECHNICAL ANALYSIS
 # ═══════════════════════════════════════════════════════════
