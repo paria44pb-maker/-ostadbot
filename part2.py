@@ -699,17 +699,84 @@ class DatabaseEngine:
     SCHEMA_VERSION = 8
     
     FULL_SCHEMA = """
-    CREATE TABLE IF NOT EXISTS users (
-        user_id INTEGER PRIMARY KEY,
-        username TEXT DEFAULT '',
-        full_name TEXT DEFAULT '',
-        plan TEXT DEFAULT 'free',
-        plan_until REAL DEFAULT 0,
-        welcome_bonus INTEGER DEFAULT 0,
-        created_at REAL DEFAULT (strftime('%s', 'now')),
-        last_active REAL DEFAULT (strftime('%s', 'now'))
-    );
-    """
+CREATE TABLE IF NOT EXISTS users (
+    user_id INTEGER PRIMARY KEY,
+    username TEXT DEFAULT '',
+    full_name TEXT DEFAULT '',
+    plan TEXT DEFAULT 'free',
+    plan_until REAL DEFAULT 0,
+    welcome_bonus INTEGER DEFAULT 0,
+    created_at REAL DEFAULT (strftime('%s', 'now')),
+    last_active REAL DEFAULT (strftime('%s', 'now'))
+);
+
+CREATE TABLE IF NOT EXISTS user_state (
+    user_id INTEGER PRIMARY KEY,
+    daily_ai_count INTEGER DEFAULT 0,
+    total_ai_count INTEGER DEFAULT 0,
+    last_reset_day TEXT DEFAULT ''
+);
+
+CREATE TABLE IF NOT EXISTS watchlists (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    symbol TEXT NOT NULL,
+    added_at REAL DEFAULT (strftime('%s', 'now')),
+    UNIQUE(user_id, symbol)
+);
+
+CREATE TABLE IF NOT EXISTS alerts (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    symbol TEXT NOT NULL,
+    target_price REAL NOT NULL,
+    alert_type TEXT DEFAULT 'above',
+    active INTEGER DEFAULT 1,
+    triggered INTEGER DEFAULT 0,
+    created_at REAL DEFAULT (strftime('%s', 'now'))
+);
+
+CREATE TABLE IF NOT EXISTS signals (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    symbol TEXT NOT NULL,
+    direction TEXT NOT NULL,
+    entry_price REAL NOT NULL,
+    stop_loss REAL NOT NULL,
+    take_profit1 REAL,
+    take_profit2 REAL,
+    take_profit3 REAL,
+    confidence REAL DEFAULT 0.5,
+    status TEXT DEFAULT 'active',
+    created_at REAL DEFAULT (strftime('%s', 'now'))
+);
+
+CREATE TABLE IF NOT EXISTS payments (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    plan TEXT NOT NULL,
+    amount REAL NOT NULL,
+    status TEXT DEFAULT 'pending',
+    receipt_file_id TEXT DEFAULT '',
+    created_at REAL DEFAULT (strftime('%s', 'now')),
+    processed_at REAL DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS ai_conversations (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    question TEXT NOT NULL,
+    answer TEXT NOT NULL,
+    created_at REAL DEFAULT (strftime('%s', 'now'))
+);
+
+CREATE TABLE IF NOT EXISTS logs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER DEFAULT 0,
+    action TEXT NOT NULL,
+    details TEXT DEFAULT '',
+    created_at REAL DEFAULT (strftime('%s', 'now'))
+);
+"""
     
     def __init__(self, db_path: str = "ostadbot.db"):
         self.db_path = db_path
