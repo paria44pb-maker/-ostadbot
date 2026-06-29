@@ -1,3 +1,6 @@
+from part1 import *
+from part2 import *
+from part3 import *
 from typing import Optional, Dict, Any, List, Tuple
 # ═══════════════════════════════════════════════════════════
 # PART 4: FASTAPI, BACKGROUND TASKS, ALERT CHECKER, MAIN
