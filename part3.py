@@ -455,26 +455,37 @@ router = Router()
 # ── Start Command ──
 
 @router.message(CommandStart())
+@router.message(CommandStart())
 async def command_start(message: Message, state: FSMContext):
-    """Handle /start command"""
-    user_id = message.from_user.id
-    full_name = message.from_user.full_name or "کاربر گرامی"
-    username = message.from_user.username or ""
-    
-    await db.upsert_user(user_id, username, full_name)
-    
-    # Process referral
-    args = message.text.split() if message.text else []
-    if len(args) > 1 and args[1].startswith("ref_"):
-        try:
-            referrer_id = int(args[1].replace("ref_", ""))
-            if referrer_id != user_id:
-                user = await db.get_user(user_id)
-                if user and not user.get('referred_by'):
-                    await db.execute("UPDATE users SET referred_by=? WHERE user_id=?", (referrer_id, user_id))
-                    await db.execute("UPDATE users SET total_referrals=total_referrals+1 WHERE user_id=?", (referrer_id,))
-        except:
-            pass
+    try:
+        user_id = message.from_user.id
+        full_name = message.from_user.full_name or "کاربر"
+        username = message.from_user.username or ""
+        
+        await db.upsert_user(user_id, username, full_name)
+        
+        user = await db.get_user(user_id)
+        if user and not user.get('welcome_bonus'):
+            await db.execute(
+                "UPDATE users SET plan='vip', plan_until=?, welcome_bonus=1 WHERE user_id=?",
+                (time.time() + WELCOME_BONUS_DAYS * 86400, user_id)
+            )
+        
+        plan = await db.get_user_plan(user_id)
+        days_left = 0
+        if user and user.get('plan_until'):
+            days_left = max(0, int((user['plan_until'] - time.time()) / 86400))
+        
+        await message.answer(
+            MSG.welcome_message(full_name, plan, days_left),
+            reply_markup=KB.main_menu(plan),
+            parse_mode="HTML"
+        )
+        
+    except Exception as e:
+        import traceback
+        logger.error(f"START ERROR: {e}\n{traceback.format_exc()}")
+        await message.answer(f"🚀 سلام! خطا: {str(e)[:200]}")
     
     # Welcome bonus
     user = await db.get_user(user_id)
