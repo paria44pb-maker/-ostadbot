@@ -530,16 +530,41 @@ class Messages:
     def time_info() -> str:
         now = TT.now()
         session = TT.session_details(now)
+        weekend_text = "بله 🕌" if TT.is_weekend(now) else "خیر"
+        holiday_text = "بله" if TT.is_holiday(now) else "خیر"
+        night_text = "بله 🌙" if TT.is_night_time(now) else "خیر ☀️"
+        date_str = TT.format(now, 'date')
+        time_str = TT.format(now, 'time')
+        season_str = TT.season(now)
+        session_name = session['name']
+        session_start = session['start']
+        session_end = session['end']
+        session_progress = session['progress']
+        session_remaining = session['remaining']
+        day_name = TT.DAYS[now.weekday()]
+        
         return f"""
-{E.CLOCK} *زمان تهران*
+{E.CLOCK} *اطلاعات زمان و تاریخ تهران*
 
-{E.CALENDAR} {TT.format(now, 'date')}
-{E.WATCH} {TT.for
-        {E.CALENDAR} {TT.format(now, 'date')}
-{E.WATCH} {TT.format(now, 'time')}
-{E.GLOBE} {TT.season(now)}
-{E.CHART} {session['name']}
-{E.INFO} جمعه: {'بله 🕌' if TT.is_weekend(now) else 'خیر'}
+{E.CALENDAR} *تاریخ امروز:*
+{E.POINT_RIGHT} {date_str}
+{E.POINT_RIGHT} {day_name}
+
+{E.WATCH} *ساعت فعلی:* {time_str}
+
+{E.GLOBE} *اطلاعات فصلی:*
+{E.POINT_RIGHT} فصل: {season_str}
+{E.POINT_RIGHT} تعطیلی (جمعه): {weekend_text}
+{E.POINT_RIGHT} تعطیل رسمی: {holiday_text}
+{E.POINT_RIGHT} شب: {night_text}
+
+{E.CHART} *سشن معاملاتی:*
+{E.POINT_RIGHT} فعلی: {session_name}
+{E.POINT_RIGHT} شروع: {session_start} | پایان: {session_end}
+{E.POINT_RIGHT} پیشرفت: {session_progress}٪
+{E.POINT_RIGHT} باقی‌مانده: {session_remaining} ساعت
+
+{E.INFO} *راهنما:* بازار کریپتو ۲۴/۷ فعال است.
 """
     
     @staticmethod
