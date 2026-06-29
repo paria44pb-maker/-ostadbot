@@ -337,9 +337,16 @@ class CoinExClient:
         return {"code": -1, "message": "Max retries exceeded"}
     
     async def get_ticker(self, symbol: str = "BTCUSDT") -> Dict[str, Any]:
-        """Get ticker data for a symbol"""
-        result = await self._make_request("/spot/ticker", {"market": symbol.upper()})
-        return result.get("data", {}) if result.get("code") == 0 else {}
+    """Get ticker data for a symbol"""
+    result = await self._make_request("/spot/ticker", {"market": symbol.upper()})
+    if result.get("code") == 0:
+        data = result.get("data", {})
+        # If data is a list, return first item
+        if isinstance(data, list) and len(data) > 0:
+            return data[0]
+        elif isinstance(data, dict):
+            return data
+    return {}
     
     async def get_klines(
         self, symbol: str = "BTCUSDT", period: str = "1hour", limit: int = 100
@@ -373,24 +380,32 @@ class CoinExClient:
         return tickers
     
 async def get_price(self, symbol: str) -> float:
-    """
-    Get current price for a symbol with multiple fallback methods.
-    Tries: cached ticker -> klines -> direct HTTP -> returns 0.0
-    """
+    """Get current price for a symbol"""
     if not symbol:
         return 0.0
     
     symbol = symbol.upper().strip()
     
-    # Method 1: Get from cached ticker data
     try:
         ticker = await self.get_ticker(symbol)
-        if ticker and isinstance(ticker, dict):
+        
+        # Handle if ticker is a list
+        if isinstance(ticker, list):
+            if len(ticker) > 0:
+                ticker = ticker[0]
+            else:
+                return 0.0
+        
+        # Handle if ticker is a dict
+        if isinstance(ticker, dict):
             price = float(ticker.get("last", 0))
             if price > 0:
                 return price
+        
     except Exception:
         pass
+    
+    return 0.0
     
     # Method 2: Try to get from latest kline close price
     try:
