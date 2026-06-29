@@ -1,5 +1,4 @@
 from part1 import *
-from part2 import *
 from typing import Optional, Dict, Any, List, Tuple
 # ═══════════════════════════════════════════════════════════
 # PART 2: AI ENGINE, EXCHANGE CLIENT, TECHNICAL ANALYSIS
