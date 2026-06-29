@@ -3,114 +3,255 @@ from typing import Optional, Dict, Any, List, Tuple
 # ═══════════════════════════════════════════════════════════
 # PART 2: AI ENGINE, EXCHANGE CLIENT, TECHNICAL ANALYSIS
 # ═══════════════════════════════════════════════════════════
+
+# ════════════════════════════════════════
+# GROQ AI ENGINE (ADVANCED)
+# ════════════════════════════════════════
+class GroqAIEngine:
+    """
+    Advanced Groq AI integration with:
+    - Rate limiting and exponential backoff
+    - Response caching with LRU eviction
+    - Multiple system prompt templates
+    - Token tracking and statistics
+    - Comprehensive error recovery
+    """
+    
+    def __init__(self, api_key: str = ""):
+        self.api_key = api_key or cfg.GROQ_API_KEY
+        self.client = None
+        if self.api_key:
+            try:
+                self.client = Groq(api_key=self.api_key)
+                logger.info("Groq AI client initialized")
+            except Exception as e:
+                logger.error(f"Groq init error: {e}")
         
- g
-                        return price
+        self._request_times = deque(maxlen=100)
+        self._daily_tokens = 0
+        self._daily_reset = ""
+        self._response_cache = OrderedDict()
+        self._cache_max_size = 200
+        self._total_requests = 0
+        self._total_errors = 0
+        self._system_prompts = self._build_prompts()
     
-    except urllib.error.URLError as url_err:
-        logger.debug(f"CoinEx URL error for {symbol}: {url_err}")
-    except urllib.error.HTTPError as http_err:
-        logger.debug(f"CoinEx HTTP error for {symbol}: {http_err}")
-    except json.JSONDecodeError as json_err:
-        logger.debug(f"CoinEx JSON error for {symbol}: {json_err}")
-    except Exception as e:
-        logger.debug(f"CoinEx fallback error for {symbol}: {e}")
-    
-    # Method 4: Check if we have a cached price (not expired)
-    cache_key = f"price_{symbol}"
-    if cache_key in self._cache:
-        cached = self._cache[cache_key]
-        if time.time() - cached['time'] < 300:  # 5 minutes cache
-            return float(cached['data'])
-    
-    # All methods failed
-    return 0.0
+    def _build_prompts(self) -> Dict[str, str]:
+        """Build comprehensive system prompts for different analysis types"""
+        return {
+            "default": """شما یک دستیار حرفه‌ای تحلیل بازار کریپتو به زبان فارسی هستید.
 
+قوانین پاسخگویی:
+۱. همیشه به فارسی روان و حرفه‌ای پاسخ بدهید
+۲. از شکلک‌های مناسب استفاده کنید
+۳. تحلیل دقیق، عملی و بدون حاشیه بدهید
+۴. حد ضرر و حد سود را مشخص کنید
+۵. ریسک‌ها را شفاف بیان کنید
+۶. هرگز وعده سود قطعی ندهید
+۷. همیشه یادآوری کنید که این تحلیل شخصی است
+۸. از اعداد و ارقام دقیق استفاده کنید
+۹. روند کلی بازار را در نظر بگیرید
+۱۰. به اخبار و رویدادهای مهم اشاره کنید""",
+            
+            "technical": """شما یک تحلیلگر تکنیکال حرفه‌ای بازار کریپتو هستید.
 
-async def get_24h_change(self, symbol: str) -> float:
-    """
-    Get 24h price change percentage with fallback.
-    """
-    if not symbol:
-        return 0.0
+تحلیل شما باید شامل:
+۱. وضعیت RSI و تفسیر آن
+۲. وضعیت MACD و سیگنال‌های آن
+۳. سطوح حمایت و مقاومت کلیدی
+۴. سطوح فیبوناچی مهم
+۵. الگوهای کندل استیک
+۶. روند کلی بازار (صعودی/نزولی/خنثی)
+۷. تحلیل حجم معاملات
+۸. پیش‌بینی حرکت بعدی قیمت
+۹. نقاط ورود و خروج پیشنهادی
+۱۰. حد ضرر منطقی""",
+            
+            "signal": """شما یک سیگنال‌دهنده حرفه‌ای کریپتو هستید.
+
+سیگنال باید شامل:
+۱. جهت معامله (LONG/SHORT)
+۲. قیمت ورود دقیق
+۳. حد ضرر
+۴. اهداف قیمتی (حداقل ۳ سطح)
+۵. میزان اطمینان (درصد)
+۶. نسبت ریسک به ریوارد
+۷. تایم‌فریم پیشنهادی
+۸. دلیل صدور سیگنال""",
+            
+            "risk": """شما یک مدیر ریسک حرفه‌ای هستید.
+
+تحلیل ریسک باید شامل:
+۱. میزان ریسک معامله (کم/متوسط/زیاد)
+۲. حداکثر سرمایه پیشنهادی
+۳. نسبت ریسک به ریوارد
+۴. احتمال موفقیت
+۵. عوامل تاثیرگذار بر ریسک
+۶. توصیه‌های مدیریت سرمایه""",
+            
+            "news": """شما یک تحلیلگر اخبار کریپتو هستید.
+
+تحلیل خبر باید شامل:
+۱. خلاصه خبر
+۲. تاثیر بر بازار (مثبت/منفی/خنثی)
+۳. میزان اهمیت (کم/متوسط/زیاد)
+۴. ارزهای متاثر
+۵. پیش‌بینی واکنش بازار""",
+        }
     
-    symbol = symbol.upper().strip()
+    def _get_cache_key(self, prompt: str, system_type: str) -> str:
+        """Generate cache key for a prompt"""
+        content = f"{system_type}:{prompt}"
+        return hashlib.md5(content.encode()).hexdigest()
     
-    # Method 1: From ticker
-    try:
-        ticker = await self.get_ticker(symbol)
-        if ticker and isinstance(ticker, dict):
-            change = float(ticker.get("change_percentage", 0))
-            return change
-    except Exception:
-        pass
-    
-    # Method 2: Direct HTTP
-    try:
-        import urllib.request
-        import ssl
+    def _check_rate_limit(self) -> bool:
+        """Check if we are within rate limits"""
+        now = time.time()
+        while self._request_times and now - self._request_times[0] >= 60:
+            self._request_times.popleft()
         
-        url = f"https://api.coinex.com/v2/spot/ticker?market={symbol}"
-        req = urllib.request.Request(url)
-        req.add_header("User-Agent", "Mozilla/5.0")
+        today = datetime.now(timezone.utc).strftime('%Y-%m-%d')
+        if today != self._daily_reset:
+            self._daily_tokens = 0
+            self._daily_reset = today
         
-        ssl_context = ssl.create_default_context()
-        ssl_context.check_hostname = False
-        ssl_context.verify_mode = ssl.CERT_NONE
+        return len(self._request_times) < cfg.GROQ_RPM
+    
+    async def ask(
+        self,
+        prompt: str,
+        context: str = "",
+        system_type: str = "default",
+        temperature: float = 0.3,
+        max_tokens: int = 1024,
+        use_cache: bool = True
+    ) -> str:
+        """Main AI query method with full error handling"""
         
-        with urllib.request.urlopen(req, timeout=10, context=ssl_context) as resp:
-            data = json.loads(resp.read().decode())
-            if data.get("code") == 0:
-                ticker_list = data.get("data", [])
-                if isinstance(ticker_list, list) and len(ticker_list) > 0:
-                    return float(ticker_list[0].get("change_percentage", 0))
-                elif isinstance(ticker_list, dict):
-                    return float(ticker_list.get("change_percentage", 0))
-    except Exception:
-        pass
+        if not self.client:
+            return "❌ کلید API هوش مصنوعی تنظیم نشده است. لطفاً با پشتیبانی تماس بگیرید."
+        
+        # Check cache first
+        cache_key = self._get_cache_key(prompt, system_type)
+        if use_cache and cache_key in self._response_cache:
+            return self._response_cache[cache_key]
+        
+        # Rate limit check
+        if not self._check_rate_limit():
+            wait_time = 2.0
+            await asyncio.sleep(wait_time)
+        
+        # Build messages
+        system_prompt = self._system_prompts.get(system_type, self._system_prompts["default"])
+        messages = [{"role": "system", "content": system_prompt}]
+        if context:
+            messages.append({"role": "system", "content": f"اطلاعات بازار:\n{context}"})
+        messages.append({"role": "user", "content": prompt})
+        
+        start_time = time.time()
+        self._total_requests += 1
+        
+        # Retry loop with exponential backoff
+        for attempt in range(3):
+            try:
+                loop = asyncio.get_running_loop()
+                
+                def sync_call():
+                    return self.client.chat.completions.create(
+                        model="llama-3.3-70b-versatile",
+                        messages=messages,
+                        temperature=temperature,
+                        max_tokens=max_tokens,
+                        top_p=0.9,
+                        frequency_penalty=0.1,
+                        presence_penalty=0.1,
+                    )
+                
+                response = await loop.run_in_executor(None, sync_call)
+                response_time = time.time() - start_time
+                
+                # Update rate limit tracking
+                self._request_times.append(time.time())
+                if response.usage:
+                    self._daily_tokens += response.usage.total_tokens
+                
+                answer = response.choices[0].message.content.strip()
+                
+                # Cache successful response
+                if use_cache:
+                    if len(self._response_cache) >= self._cache_max_size:
+                        self._response_cache.popitem(last=False)
+                    self._response_cache[cache_key] = answer
+                
+                return answer
+                
+            except GroqRateLimitError:
+                if attempt < 2:
+                    wait = (attempt + 1) * 3
+                    await asyncio.sleep(wait)
+                    continue
+                return "⏳ سیستم هوش مصنوعی در حال حاضر مشغول است. لطفاً چند ثانیه دیگر تلاش کنید."
+                
+            except (GroqAPIError, GroqConnectionError) as e:
+                self._total_errors += 1
+                if attempt < 2:
+                    await asyncio.sleep(2)
+                    continue
+                logger.error(f"Groq API error: {e}")
+                return "⚠️ خطا در ارتباط با سرور هوش مصنوعی. لطفاً دوباره تلاش کنید."
+                
+            except Exception as e:
+                self._total_errors += 1
+                logger.error(f"Unexpected Groq error: {e}")
+                return "❌ خطای غیرمنتظره در پردازش درخواست."
+        
+        return "⚠️ پس از چند بار تلاش، پاسخی دریافت نشد."
     
-    return 0.0
+    async def analyze_market(self, symbol: str, market_data: str = "") -> str:
+        """Get comprehensive market analysis"""
+        prompt = f"""لطفاً تحلیل جامعی برای {symbol} ارائه دهید شامل:
+۱. تحلیل تکنیکال (RSI، MACD، حمایت/مقاومت)
+۲. نقاط ورود و خروج پیشنهادی
+۳. حد ضرر
+۴. اهداف قیمتی
+۵. ارزیابی ریسک
+۶. نسبت ریسک به ریوارد"""
+        return await self.ask(prompt, market_data, "default")
+    
+    async def analyze_technically(self, symbol: str, market_data: str = "") -> str:
+        """Get technical analysis"""
+        prompt = f"تحلیل تکنیکال کامل برای {symbol} با ذکر اندیکاتورها و الگوها ارائه دهید."
+        return await self.ask(prompt, market_data, "technical")
+    
+    async def generate_signal(self, symbol: str, market_data: str = "") -> str:
+        """Generate trading signal"""
+        prompt = f"یک سیگنال معاملاتی دقیق برای {symbol} صادر کنید با ذکر تمام جزئیات."
+        return await self.ask(prompt, market_data, "signal")
+    
+    async def assess_risk(self, trade_details: str) -> str:
+        """Assess trade risk"""
+        return await self.ask(trade_details, "", "risk")
+    
+    def clear_cache(self):
+        """Clear response cache"""
+        self._response_cache.clear()
+    
+    def get_stats(self) -> Dict[str, Any]:
+        """Get AI engine statistics"""
+        return {
+            "provider": "Groq",
+            "model": "llama-3.3-70b-versatile",
+            "requests_minute": len(self._request_times),
+            "tokens_today": self._daily_tokens,
+            "cache_size": len(self._response_cache),
+            "total_requests": self._total_requests,
+            "total_errors": self._total_errors,
+            "status": "active" if self.client else "inactive"
+        }
 
+# Initialize AI engine
+ai = GroqAIEngine()
 
-async def get_multiple_tickers(self, symbols: List[str]) -> Dict[str, Dict]:
-    """
-    Get tickers for multiple symbols with parallel requests.
-    Returns dict of symbol -> ticker_data.
-    """
-    if not symbols:
-        return {}
-    
-    # Validate and clean symbols
-    valid_symbols = [s.upper().strip() for s in symbols if s and isinstance(s, str)]
-    if not valid_symbols:
-        return {}
-    
-    # Make parallel requests
-    tasks = []
-    for sym in valid_symbols:
-        tasks.append(self.get_ticker(sym))
-    
-    results = await asyncio.gather(*tasks, return_exceptions=True)
-    
-    # Build result dict
-    tickers = {}
-    for sym, result in zip(valid_symbols, results):
-        if isinstance(result, dict) and result:
-            tickers[sym] = result
-        elif isinstance(result, Exception):
-            logger.debug(f"Failed to get ticker for {sym}: {result}")
-    
-    return tickers
-
-
-async def close(self) -> None:
-    """
-    Close the HTTP session properly.
-    Should be called when the application shuts down.
-    """
-    try:
-        if self._session and not self._session.closed:
-            await self._session.close()
 # ════════════════════════════════════════
 # GROQ AI ENGINE (ADVANCED)
 # ════════════════════════════════════════
