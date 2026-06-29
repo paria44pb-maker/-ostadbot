@@ -1,3 +1,4 @@
+from typing import Optional, Dict, Any, List, Tuple
 # ═══════════════════════════════════════════════════════════
 # PART 3: HANDLERS, KEYBOARDS, MESSAGES
 # ═══════════════════════════════════════════════════════════
