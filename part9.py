@@ -2147,30 +2147,21 @@ async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ============================================================
 
 class BotHandlers:
-    """
-    مدیریت هندلرهای ربات - نسخه کامل و نهایی
-    تمام هندلرهای Command، Callback، Message و Conversation را مدیریت میکند
-    """
+    """مدیریت هندلرهای ربات - نسخه کامل و نهایی"""
 
     def __init__(self):
-        """مقداردهی اولیه و راه‌اندازی هندلرها"""
+        """مقداردهی اولیه"""
         self.application = None
         self._setup_handlers()
 
     def _setup_handlers(self):
-        """
-        تنظیم تمام هندلرها
-        شامل: Command، Callback، Message و Conversation
-        """
+        """تنظیم هندلرها - کامل و بدون خطا"""
         if not BOT_TOKEN:
             return
 
-        # ساخت اپلیکیشن اصلی
         self.application = Application.builder().token(BOT_TOKEN).build()
 
-        # ============================================================
-        #  Command Handlers
-        # ============================================================
+        # ====== Command Handlers ======
         self.application.add_handler(CommandHandler("start", start))
         self.application.add_handler(CommandHandler("help", help_command))
         self.application.add_handler(CommandHandler("admin", admin_command))
@@ -2181,20 +2172,14 @@ class BotHandlers:
         self.application.add_handler(CommandHandler("price", price_command))
         self.application.add_handler(CommandHandler("settings", settings_command))
 
-        # ============================================================
-        #  Callback Handler
-        # ============================================================
+        # ====== Callback Handler ======
         self.application.add_handler(CallbackQueryHandler(callback_handler))
 
-        # ============================================================
-        #  Message Handlers
-        # ============================================================
+        # ====== Message Handlers ======
         self.application.add_handler(MessageHandler(filters.PHOTO, photo_handler))
         self.application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, message_handler))
 
-        # ============================================================
-        #  Conversation Handler
-        # ============================================================
+        # ====== Conversation Handler ======
         conv_handler = ConversationHandler(
             entry_points=[
                 CommandHandler("signal", signal_command),
@@ -2204,14 +2189,12 @@ class BotHandlers:
                 CallbackQueryHandler(callback_handler, pattern="^signal_sell$"),
             ],
             states={
-                # وضعیت‌های اصلی
                 ConversationState.WAITING_FOR_SIGNAL_COIN: [
                     MessageHandler(filters.TEXT & ~filters.COMMAND, signal_coin_handler)
                 ],
                 ConversationState.WAITING_FOR_ANALYSIS_COIN: [
                     MessageHandler(filters.TEXT & ~filters.COMMAND, analysis_coin_handler)
                 ],
-                # وضعیت‌های عمومی
                 ConversationState.WAITING_FOR_COIN: [
                     MessageHandler(filters.TEXT & ~filters.COMMAND, signal_coin_handler)
                 ],
@@ -2365,27 +2348,16 @@ class BotHandlers:
 #                    خروجی (Export)
 # ============================================================
 
-# ایجاد نمونه از کلاس هندلرها
 bot_handlers = BotHandlers()
 
 
 def get_handlers():
-    """
-    دریافت نمونه BotHandlers
-
-    Returns:
-        BotHandlers: نمونه هندلرهای ربات
-    """
+    """دریافت نمونه BotHandlers"""
     return bot_handlers
 
 
 def get_application():
-    """
-    دریافت اپلیکیشن ربات
-
-    Returns:
-        Application: اپلیکیشن تلگرام یا None در صورت خطا
-    """
+    """دریافت اپلیکیشن ربات"""
     if bot_handlers:
         try:
             return bot_handlers.get_application()
@@ -2395,12 +2367,7 @@ def get_application():
 
 
 def check_handlers():
-    """
-    بررسی وضعیت هندلرها
-
-    Returns:
-        dict: وضعیت هر بخش
-    """
+    """بررسی وضعیت هندلرها"""
     app = get_application()
     return {
         "bot_handlers": "✅ OK" if bot_handlers else "❌ FAILED",
@@ -2410,22 +2377,12 @@ def check_handlers():
 
 
 def get_bot_token():
-    """
-    دریافت توکن ربات
-
-    Returns:
-        str: توکن ربات
-    """
+    """دریافت توکن ربات"""
     return BOT_TOKEN
 
 
 def get_admin_ids():
-    """
-    دریافت لیست ادمین‌ها
-
-    Returns:
-        list: لیست ادمین‌ها
-    """
+    """دریافت لیست ادمین‌ها"""
     return ADMIN_IDS
 
 
@@ -2434,7 +2391,6 @@ def get_admin_ids():
 # ============================================================
 
 if __name__ == "__main__":
-    # بررسی وضعیت
     status = check_handlers()
     print("=" * 50)
     print("🔍 CryptoPulse AI - Status Check")
@@ -2443,7 +2399,6 @@ if __name__ == "__main__":
         print(f"{key}: {value}")
     print("=" * 50)
 
-    # نمایش اطلاعات
     app = get_application()
     if app:
         print("✅ Bot is ready to run!")
