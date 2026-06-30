@@ -22,7 +22,6 @@ from telegram.constants import ParseMode
 
 # ==================== ایمپورت ماژول‌ها ====================
 
-from bot2 import get_config
 from bot3 import get_user_repo, get_signal_repo, get_payment_repo, db_manager
 from bot4 import get_time, get_emoji, get_formatter, get_hash, get_validator, get_cache
 from bot5 import get_market, get_coinex
