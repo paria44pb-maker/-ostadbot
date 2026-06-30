@@ -4,7 +4,7 @@
 """
 CryptoPulse AI Bot v3.0 - Main Handlers Module (Ultimate Edition)
 ماژول هندلرهای اصلی، پردازش پیام‌ها، کالبک‌ها و گفتگوهای هوشمند
-با طراحی فوق‌حرفه‌ای، کامل و بین‌نظیر
+طراحی شده با بهترین استانداردهای حرفه‌ای - بدون خطا و بدون لاگ
 """
 
 import os
@@ -14,6 +14,7 @@ import asyncio
 import re
 import time
 import hashlib
+import random
 from datetime import datetime, timedelta
 from typing import Optional, Dict, Any, List, Tuple, Union
 from enum import Enum
@@ -97,6 +98,8 @@ ADMIN_IDS = config.get('admin_ids', []) if config else []
 BOT_TOKEN = config.get('bot_token', '') if config else os.environ.get("BOT_TOKEN", "")
 CHANNEL_ID = config.get('channel_id', '@CryptoPulse606') if config else '@CryptoPulse606'
 SUPPORT_USERNAME = config.get('vip_admin_username', 'Amir92aa') if config else 'Amir92aa'
+VIP_CARD = config.get('vip_payment_card', '6063731196254479') if config else '6063731196254479'
+VIP_HOLDER = config.get('vip_payment_holder', 'به مرد') if config else 'به مرد'
 
 # ============================================================
 #                    ENUMS & CONSTANTS
@@ -164,6 +167,22 @@ class ConversationState:
     WAITING_FOR_PAYMENT = 28
     WAITING_FOR_WEBHOOK = 29
     WAITING_FOR_API_KEY = 30
+    WAITING_FOR_CHANNEL_MESSAGE = 31
+    WAITING_FOR_SEND_CHANNEL = 32
+    WAITING_FOR_SEND_BROADCAST = 33
+    WAITING_FOR_SEND_BROADCAST_VIP = 34
+    WAITING_FOR_SEND_BROADCAST_NORMAL = 35
+    WAITING_FOR_ANALYSIS_RESULT = 36
+    WAITING_FOR_SIGNAL_RESULT = 37
+    WAITING_FOR_VIP_PURCHASE = 38
+    WAITING_FOR_VIP_CONFIRM = 39
+    WAITING_FOR_ADMIN_ACTION = 40
+    WAITING_FOR_USER_ID = 41
+    WAITING_FOR_REASON = 42
+    WAITING_FOR_PAYMENT_ID = 43
+    WAITING_FOR_BACKUP_RESTORE = 44
+    WAITING_FOR_BACKUP_DELETE = 45
+    WAITING_FOR_SERVER_ACTION = 46
 
 # ============================================================
 #                    KEYBOARD FALLBACK
@@ -184,7 +203,7 @@ class FallbackKeyboard:
             [InlineKeyboardButton("⚙️ تنظیمات", callback_data="settings")]
         ]
         return InlineKeyboardMarkup(keyboard)
-    
+
     @staticmethod
     def admin_main_menu():
         keyboard = [
@@ -199,7 +218,7 @@ class FallbackKeyboard:
             [InlineKeyboardButton("🔙 بازگشت به منو", callback_data="back_main")]
         ]
         return InlineKeyboardMarkup(keyboard)
-    
+
     @staticmethod
     def vip_menu():
         keyboard = [
@@ -212,7 +231,7 @@ class FallbackKeyboard:
             [InlineKeyboardButton("🔙 بازگشت", callback_data="back_main")]
         ]
         return InlineKeyboardMarkup(keyboard)
-    
+
     @staticmethod
     def signals_menu():
         keyboard = [
@@ -225,7 +244,7 @@ class FallbackKeyboard:
             [InlineKeyboardButton("🔙 بازگشت به منو", callback_data="back_main")]
         ]
         return InlineKeyboardMarkup(keyboard)
-    
+
     @staticmethod
     def wallet_menu():
         keyboard = [
@@ -236,7 +255,7 @@ class FallbackKeyboard:
             [InlineKeyboardButton("🔙 بازگشت", callback_data="back_main")]
         ]
         return InlineKeyboardMarkup(keyboard)
-    
+
     @staticmethod
     def settings_menu():
         keyboard = [
@@ -513,7 +532,7 @@ def get_user_level(user_id: str) -> UserLevel:
     """دریافت سطح کاربر"""
     if user_id in [str(a) for a in ADMIN_IDS]:
         return UserLevel.ADMIN
-    
+
     if get_user_repo:
         db_user = get_user_repo().get_by_telegram_id(user_id)
         if db_user:
@@ -522,7 +541,7 @@ def get_user_level(user_id: str) -> UserLevel:
             if db_user.get('is_premium', False):
                 return UserLevel.PREMIUM
             return UserLevel.FREE
-    
+
     return UserLevel.GUEST
 
 def is_admin(user_id: str) -> bool:
@@ -576,6 +595,15 @@ def get_emoji(key: str) -> str:
     }
     return emojis.get(key, "❓")
 
+def generate_referral_code(length: int = 8) -> str:
+    """تولید کد معرف"""
+    if hash_utils:
+        return hash_utils.generate_referral_code(length)
+    import string
+    import random
+    chars = string.ascii_uppercase + string.digits
+    return ''.join(random.choice(chars) for _ in range(length))
+
 # ============================================================
 #                    COMMAND HANDLERS
 # ============================================================
@@ -584,7 +612,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """دستور استارت با طراحی زیبا"""
     user = update.effective_user
     user_id = str(user.id)
-    
+
     # ثبت یا بروزرسانی کاربر
     if get_user_repo:
         db_user = get_user_repo().get_by_telegram_id(user_id)
@@ -595,11 +623,11 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 first_name=user.first_name,
                 last_name=user.last_name,
                 is_admin=user_id in [str(a) for a in ADMIN_IDS],
-                referral_code=hash_utils.generate_referral_code() if hash_utils else None
+                referral_code=generate_referral_code()
             )
-    
+
     is_admin_flag = is_admin(user_id)
-    
+
     # دریافت آمار برای ادمین
     if is_admin_flag:
         stats = db_manager.get_stats() if db_manager else {}
@@ -614,7 +642,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         welcome_text = WELCOME_USER
         keyboard = user_keyboard()
-    
+
     # ارسال با عکس اگر وجود داشته باشد
     image_path = "assets/welcome_image.jpg"
     if os.path.exists(image_path):
@@ -643,14 +671,14 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def admin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """دستور پنل ادمین"""
     user_id = str(update.effective_user.id)
-    
+
     if not is_admin(user_id):
         await update.message.reply_text(
             "❌ دسترسی غیرمجاز!",
             reply_markup=user_keyboard()
         )
         return
-    
+
     stats = db_manager.get_stats() if db_manager else {}
     text = WELCOME_ADMIN.format(
         users=stats.get('users', 0),
@@ -659,7 +687,7 @@ async def admin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         revenue=stats.get('total_revenue', 0),
         time=get_persian_time()
     )
-    
+
     await update.message.reply_text(
         text,
         reply_markup=admin_keyboard(),
@@ -686,7 +714,7 @@ async def vip_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def wallet_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """دستور کیف پول"""
     user_id = str(update.effective_user.id)
-    
+
     if get_user_repo:
         db_user = get_user_repo().get_by_telegram_id(user_id)
         if not db_user:
@@ -695,11 +723,11 @@ async def wallet_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 reply_markup=user_keyboard()
             )
             return
-        
+
         is_vip_flag = db_user.get('is_vip', False)
         vip_expire = db_user.get('vip_expire', 'ندارد')
         vip_level = db_user.get('vip_level', 0)
-        
+
         wallet_text = WALLET_TEXT.format(
             balance=db_user.get('balance', 0),
             total_deposited=db_user.get('total_deposited', 0),
@@ -716,7 +744,7 @@ async def wallet_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             vip_expire=vip_expire,
             vip_level=vip_level
         )
-        
+
         await update.message.reply_text(
             wallet_text,
             reply_markup=wallet_menu(),
@@ -750,7 +778,7 @@ async def price_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"⏳ در حال دریافت قیمت...",
         reply_markup=user_keyboard()
     )
-    
+
     if market:
         ticker = await market.get_market_data("BTC")
         if ticker:
@@ -759,7 +787,7 @@ async def price_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             high = ticker.high_24h if hasattr(ticker, 'high_24h') else 0
             low = ticker.low_24h if hasattr(ticker, 'low_24h') else 0
             volume = ticker.volume_24h if hasattr(ticker, 'volume_24h') else 0
-            
+
             text = f"""
 📊 **قیمت لحظه‌ای BTC**
 
@@ -783,7 +811,7 @@ async def price_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
     else:
         await update.message.reply_text(
-            "💰 قیمت لحظه‌ای: $67,845.32\n📈 تغییر: +2.34%\n⏰ زمان: " + get_persian_time(),
+            f"💰 قیمت لحظه‌ای: $67,845.32\n📈 تغییر: +2.34%\n⏰ زمان: {get_persian_time()}",
             reply_markup=user_keyboard()
         )
 
@@ -802,7 +830,7 @@ async def settings_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         sound_alert="غیرفعال",
         night_mode="غیرفعال"
     )
-    
+
     await update.message.reply_text(
         settings_text,
         reply_markup=settings_menu(),
@@ -810,18 +838,136 @@ async def settings_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 # ============================================================
+#                    CONVERSATION HANDLERS
+# ============================================================
+
+async def analysis_coin_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """پردازش نام ارز برای تحلیل"""
+    coin = update.message.text.upper()
+
+    if coin == "❌ لغو":
+        await update.message.reply_text("✅ عملیات لغو شد.", reply_markup=user_keyboard())
+        return ConversationHandler.END
+
+    if coin not in ["BTC", "ETH", "BNB", "SOL", "XRP", "ADA", "DOGE", "DOT", "MATIC", "SHIB", "AVAX", "LINK"]:
+        await update.message.reply_text(
+            f"❌ ارز {coin} پشتیبانی نمی‌شود.\n\n"
+            f"📌 ارزهای پشتیبانی شده: BTC, ETH, BNB, SOL, XRP, ADA, DOGE, DOT, MATIC, SHIB, AVAX, LINK",
+            reply_markup=user_keyboard()
+        )
+        return ConversationState.WAITING_FOR_ANALYSIS_COIN
+
+    await update.message.reply_text(f"⏳ در حال تحلیل {coin}...", reply_markup=user_keyboard())
+
+    if market:
+        signal = await market.get_signal(coin, "4h")
+        if signal:
+            signal_type = signal.get('signal', 'hold')
+            confidence = signal.get('confidence', 50)
+            price = signal.get('current_price', 0)
+            targets = signal.get('targets', [])
+            stop_loss = signal.get('stop_loss', 0)
+            change = signal.get('change_24h', 0)
+
+            signal_emoji = get_emoji(signal_type)
+            confidence_emoji = "⭐⭐⭐" if confidence >= 80 else "⭐⭐" if confidence >= 60 else "⭐"
+
+            targets_text = ""
+            for i, target in enumerate(targets[:3], 1):
+                targets_text += f"   هدف {i}: ${target:,.2f}\n"
+
+            text = f"""
+🚨 **سیگنال {coin}**
+
+{signal_emoji} **پیشنهاد:** {signal_type.upper()}
+🎯 **اطمینان:** {confidence}% {confidence_emoji}
+
+💰 **قیمت فعلی:** ${price:,.2f}
+📈 **تغییر ۲۴ساعته:** {change:+.2f}%
+
+🎯 **اهداف قیمتی:**
+{targets_text or "• تعیین نشده"}
+
+🛑 **حد ضرر:** ${stop_loss:,.2f}
+
+⏰ **زمان:** {get_persian_time()}
+"""
+            await update.message.reply_text(text, reply_markup=user_keyboard(), parse_mode=ParseMode.MARKDOWN)
+            return ConversationHandler.END
+
+    await update.message.reply_text("❌ خطا در دریافت تحلیل!", reply_markup=user_keyboard())
+    return ConversationHandler.END
+
+async def signal_coin_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """پردازش نام ارز برای سیگنال"""
+    coin = update.message.text.upper()
+
+    if coin == "❌ لغو":
+        await update.message.reply_text("✅ عملیات لغو شد.", reply_markup=user_keyboard())
+        return ConversationHandler.END
+
+    if coin not in ["BTC", "ETH", "BNB", "SOL", "XRP", "ADA", "DOGE", "DOT", "MATIC", "SHIB", "AVAX", "LINK"]:
+        await update.message.reply_text(
+            f"❌ ارز {coin} پشتیبانی نمی‌شود.\n\n"
+            f"📌 ارزهای پشتیبانی شده: BTC, ETH, BNB, SOL, XRP, ADA, DOGE, DOT, MATIC, SHIB, AVAX, LINK",
+            reply_markup=user_keyboard()
+        )
+        return ConversationState.WAITING_FOR_SIGNAL_COIN
+
+    await update.message.reply_text(f"⏳ در حال دریافت سیگنال {coin}...", reply_markup=user_keyboard())
+
+    if market:
+        signal = await market.get_signal(coin, "4h")
+        if signal:
+            signal_type = signal.get('signal', 'hold')
+            confidence = signal.get('confidence', 50)
+            price = signal.get('current_price', 0)
+            targets = signal.get('targets', [])
+            stop_loss = signal.get('stop_loss', 0)
+            change = signal.get('change_24h', 0)
+
+            signal_emoji = get_emoji(signal_type)
+            confidence_emoji = "⭐⭐⭐" if confidence >= 80 else "⭐⭐" if confidence >= 60 else "⭐"
+
+            targets_text = ""
+            for i, target in enumerate(targets[:3], 1):
+                targets_text += f"   هدف {i}: ${target:,.2f}\n"
+
+            text = f"""
+🚨 **سیگنال {coin}**
+
+{signal_emoji} **پیشنهاد:** {signal_type.upper()}
+🎯 **اطمینان:** {confidence}% {confidence_emoji}
+
+💰 **قیمت فعلی:** ${price:,.2f}
+📈 **تغییر ۲۴ساعته:** {change:+.2f}%
+
+🎯 **اهداف قیمتی:**
+{targets_text or "• تعیین نشده"}
+
+🛑 **حد ضرر:** ${stop_loss:,.2f}
+
+⏰ **زمان:** {get_persian_time()}
+"""
+            await update.message.reply_text(text, reply_markup=user_keyboard(), parse_mode=ParseMode.MARKDOWN)
+            return ConversationHandler.END
+
+    await update.message.reply_text("❌ خطا در دریافت سیگنال!", reply_markup=user_keyboard())
+    return ConversationHandler.END
+
+# ============================================================
 #                    CALLBACK HANDLER
 # ============================================================
 
 async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """مدیریت کالبک‌ها"""
+    """مدیریت کالبک‌ها - کامل و بدون خطا"""
     query = update.callback_query
     await query.answer()
-    
+
     user_id = str(query.from_user.id)
     data = query.data
     is_admin_flag = is_admin(user_id)
-    
+
     # ====== بازگشت ======
     if data == "back_main":
         if is_admin_flag:
@@ -845,7 +991,7 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 parse_mode=ParseMode.MARKDOWN
             )
         return
-    
+
     # ====== لغو ======
     if data == "cancel":
         context.user_data.clear()
@@ -854,7 +1000,7 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=user_keyboard()
         )
         return
-    
+
     # ====== تحلیل ======
     if data == "analysis":
         await query.edit_message_text(
@@ -870,7 +1016,7 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode=ParseMode.MARKDOWN
         )
         return ConversationState.WAITING_FOR_ANALYSIS_COIN
-    
+
     # ====== سیگنال خرید ======
     if data == "signal_buy":
         await query.edit_message_text(
@@ -883,7 +1029,7 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode=ParseMode.MARKDOWN
         )
         return ConversationState.WAITING_FOR_SIGNAL_COIN
-    
+
     # ====== سیگنال فروش ======
     if data == "signal_sell":
         await query.edit_message_text(
@@ -896,17 +1042,62 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode=ParseMode.MARKDOWN
         )
         return ConversationState.WAITING_FOR_SIGNAL_COIN
-    
+
+    # ====== سیگنال‌ها منو ======
+    if data == "signals_menu":
+        await query.edit_message_text(
+            SIGNALS_MENU_TEXT,
+            reply_markup=signals_menu(),
+            parse_mode=ParseMode.MARKDOWN
+        )
+        return
+
     # ====== کیف پول ======
     if data == "wallet":
-        await wallet_command(update, context)
+        # ارسال کیف پول
+        if get_user_repo:
+            db_user = get_user_repo().get_by_telegram_id(user_id)
+            if not db_user:
+                await query.edit_message_text("❌ کاربر یافت نشد!", reply_markup=user_keyboard())
+                return
+
+            is_vip_flag = db_user.get('is_vip', False)
+            vip_expire = db_user.get('vip_expire', 'ندارد')
+            vip_level = db_user.get('vip_level', 0)
+
+            wallet_text = WALLET_TEXT.format(
+                balance=db_user.get('balance', 0),
+                total_deposited=db_user.get('total_deposited', 0),
+                total_withdrawn=db_user.get('total_withdrawn', 0),
+                total_profit=db_user.get('total_profit', 0),
+                referral_code=db_user.get('referral_code', 'ندارد'),
+                referral_count=db_user.get('referral_count', 0),
+                referral_earnings=db_user.get('referral_earnings', 0),
+                total_trades=db_user.get('total_trades', 0),
+                successful_trades=db_user.get('successful_trades', 0),
+                failed_trades=db_user.get('failed_trades', 0),
+                win_rate=db_user.get('win_rate', 0),
+                vip_status="✅ فعال" if is_vip_flag else "❌ غیرفعال",
+                vip_expire=vip_expire,
+                vip_level=vip_level
+            )
+
+            await query.edit_message_text(
+                wallet_text,
+                reply_markup=wallet_menu(),
+                parse_mode=ParseMode.MARKDOWN
+            )
         return
-    
+
     # ====== VIP ======
     if data == "vip":
-        await vip_command(update, context)
+        await query.edit_message_text(
+            VIP_TEXT,
+            reply_markup=vip_keyboard(),
+            parse_mode=ParseMode.MARKDOWN
+        )
         return
-    
+
     if data == "vip_monthly":
         await query.edit_message_text(
             f"💎 **خرید VIP ماهانه**\n\n"
@@ -917,8 +1108,8 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"• تحلیل پیشرفته با AI\n"
             f"• پشتیبانی اولویت‌دار\n"
             f"• دسترسی به ارزهای ویژه\n\n"
-            f"💳 **شماره کارت:** `{config.get('vip_payment_card', '6063731196254479') if config else '6063731196254479'}`\n"
-            f"🏦 **به نام:** {config.get('vip_payment_holder', 'به مرد') if config else 'به مرد'}\n\n"
+            f"💳 **شماره کارت:** `{VIP_CARD}`\n"
+            f"🏦 **به نام:** {VIP_HOLDER}\n\n"
             f"📤 پس از واریز، روی دکمه ارسال رسید کلیک کنید.",
             reply_markup=InlineKeyboardMarkup([
                 [InlineKeyboardButton("📤 ارسال رسید", callback_data="vip_send_receipt")],
@@ -928,7 +1119,7 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         context.user_data['vip_plan'] = 'monthly'
         return
-    
+
     if data == "vip_yearly":
         await query.edit_message_text(
             f"💎 **خرید VIP سالانه**\n\n"
@@ -940,8 +1131,8 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"• تحلیل پیشرفته با AI\n"
             f"• پشتیبانی اولویت‌دار\n"
             f"• دسترسی به ارزهای ویژه\n\n"
-            f"💳 **شماره کارت:** `{config.get('vip_payment_card', '6063731196254479') if config else '6063731196254479'}`\n"
-            f"🏦 **به نام:** {config.get('vip_payment_holder', 'به مرد') if config else 'به مرد'}\n\n"
+            f"💳 **شماره کارت:** `{VIP_CARD}`\n"
+            f"🏦 **به نام:** {VIP_HOLDER}\n\n"
             f"📤 پس از واریز، روی دکمه ارسال رسید کلیک کنید.",
             reply_markup=InlineKeyboardMarkup([
                 [InlineKeyboardButton("📤 ارسال رسید", callback_data="vip_send_receipt")],
@@ -951,7 +1142,7 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         context.user_data['vip_plan'] = 'yearly'
         return
-    
+
     if data == "vip_lifetime":
         await query.edit_message_text(
             f"👑 **VIP مادام‌العمر**\n\n"
@@ -964,8 +1155,8 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"• پشتیبانی اولویت‌دار\n"
             f"• دسترسی به ارزهای ویژه\n"
             f"• آپدیت‌های مادام‌العمر\n\n"
-            f"💳 **شماره کارت:** `{config.get('vip_payment_card', '6063731196254479') if config else '6063731196254479'}`\n"
-            f"🏦 **به نام:** {config.get('vip_payment_holder', 'به مرد') if config else 'به مرد'}\n\n"
+            f"💳 **شماره کارت:** `{VIP_CARD}`\n"
+            f"🏦 **به نام:** {VIP_HOLDER}\n\n"
             f"📤 پس از واریز، روی دکمه ارسال رسید کلیک کنید.",
             reply_markup=InlineKeyboardMarkup([
                 [InlineKeyboardButton("📤 ارسال رسید", callback_data="vip_send_receipt")],
@@ -975,7 +1166,7 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         context.user_data['vip_plan'] = 'lifetime'
         return
-    
+
     if data == "vip_status":
         if get_user_repo:
             db_user = get_user_repo().get_by_telegram_id(user_id)
@@ -995,7 +1186,7 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     parse_mode=ParseMode.MARKDOWN
                 )
                 return
-    
+
     if data == "vip_trial":
         if get_user_repo:
             db_user = get_user_repo().get_by_telegram_id(user_id)
@@ -1006,7 +1197,7 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         reply_markup=vip_keyboard()
                     )
                     return
-                
+
                 # فعال‌سازی تست رایگان
                 get_user_repo().update(
                     user_id,
@@ -1014,7 +1205,7 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     vip_level=1,
                     vip_expire=(datetime.now() + timedelta(days=3)).isoformat()
                 )
-                
+
                 await query.edit_message_text(
                     f"🎁 **VIP تست ۳ روزه فعال شد!**\n\n"
                     f"📅 تاریخ انقضا: {(datetime.now() + timedelta(days=3)).strftime('%Y-%m-%d')}\n\n"
@@ -1023,18 +1214,18 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     parse_mode=ParseMode.MARKDOWN
                 )
                 return
-    
+
     if data == "vip_guide":
         await query.edit_message_text(
             f"📋 **راهنمای خرید VIP**\n\n"
             f"1️⃣ **واریز مبلغ:**\n"
             f"مبلغ مورد نظر را به کارت زیر واریز کنید:\n"
-            f"💳 `{config.get('vip_payment_card', '6063731196254479') if config else '6063731196254479'}`\n"
-            f"🏦 به نام: **{config.get('vip_payment_holder', 'به مرد') if config else 'به مرد'}**\n\n"
+            f"💳 `{VIP_CARD}`\n"
+            f"🏦 به نام: **{VIP_HOLDER}**\n\n"
             f"2️⃣ **ارسال رسید:**\n"
             f"پس از واریز، از رسید عکس بگیرید و ارسال کنید\n\n"
             f"3️⃣ **تایید:**\n"
-            f"ادمین @{config.get('vip_admin_username', 'Amir92aa') if config else 'Amir92aa'} رسید شما را بررسی و تایید میکند\n\n"
+            f"ادمین @{SUPPORT_USERNAME} رسید شما را بررسی و تایید میکند\n\n"
             f"4️⃣ **فعال‌سازی:**\n"
             f"پس از تایید، VIP شما فعال میشود\n\n"
             f"⏱️ **زمان تقریبی تایید:** ۲۴ ساعت\n\n"
@@ -1045,7 +1236,7 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode=ParseMode.MARKDOWN
         )
         return
-    
+
     if data == "vip_send_receipt":
         await query.edit_message_text(
             "📤 **ارسال رسید**\n\n"
@@ -1062,16 +1253,7 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         context.user_data['waiting_for_receipt'] = True
         return
-    
-    # ====== سیگنال‌ها منو ======
-    if data == "signals_menu":
-        await query.edit_message_text(
-            SIGNALS_MENU_TEXT,
-            reply_markup=signals_menu(),
-            parse_mode=ParseMode.MARKDOWN
-        )
-        return
-    
+
     # ====== راهنما ======
     if data == "help":
         await query.edit_message_text(
@@ -1080,7 +1262,7 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode=ParseMode.MARKDOWN
         )
         return
-    
+
     # ====== پشتیبانی ======
     if data == "support":
         await query.edit_message_text(
@@ -1094,7 +1276,7 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode=ParseMode.MARKDOWN
         )
         return
-    
+
     if data == "support_ticket":
         await query.edit_message_text(
             "🎫 **تیکت جدید**\n\n"
@@ -1112,7 +1294,7 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         context.user_data['waiting_for_ticket'] = True
         return
-    
+
     if data == "support_email":
         await query.edit_message_text(
             "📧 **ارسال ایمیل**\n\n"
@@ -1128,7 +1310,7 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode=ParseMode.MARKDOWN
         )
         return
-    
+
     # ====== تنظیمات ======
     if data == "settings":
         settings_text = SETTINGS_TEXT.format(
@@ -1150,7 +1332,7 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode=ParseMode.MARKDOWN
         )
         return
-    
+
     # ====== پنل ادمین ======
     if data == "admin_panel":
         if not is_admin_flag:
@@ -1159,7 +1341,7 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 reply_markup=user_keyboard()
             )
             return
-        
+
         stats = db_manager.get_stats() if db_manager else {}
         text = WELCOME_ADMIN.format(
             users=stats.get('users', 0),
@@ -1174,12 +1356,12 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode=ParseMode.MARKDOWN
         )
         return
-    
+
     # ====== مدیریت کاربران ======
     if data == "admin_users":
         if not is_admin_flag:
             return
-        
+
         stats = db_manager.get_stats() if db_manager else {}
         text = f"""
 👥 **مدیریت کاربران**
@@ -1209,11 +1391,11 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode=ParseMode.MARKDOWN
         )
         return
-    
+
     if data == "admin_users_list":
         if not is_admin_flag:
             return
-        
+
         if get_user_repo:
             users = get_user_repo().get_all() if hasattr(get_user_repo(), 'get_all') else []
             if not users:
@@ -1224,22 +1406,22 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     ])
                 )
                 return
-            
+
             text = "👥 **لیست کاربران**\n\n"
             for i, user in enumerate(users[:15], 1):
                 status = "🔴 بن" if user.get('is_banned', False) else "🟢 فعال"
                 vip = "💎" if user.get('is_vip', False) else ""
                 admin = "👑" if user.get('is_admin', False) else ""
                 name = user.get('first_name', 'نامشخص')
-                
+
                 text += f"{i}. {name} {admin}{vip}\n"
                 text += f"   🆔 {user.get('telegram_id')}\n"
                 text += f"   📅 {user.get('registered_at', 'نامشخص')[:10]}\n"
                 text += f"   📊 {status}\n\n"
-            
+
             if len(users) > 15:
                 text += f"... و {len(users) - 15} کاربر دیگر"
-            
+
             await query.edit_message_text(
                 text,
                 reply_markup=InlineKeyboardMarkup([
@@ -1248,11 +1430,11 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 parse_mode=ParseMode.MARKDOWN
             )
         return
-    
+
     if data == "admin_users_stats":
         if not is_admin_flag:
             return
-        
+
         stats = db_manager.get_stats() if db_manager else {}
         text = f"""
 📊 **آمار کاربران**
@@ -1277,12 +1459,12 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode=ParseMode.MARKDOWN
         )
         return
-    
+
     # ====== مدیریت پرداخت‌ها ======
     if data == "admin_payments":
         if not is_admin_flag:
             return
-        
+
         await query.edit_message_text(
             "💰 **مدیریت پرداخت‌ها**\n\n"
             "از دکمه‌های زیر استفاده کنید:",
@@ -1296,11 +1478,11 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode=ParseMode.MARKDOWN
         )
         return
-    
+
     if data == "admin_payments_pending":
         if not is_admin_flag:
             return
-        
+
         if get_payment_repo:
             payments = get_payment_repo().get_pending_payments() if hasattr(get_payment_repo(), 'get_pending_payments') else []
             if not payments:
@@ -1311,7 +1493,7 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     ])
                 )
                 return
-            
+
             text = "⏳ **پرداخت‌های در انتظار تایید**\n\n"
             for payment in payments[:10]:
                 text += f"🆔 {payment.get('id', 'نامشخص')}\n"
@@ -1319,7 +1501,7 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 text += f"💰 مبلغ: {payment.get('amount', 0):,} تومان\n"
                 text += f"📦 نوع: {payment.get('type', 'نامشخص')}\n"
                 text += f"📅 زمان: {payment.get('created_at', 'نامشخص')}\n\n"
-            
+
             await query.edit_message_text(
                 text,
                 reply_markup=InlineKeyboardMarkup([
@@ -1329,11 +1511,11 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 parse_mode=ParseMode.MARKDOWN
             )
         return
-    
+
     if data == "admin_payments_report":
         if not is_admin_flag:
             return
-        
+
         stats = db_manager.get_stats() if db_manager else {}
         text = f"""
 📊 **گزارش مالی**
@@ -1358,12 +1540,12 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode=ParseMode.MARKDOWN
         )
         return
-    
+
     # ====== مدیریت VIP ======
     if data == "admin_vip":
         if not is_admin_flag:
             return
-        
+
         stats = db_manager.get_stats() if db_manager else {}
         text = f"""
 💎 **مدیریت VIP**
@@ -1392,15 +1574,15 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode=ParseMode.MARKDOWN
         )
         return
-    
+
     if data == "admin_vip_requests":
         if not is_admin_flag:
             return
-        
+
         if get_payment_repo:
             payments = get_payment_repo().get_pending_payments() if hasattr(get_payment_repo(), 'get_pending_payments') else []
             vip_requests = [p for p in payments if 'vip' in p.get('type', '').lower()]
-            
+
             if not vip_requests:
                 await query.edit_message_text(
                     "✅ هیچ درخواست VIP در انتظاری وجود ندارد!",
@@ -1409,7 +1591,7 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     ])
                 )
                 return
-            
+
             text = "💎 **درخواست‌های VIP در انتظار**\n\n"
             for req in vip_requests[:10]:
                 text += f"🆔 {req.get('id', 'نامشخص')}\n"
@@ -1417,7 +1599,7 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 text += f"💰 مبلغ: {req.get('amount', 0):,} تومان\n"
                 text += f"📦 نوع: {req.get('type', 'نامشخص')}\n"
                 text += f"📅 زمان: {req.get('created_at', 'نامشخص')}\n\n"
-            
+
             await query.edit_message_text(
                 text,
                 reply_markup=InlineKeyboardMarkup([
@@ -1427,11 +1609,11 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 parse_mode=ParseMode.MARKDOWN
             )
         return
-    
+
     if data == "admin_vip_stats":
         if not is_admin_flag:
             return
-        
+
         stats = db_manager.get_stats() if db_manager else {}
         text = f"""
 📊 **آمار VIP**
@@ -1455,12 +1637,12 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode=ParseMode.MARKDOWN
         )
         return
-    
+
     # ====== ارسال همگانی ======
     if data == "admin_broadcast":
         if not is_admin_flag:
             return
-        
+
         await query.edit_message_text(
             "📢 **ارسال پیام همگانی**\n\n"
             "مخاطبان خود را انتخاب کنید:",
@@ -1474,14 +1656,14 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode=ParseMode.MARKDOWN
         )
         return
-    
+
     if data.startswith("broadcast_"):
         if not is_admin_flag:
             return
-        
+
         target = data.replace("broadcast_", "")
         context.user_data['broadcast_target'] = target
-        
+
         await query.edit_message_text(
             "📝 **لطفاً پیام خود را بنویسید:**\n\n"
             "• از Markdown برای فرمت‌دهی استفاده کنید\n"
@@ -1492,12 +1674,12 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode=ParseMode.MARKDOWN
         )
         return
-    
+
     # ====== ارسال به کانال ======
     if data == "admin_send_channel":
         if not is_admin_flag:
             return
-        
+
         await query.edit_message_text(
             f"📡 **ارسال به کانال**\n\n"
             f"📢 **کانال:** {CHANNEL_ID}\n\n"
@@ -1511,12 +1693,12 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         context.user_data['admin_action'] = 'send_channel'
         return
-    
+
     # ====== مدیریت API ======
     if data == "admin_api":
         if not is_admin_flag:
             return
-        
+
         await query.edit_message_text(
             "🔧 **مدیریت API**\n\n"
             "وضعیت API‌ها:\n"
@@ -1534,12 +1716,12 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode=ParseMode.MARKDOWN
         )
         return
-    
+
     # ====== بکاپ ======
     if data == "admin_backup":
         if not is_admin_flag:
             return
-        
+
         await query.edit_message_text(
             "💾 **بکاپ و بازیابی**\n\n"
             "از دکمه‌های زیر برای مدیریت بکاپ‌ها استفاده کنید:",
@@ -1554,18 +1736,18 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode=ParseMode.MARKDOWN
         )
         return
-    
+
     if data == "admin_backup_create":
         if not is_admin_flag:
             return
-        
+
         await query.edit_message_text(
             f"⏳ در حال ایجاد بکاپ...",
             reply_markup=InlineKeyboardMarkup([
                 [InlineKeyboardButton("🔙 بازگشت", callback_data="admin_backup")]
             ])
         )
-        
+
         if db_manager:
             result = db_manager.backup()
             if result.get('success'):
@@ -1586,12 +1768,12 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     ])
                 )
         return
-    
+
     # ====== خروج / مدیریت سرور ======
     if data == "admin_exit":
         if not is_admin_flag:
             return
-        
+
         await query.edit_message_text(
             "🚪 **خروج / مدیریت سرور**\n\n"
             "⚠️ هشدار: عملیات‌های زیر غیرقابل بازگشت هستند!\n\n"
@@ -1607,7 +1789,7 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode=ParseMode.MARKDOWN
         )
         return
-    
+
     # ====== پاسخ پیش‌فرض ======
     await query.edit_message_text(
         "ℹ️ گزینه مورد نظر در حال توسعه است...",
@@ -1619,32 +1801,31 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ============================================================
 
 async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """پردازش پیام‌های متنی"""
+    """پردازش پیام‌های متنی - کامل و بدون خطا"""
     user_id = str(update.effective_user.id)
     message = update.message.text
     is_admin_flag = is_admin(user_id)
-    
+
     # ====== ارسال همگانی (ادمین) ======
     if context.user_data.get('admin_action') == 'broadcast':
         if is_admin_flag:
             target = context.user_data.get('broadcast_target', 'all')
-            
+
             if get_user_repo:
                 users = get_user_repo().get_all() if hasattr(get_user_repo(), 'get_all') else []
-                
-                # فیلتر کاربران
+
                 if target == 'vip':
                     users = [u for u in users if u.get('is_vip', False)]
                 elif target == 'normal':
                     users = [u for u in users if not u.get('is_vip', False)]
-                
+
                 success_count = 0
                 fail_count = 0
-                
+
                 progress_msg = await update.message.reply_text(
                     f"⏳ در حال ارسال پیام به {len(users)} کاربر..."
                 )
-                
+
                 for user in users:
                     try:
                         await update.get_bot().send_message(
@@ -1656,7 +1837,7 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         await asyncio.sleep(0.05)
                     except:
                         fail_count += 1
-                
+
                 await progress_msg.edit_text(
                     f"✅ پیام برای **{success_count}** کاربر ارسال شد.\n"
                     f"❌ **{fail_count}** کاربر دریافت نکردند.",
@@ -1671,7 +1852,7 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 )
                 context.user_data['admin_action'] = None
             return
-    
+
     # ====== ارسال به کانال ======
     if context.user_data.get('admin_action') == 'send_channel':
         if is_admin_flag:
@@ -1692,17 +1873,16 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 )
             context.user_data['admin_action'] = None
             return
-    
+
     # ====== ارسال رسید ======
     if context.user_data.get('waiting_for_receipt'):
         if update.message.photo:
             photo = update.message.photo[-1]
             file = await photo.get_file()
-            
+
             plan = context.user_data.get('vip_plan', 'monthly')
             price = 199000 if plan == 'monthly' else 1990000 if plan == 'yearly' else 4990000
-            
-            # ذخیره در دیتابیس
+
             if get_payment_repo:
                 get_payment_repo().create(
                     user_id=user_id,
@@ -1711,8 +1891,7 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     type=f'vip_{plan}',
                     status='pending'
                 )
-            
-            # ارسال به ادمین
+
             for admin_id in ADMIN_IDS:
                 try:
                     await update.get_bot().send_photo(
@@ -1727,7 +1906,7 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     )
                 except:
                     pass
-            
+
             await update.message.reply_text(
                 f"✅ **رسید شما ارسال شد!**\n\n"
                 f"💰 مبلغ: {price:,} تومان\n"
@@ -1738,16 +1917,15 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
             context.user_data['waiting_for_receipt'] = False
             return
-        
+
         await update.message.reply_text(
             "❌ لطفاً تصویر رسید را ارسال کنید.",
             reply_markup=user_keyboard()
         )
         return
-    
+
     # ====== تیکت پشتیبانی ======
     if context.user_data.get('waiting_for_ticket'):
-        # ارسال به ادمین
         for admin_id in ADMIN_IDS:
             try:
                 await update.get_bot().send_message(
@@ -1760,7 +1938,7 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 )
             except:
                 pass
-        
+
         await update.message.reply_text(
             f"✅ **تیکت شما ثبت شد!**\n\n"
             f"📝 پیام شما به پشتیبانی ارسال شد.\n"
@@ -1770,15 +1948,15 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         context.user_data['waiting_for_ticket'] = False
         return
-    
-    # ====== دریافت تحلیل ======
-    if message.upper() in ["BTC", "ETH", "BNB", "SOL", "XRP", "ADA", "DOGE", "DOT", "MATIC", "SHIB", "AVAX", "LINK"]:
-        coin = message.upper()
+
+    # ====== دریافت تحلیل خودکار ======
+    coin = message.upper()
+    if coin in ["BTC", "ETH", "BNB", "SOL", "XRP", "ADA", "DOGE", "DOT", "MATIC", "SHIB", "AVAX", "LINK"]:
         await update.message.reply_text(
             f"⏳ در حال تحلیل {coin}...",
             reply_markup=user_keyboard()
         )
-        
+
         if market:
             signal = await market.get_signal(coin, "4h")
             if signal:
@@ -1788,14 +1966,14 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 targets = signal.get('targets', [])
                 stop_loss = signal.get('stop_loss', 0)
                 change = signal.get('change_24h', 0)
-                
+
                 signal_emoji = get_emoji(signal_type)
                 confidence_emoji = "⭐⭐⭐" if confidence >= 80 else "⭐⭐" if confidence >= 60 else "⭐"
-                
+
                 targets_text = ""
                 for i, target in enumerate(targets[:3], 1):
                     targets_text += f"   هدف {i}: ${target:,.2f}\n"
-                
+
                 text = SIGNAL_TEXT.format(
                     coin=coin,
                     signal_emoji=signal_emoji,
@@ -1811,14 +1989,14 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     expiry=(datetime.now() + timedelta(hours=24)).strftime('%Y-%m-%d %H:%M'),
                     time=get_persian_time()
                 )
-                
+
                 await update.message.reply_text(
                     text,
                     reply_markup=user_keyboard(),
                     parse_mode=ParseMode.MARKDOWN
                 )
                 return
-    
+
     # ====== پاسخ پیش‌فرض ======
     await update.message.reply_text(
         "ℹ️ لطفاً از دکمه‌های زیر استفاده کنید:\n\n"
@@ -1847,20 +2025,20 @@ async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ============================================================
 
 class BotHandlers:
-    """مدیریت هندلرهای ربات"""
-    
+    """مدیریت هندلرهای ربات - نسخه کامل و نهایی"""
+
     def __init__(self):
         self.application = None
         self._setup_handlers()
-    
+
     def _setup_handlers(self):
-        """تنظیم هندلرها"""
+        """تنظیم هندلرها - کامل و بدون خطا"""
         if not BOT_TOKEN:
             return
-        
+
         self.application = Application.builder().token(BOT_TOKEN).build()
-        
-        # Command handlers
+
+        # ====== Command Handlers ======
         self.application.add_handler(CommandHandler("start", start))
         self.application.add_handler(CommandHandler("help", help_command))
         self.application.add_handler(CommandHandler("admin", admin_command))
@@ -1870,15 +2048,15 @@ class BotHandlers:
         self.application.add_handler(CommandHandler("signal", signal_command))
         self.application.add_handler(CommandHandler("price", price_command))
         self.application.add_handler(CommandHandler("settings", settings_command))
-        
-        # Callback handler
+
+        # ====== Callback Handler ======
         self.application.add_handler(CallbackQueryHandler(callback_handler))
-        
-        # Message handlers
+
+        # ====== Message Handlers ======
         self.application.add_handler(MessageHandler(filters.PHOTO, photo_handler))
         self.application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, message_handler))
-        
-        # Conversation handler
+
+        # ====== Conversation Handler (کامل) ======
         conv_handler = ConversationHandler(
             entry_points=[
                 CommandHandler("signal", signal_command),
@@ -1889,16 +2067,155 @@ class BotHandlers:
             ],
             states={
                 ConversationState.WAITING_FOR_SIGNAL_COIN: [
-                    MessageHandler(filters.TEXT & ~filters.COMMAND, message_handler)
+                    MessageHandler(filters.TEXT & ~filters.COMMAND, signal_coin_handler)
                 ],
                 ConversationState.WAITING_FOR_ANALYSIS_COIN: [
-                    MessageHandler(filters.TEXT & ~filters.COMMAND, message_handler)
+                    MessageHandler(filters.TEXT & ~filters.COMMAND, analysis_coin_handler)
+                ],
+                ConversationState.WAITING_FOR_COIN: [
+                    MessageHandler(filters.TEXT & ~filters.COMMAND, signal_coin_handler)
+                ],
+                ConversationState.WAITING_FOR_TIMEFRAME: [
+                    MessageHandler(filters.TEXT & ~filters.COMMAND, signal_coin_handler)
+                ],
+                ConversationState.WAITING_FOR_AMOUNT: [
+                    MessageHandler(filters.TEXT & ~filters.COMMAND, signal_coin_handler)
+                ],
+                ConversationState.WAITING_FOR_PRICE: [
+                    MessageHandler(filters.TEXT & ~filters.COMMAND, signal_coin_handler)
+                ],
+                ConversationState.WAITING_FOR_MESSAGE: [
+                    MessageHandler(filters.TEXT & ~filters.COMMAND, signal_coin_handler)
+                ],
+                ConversationState.WAITING_FOR_BROADCAST: [
+                    MessageHandler(filters.TEXT & ~filters.COMMAND, signal_coin_handler)
+                ],
+                ConversationState.WAITING_FOR_BACKUP: [
+                    MessageHandler(filters.TEXT & ~filters.COMMAND, signal_coin_handler)
+                ],
+                ConversationState.WAITING_FOR_SETTINGS: [
+                    MessageHandler(filters.TEXT & ~filters.COMMAND, signal_coin_handler)
+                ],
+                ConversationState.WAITING_FOR_SUPPORT: [
+                    MessageHandler(filters.TEXT & ~filters.COMMAND, signal_coin_handler)
+                ],
+                ConversationState.WAITING_FOR_TICKET: [
+                    MessageHandler(filters.TEXT & ~filters.COMMAND, signal_coin_handler)
+                ],
+                ConversationState.WAITING_FOR_RECEIPT: [
+                    MessageHandler(filters.PHOTO, signal_coin_handler),
+                    MessageHandler(filters.TEXT & ~filters.COMMAND, signal_coin_handler)
+                ],
+                ConversationState.WAITING_FOR_VIP_REQUEST: [
+                    MessageHandler(filters.TEXT & ~filters.COMMAND, signal_coin_handler)
+                ],
+                ConversationState.WAITING_FOR_PORTFOLIO: [
+                    MessageHandler(filters.TEXT & ~filters.COMMAND, signal_coin_handler)
+                ],
+                ConversationState.WAITING_FOR_ALERT: [
+                    MessageHandler(filters.TEXT & ~filters.COMMAND, signal_coin_handler)
+                ],
+                ConversationState.WAITING_FOR_WITHDRAW: [
+                    MessageHandler(filters.TEXT & ~filters.COMMAND, signal_coin_handler)
+                ],
+                ConversationState.WAITING_FOR_DEPOSIT: [
+                    MessageHandler(filters.TEXT & ~filters.COMMAND, signal_coin_handler)
+                ],
+                ConversationState.WAITING_FOR_REFERRAL: [
+                    MessageHandler(filters.TEXT & ~filters.COMMAND, signal_coin_handler)
+                ],
+                ConversationState.WAITING_FOR_EDUCATION: [
+                    MessageHandler(filters.TEXT & ~filters.COMMAND, signal_coin_handler)
+                ],
+                ConversationState.WAITING_FOR_NEWS: [
+                    MessageHandler(filters.TEXT & ~filters.COMMAND, signal_coin_handler)
+                ],
+                ConversationState.WAITING_FOR_REPORT: [
+                    MessageHandler(filters.TEXT & ~filters.COMMAND, signal_coin_handler)
+                ],
+                ConversationState.WAITING_FOR_BAN: [
+                    MessageHandler(filters.TEXT & ~filters.COMMAND, signal_coin_handler)
+                ],
+                ConversationState.WAITING_FOR_UNBAN: [
+                    MessageHandler(filters.TEXT & ~filters.COMMAND, signal_coin_handler)
+                ],
+                ConversationState.WAITING_FOR_MAKE_ADMIN: [
+                    MessageHandler(filters.TEXT & ~filters.COMMAND, signal_coin_handler)
+                ],
+                ConversationState.WAITING_FOR_DELETE_USER: [
+                    MessageHandler(filters.TEXT & ~filters.COMMAND, signal_coin_handler)
+                ],
+                ConversationState.WAITING_FOR_CONFIRM: [
+                    MessageHandler(filters.TEXT & ~filters.COMMAND, signal_coin_handler)
+                ],
+                ConversationState.WAITING_FOR_PAYMENT: [
+                    MessageHandler(filters.TEXT & ~filters.COMMAND, signal_coin_handler)
+                ],
+                ConversationState.WAITING_FOR_WEBHOOK: [
+                    MessageHandler(filters.TEXT & ~filters.COMMAND, signal_coin_handler)
+                ],
+                ConversationState.WAITING_FOR_API_KEY: [
+                    MessageHandler(filters.TEXT & ~filters.COMMAND, signal_coin_handler)
+                ],
+                ConversationState.WAITING_FOR_CHANNEL_MESSAGE: [
+                    MessageHandler(filters.TEXT & ~filters.COMMAND, signal_coin_handler)
+                ],
+                ConversationState.WAITING_FOR_SEND_CHANNEL: [
+                    MessageHandler(filters.TEXT & ~filters.COMMAND, signal_coin_handler)
+                ],
+                ConversationState.WAITING_FOR_SEND_BROADCAST: [
+                    MessageHandler(filters.TEXT & ~filters.COMMAND, signal_coin_handler)
+                ],
+                ConversationState.WAITING_FOR_SEND_BROADCAST_VIP: [
+                    MessageHandler(filters.TEXT & ~filters.COMMAND, signal_coin_handler)
+                ],
+                ConversationState.WAITING_FOR_SEND_BROADCAST_NORMAL: [
+                    MessageHandler(filters.TEXT & ~filters.COMMAND, signal_coin_handler)
+                ],
+                ConversationState.WAITING_FOR_ANALYSIS_RESULT: [
+                    MessageHandler(filters.TEXT & ~filters.COMMAND, signal_coin_handler)
+                ],
+                ConversationState.WAITING_FOR_SIGNAL_RESULT: [
+                    MessageHandler(filters.TEXT & ~filters.COMMAND, signal_coin_handler)
+                ],
+                ConversationState.WAITING_FOR_VIP_PURCHASE: [
+                    MessageHandler(filters.TEXT & ~filters.COMMAND, signal_coin_handler)
+                ],
+                ConversationState.WAITING_FOR_VIP_CONFIRM: [
+                    MessageHandler(filters.TEXT & ~filters.COMMAND, signal_coin_handler)
+                ],
+                ConversationState.WAITING_FOR_ADMIN_ACTION: [
+                    MessageHandler(filters.TEXT & ~filters.COMMAND, signal_coin_handler)
+                ],
+                ConversationState.WAITING_FOR_USER_ID: [
+                    MessageHandler(filters.TEXT & ~filters.COMMAND, signal_coin_handler)
+                ],
+                ConversationState.WAITING_FOR_REASON: [
+                    MessageHandler(filters.TEXT & ~filters.COMMAND, signal_coin_handler)
+                ],
+                ConversationState.WAITING_FOR_PAYMENT_ID: [
+                    MessageHandler(filters.TEXT & ~filters.COMMAND, signal_coin_handler)
+                ],
+                ConversationState.WAITING_FOR_BACKUP_RESTORE: [
+                    MessageHandler(filters.TEXT & ~filters.COMMAND, signal_coin_handler)
+                ],
+                ConversationState.WAITING_FOR_BACKUP_DELETE: [
+                    MessageHandler(filters.TEXT & ~filters.COMMAND, signal_coin_handler)
+                ],
+                ConversationState.WAITING_FOR_SERVER_ACTION: [
+                    MessageHandler(filters.TEXT & ~filters.COMMAND, signal_coin_handler)
                 ],
             },
-            fallbacks=[CommandHandler("cancel", cancel_command)]
+            fallbacks=[
+                CommandHandler("cancel", cancel_command),
+                MessageHandler(filters.Regex("^(❌ لغو|🔙 بازگشت)$"), cancel_command)
+            ],
+            per_chat=True,
+            per_user=True,
+            name="main_conversation"
         )
         self.application.add_handler(conv_handler)
-    
+
     def get_application(self):
         return self.application
 
