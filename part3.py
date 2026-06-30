@@ -819,7 +819,7 @@ async def cb_analyze(callback: CallbackQuery):
         moving_averages = ta.calculate_moving_averages(closes)
         atr = ta.calculate_atr(highs, lows, closes)
         stoch_k, stoch_d = ta.calculate_stochastic_rsi(closes)
-        ichimoku = ta.calculate_ichimoku(highs, lows, closes)
+        ichimoku = ta.calculate_ichimoku(highs, lows)
         trend = ta.detect_trend(closes)
         volume_analysis = ta.analyze_volume(volumes, closes)
         market_structure = ta.market_structure(highs, lows)
