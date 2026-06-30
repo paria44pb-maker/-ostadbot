@@ -2109,40 +2109,7 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     stop_loss=stop_loss,
                     risk_reward=signal.get('risk_reward', 0),
                     expiry=(datetime.now() + timedelta(hours=24)).strftime('%Y-%m-%d %H:%M'),
-                    time=get_persian_time()
-                )
-
-                await update.message.reply_text(
-                    text,
-                    reply_markup=user_keyboard(),
-                    parse_mode=ParseMode.MARKDOWN
-                )
-                return
-
-    # ====== پاسخ پیش‌فرض ======
-    await update.message.reply_text(
-        "ℹ️ لطفاً از دکمه‌های زیر استفاده کنید:\n\n"
-        "📌 **ارزهای پشتیبانی شده:**\n"
-        "BTC, ETH, BNB, SOL, XRP, ADA, DOGE, DOT, MATIC, SHIB, AVAX, LINK\n\n"
-        "💡 می‌توانید نام ارز را تایپ کنید تا تحلیل آن را دریافت کنید.",
-        reply_markup=user_keyboard()
-    )
-
-# ============================================================
-#                    PHOTO HANDLER
-# ============================================================
-
-async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """پردازش تصاویر"""
-    if context.user_data.get('waiting_for_receipt'):
-        await message_handler(update, context)
-    else:
-        await update.message.reply_text(
-            "📸 تصویر دریافت شد!",
-            reply_markup=user_keyboard()
-        )
-
-# ============================================================
+                    time=get_persian_time()# ============================================================
 #                    MAIN HANDLER CLASS
 # ============================================================
 
@@ -2406,3 +2373,35 @@ if __name__ == "__main__":
         print(f"👑 Admins: {ADMIN_IDS}")
     else:
         print("❌ Bot is not ready!")
+                )
+
+                await update.message.reply_text(
+                    text,
+                    reply_markup=user_keyboard(),
+                    parse_mode=ParseMode.MARKDOWN
+                )
+                return
+
+    # ====== پاسخ پیش‌فرض ======
+    await update.message.reply_text(
+        "ℹ️ لطفاً از دکمه‌های زیر استفاده کنید:\n\n"
+        "📌 **ارزهای پشتیبانی شده:**\n"
+        "BTC, ETH, BNB, SOL, XRP, ADA, DOGE, DOT, MATIC, SHIB, AVAX, LINK\n\n"
+        "💡 می‌توانید نام ارز را تایپ کنید تا تحلیل آن را دریافت کنید.",
+        reply_markup=user_keyboard()
+    )
+
+# ============================================================
+#                    PHOTO HANDLER
+# ============================================================
+
+async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """پردازش تصاویر"""
+    if context.user_data.get('waiting_for_receipt'):
+        await message_handler(update, context)
+    else:
+        await update.message.reply_text(
+            "📸 تصویر دریافت شد!",
+            reply_markup=user_keyboard()
+        )
+
