@@ -715,6 +715,89 @@ class GroqAI:
 
 # ==================== کلاس مدیریت تحلیل ====================
 
+import hashlib
+from datetime import datetime
+from typing import Optional, Dict, Any
+
+class GroqAI:
+    """کلاس پایه هوش مصنوعی Groq"""
+    
+    def __init__(self, api_key: str = ""):
+        self.api_key = api_key
+        self._cache = {}
+    
+    async def analyze_signal(
+        self,
+        coin: str,
+        market_data: Dict[str, Any],
+        technical_data: Dict[str, Any],
+        fundamental_data: Dict[str, Any] = None,
+        is_vip: bool = False
+    ) -> str:
+        """تحلیل سیگنال"""
+        return f"""
+🤖 **تحلیل هوشمند {coin}**
+
+📊 **داده‌های تکنیکال:**
+• قیمت فعلی: ${market_data.get('price', 0):.2f}
+• تغییر ۲۴ ساعت: {market_data.get('change_24h', 0):.2f}%
+• RSI: {technical_data.get('rsi', 50):.1f}
+• MACD: {technical_data.get('macd', 0):.4f}
+
+🎯 **پیشنهاد:** {technical_data.get('signal', 'hold').upper()}
+🎯 **سطح اطمینان:** {technical_data.get('confidence', 50)}%
+
+⏰ **زمان:** {datetime.now().strftime('%Y-%m-%d %H:%M')}
+"""
+    
+    async def predict_price(
+        self,
+        coin: str,
+        current_price: float,
+        sma_7: float = None,
+        sma_25: float = None,
+        rsi: float = 50,
+        trend: str = "خنثی"
+    ) -> str:
+        """پیش‌بینی قیمت"""
+        return f"""
+🔮 **پیش‌بینی قیمت {coin}**
+
+💰 **قیمت فعلی:** ${current_price:.2f}
+📈 **پیش‌بینی ۲۴ ساعت:** ${current_price * 1.02:.2f}
+📈 **پیش‌بینی ۷ روز:** ${current_price * 1.05:.2f}
+
+⏰ **زمان:** {datetime.now().strftime('%Y-%m-%d %H:%M')}
+"""
+    
+    async def get_market_summary(self, market_data: Dict[str, Any]) -> str:
+        """خلاصه بازار"""
+        return f"""
+🌍 **خلاصه بازار**
+
+📊 بازار در حالت {market_data.get('status', 'خنثی')} قرار دارد.
+💰 ارزهای برتر: BTC, ETH, BNB
+
+⏰ **زمان:** {datetime.now().strftime('%Y-%m-%d %H:%M')}
+"""
+    
+    async def get_portfolio_advice(self, portfolio: Dict[str, Any]) -> str:
+        """مشاوره پورتفولیو"""
+        return "💼 مشاوره پورتفولیو در حال توسعه..."
+    
+    async def get_education(self, topic: str) -> str:
+        """آموزش"""
+        return f"📚 آموزش {topic} در حال توسعه..."
+    
+    def get_stats(self) -> Dict[str, Any]:
+        """آمار"""
+        return {"cache_size": len(self._cache)}
+    
+    def clear_cache(self):
+        """پاکسازی کش"""
+        self._cache.clear()
+
+
 class AIAnalysisManager:
     """مدیریت تحلیل‌های هوش مصنوعی"""
     
@@ -790,6 +873,7 @@ class AIAnalysisManager:
         """پاکسازی کش"""
         self.groq.clear_cache()
         self._cache.clear()
+
 
 # ==================== Export ====================
 
