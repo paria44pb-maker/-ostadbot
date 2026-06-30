@@ -188,84 +188,120 @@ VIP_PRICE_LIFETIME = int(os.environ.get("VIP_PRICE_LIFETIME", 4990000))
 #                    ENUMS & CONSTANTS
 # ============================================================
 
+from enum import Enum
+
 class UserLevel(Enum):
-    GUEST = "guest"
-    FREE = "free"
-    PREMIUM = "premium"
-    VIP = "vip"
-    ADMIN = "admin"
-    SUPER_ADMIN = "super_admin"
+    """سطح دسترسی کاربران"""
+    GUEST = "guest"           # مهمان
+    FREE = "free"             # کاربر عادی
+    PREMIUM = "premium"       # کاربر حق عضویت
+    VIP = "vip"               # کاربر ویژه
+    ADMIN = "admin"           # مدیر
+    SUPER_ADMIN = "super_admin"  # مدیر ارشد
+    
+    @classmethod
+    def from_string(cls, value: str):
+        """تبدیل رشته به Enum"""
+        for member in cls:
+            if member.value == value:
+                return member
+        return cls.GUEST
+    
+    def get_permissions(self) -> List[str]:
+        """دریافت دسترسی‌های هر سطح"""
+        permissions = {
+            "guest": ["view_signals", "view_analysis"],
+            "free": ["view_signals", "view_analysis", "request_signal"],
+            "premium": ["view_signals", "view_analysis", "request_signal", "premium_signals"],
+            "vip": ["view_signals", "view_analysis", "request_signal", "vip_signals", "vip_analysis"],
+            "admin": ["*"],
+            "super_admin": ["*"]
+        }
+        return permissions.get(self.value, [])
+
 
 class ActionType(Enum):
-    ANALYSIS = "analysis"
-    SIGNAL = "signal"
-    VIP = "vip"
-    WALLET = "wallet"
-    SUPPORT = "support"
-    SETTINGS = "settings"
-    ADMIN = "admin"
+    """نوع اقدامات کاربر"""
+    ANALYSIS = "analysis"        # تحلیل
+    SIGNAL = "signal"            # سیگنال
+    VIP = "vip"                  # VIP
+    WALLET = "wallet"            # کیف پول
+    SUPPORT = "support"          # پشتیبانی
+    SETTINGS = "settings"        # تنظیمات
+    ADMIN = "admin"              # مدیریت
+    BROADCAST = "broadcast"      # ارسال همگانی
+    BACKUP = "backup"            # بکاپ
+    PAYMENT = "payment"          # پرداخت
+    SERVER = "server"            # سرور
+    
+    @classmethod
+    def from_callback(cls, callback: str):
+        """تبدیل کالبک به Enum"""
+        for member in cls:
+            if member.value in callback:
+                return member
+        return None
+
 
 class ResponseType(Enum):
-    TEXT = "text"
-    PHOTO = "photo"
-    VIDEO = "video"
-    DOCUMENT = "document"
-    VOICE = "voice"
-    ANIMATION = "animation"
-    STICKER = "sticker"
+    """نوع پاسخ ربات"""
+    TEXT = "text"                # متن
+    PHOTO = "photo"              # تصویر
+    VIDEO = "video"              # ویدیو
+    DOCUMENT = "document"        # فایل
+    VOICE = "voice"              # صدا
+    ANIMATION = "animation"      # انیمیشن
+    STICKER = "sticker"          # استیکر
+    LOCATION = "location"        # موقعیت
+    CONTACT = "contact"          # تماس
+    POLL = "poll"                # نظرسنجی
+    
+    @classmethod
+    def get_default(cls):
+        """دریافت نوع پاسخ پیش‌فرض"""
+        return cls.TEXT
+
 
 # ============================================================
-#                    CONVERSATION STATES
+#                    CONSTANTS
 # ============================================================
 
-class ConversationState:
-    MAIN = 0
-    WAITING_FOR_COIN = 1
-    WAITING_FOR_TIMEFRAME = 2
-    WAITING_FOR_AMOUNT = 3
-    WAITING_FOR_PRICE = 4
-    WAITING_FOR_MESSAGE = 5
-    WAITING_FOR_BROADCAST = 6
-    WAITING_FOR_BACKUP = 7
-    WAITING_FOR_SETTINGS = 8
-    WAITING_FOR_SUPPORT = 9
-    WAITING_FOR_TICKET = 10
-    WAITING_FOR_RECEIPT = 11
-    WAITING_FOR_VIP_REQUEST = 12
-    WAITING_FOR_ANALYSIS_COIN = 13
-    WAITING_FOR_SIGNAL_COIN = 14
-    WAITING_FOR_PORTFOLIO = 15
-    WAITING_FOR_ALERT = 16
-    WAITING_FOR_WITHDRAW = 17
-    WAITING_FOR_DEPOSIT = 18
-    WAITING_FOR_REFERRAL = 19
-    WAITING_FOR_EDUCATION = 20
-    WAITING_FOR_NEWS = 21
-    WAITING_FOR_REPORT = 22
-    WAITING_FOR_BAN = 23
-    WAITING_FOR_UNBAN = 24
-    WAITING_FOR_MAKE_ADMIN = 25
-    WAITING_FOR_DELETE_USER = 26
-    WAITING_FOR_CONFIRM = 27
-    WAITING_FOR_PAYMENT = 28
-    WAITING_FOR_WEBHOOK = 29
-    WAITING_FOR_API_KEY = 30
-    WAITING_FOR_CHANNEL_MESSAGE = 31
-    WAITING_FOR_SEND_CHANNEL = 32
-    WAITING_FOR_SEND_BROADCAST = 33
-    WAITING_FOR_SEND_BROADCAST_VIP = 34
-    WAITING_FOR_SEND_BROADCAST_NORMAL = 35
-    WAITING_FOR_ANALYSIS_RESULT = 36
-    WAITING_FOR_SIGNAL_RESULT = 37
-    WAITING_FOR_VIP_PURCHASE = 38
-    WAITING_FOR_VIP_CONFIRM = 39
-    WAITING_FOR_ADMIN_ACTION = 40
-    WAITING_FOR_USER_ID = 41
-    WAITING_FOR_REASON = 42
-    WAITING_FOR_PAYMENT_ID = 43
-    WAITING_FOR_BACKUP_RESTORE = 44
-    WAITING_FOR_BACKUP_DELETE = 45
-    WAITING_FOR_SERVER_ACTION = 46
+# ارزهای پشتیبانی شده
+SUPPORTED_COINS = [
+    "BTC", "ETH", "BNB", "SOL", "XRP", "ADA", "DOGE", 
+    "DOT", "MATIC", "SHIB", "AVAX", "LINK", "UNI", "ATOM",
+    "LTC", "BCH", "NEAR", "VET", "ALGO", "FTM", "EOS",
+    "TRX", "XLM", "ICP", "HBAR", "FIL", "APT", "ARB"
+]
+
+# تایم‌فریم‌های پشتیبانی شده
+SUPPORTED_TIMEFRAMES = ["1m", "5m", "15m", "30m", "1h", "4h", "1d", "1w"]
+
+# قیمت‌های VIP
+VIP_PRICES = {
+    "monthly": 199000,
+    "yearly": 1990000,
+    "lifetime": 4990000
+}
+
+# پیام‌های خطا
+ERROR_MESSAGES = {
+    "unauthorized": "❌ دسترسی غیرمجاز!",
+    "not_found": "❌ موردی یافت نشد!",
+    "invalid_input": "❌ ورودی نامعتبر!",
+    "server_error": "❌ خطای سرور!",
+    "rate_limit": "⏳ لطفاً کمی صبر کنید...",
+    "maintenance": "🔧 ربات در حال بروزرسانی است..."
+}
+
+# پیام‌های موفقیت
+SUCCESS_MESSAGES = {
+    "done": "✅ انجام شد!",
+    "saved": "✅ ذخیره شد!",
+    "deleted": "✅ حذف شد!",
+    "updated": "✅ بروزرسانی شد!",
+    "sent": "✅ ارسال شد!"
+    }
 
 # ============================================================
 #                    KEYBOARD FALLBACK
