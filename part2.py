@@ -838,31 +838,106 @@ class ImageSettings:
 
 # ==================== Export ====================
 
-config_manager = ConfigManager()
-permission_manager = PermissionManager(config_manager)
-currency_manager = CurrencyManager(config_manager)
-time_config = TimeConfig()
-market_settings = MarketSettings(config_manager)
-security_settings = SecuritySettings()
-image_settings = ImageSettings(config_manager)
+import sys
+import traceback
 
-def get_config() -> ConfigManager:
+class SafeInstance:
+    """ایمن‌ساز ایجاد نمونه از کلاس‌ها"""
+    
+    _instances = {}
+    
+    @classmethod
+    def create(cls, class_name, *args, **kwargs):
+        """ایجاد ایمن نمونه از کلاس"""
+        key = f"{class_name}_{args}_{kwargs}"
+        
+        if key in cls._instances:
+            return cls._instances[key]
+        
+        try:
+            # دریافت کلاس از فضای نام جهانی
+            if class_name in globals():
+                instance = globals()[class_name](*args, **kwargs)
+            elif class_name in sys.modules.get('__main__', {}).__dict__:
+                instance = sys.modules['__main__'].__dict__[class_name](*args, **kwargs)
+            else:
+                instance = None
+            
+            cls._instances[key] = instance
+            return instance
+        except Exception:
+            cls._instances[key] = None
+            return None
+
+# ==================== ایجاد نمونه‌ها ====================
+
+# ۱. ConfigManager - اولین و مهم‌ترین
+config_manager = SafeInstance.create("ConfigManager")
+
+# ۲. PermissionManager - وابسته به ConfigManager
+permission_manager = SafeInstance.create("PermissionManager", config_manager) if config_manager else None
+
+# ۳. CurrencyManager - وابسته به ConfigManager
+currency_manager = SafeInstance.create("CurrencyManager", config_manager) if config_manager else None
+
+# ۴. TimeConfig - مستقل
+time_config = SafeInstance.create("TimeConfig")
+
+# ۵. MarketSettings - وابسته به ConfigManager
+market_settings = SafeInstance.create("MarketSettings", config_manager) if config_manager else None
+
+# ۶. SecuritySettings - مستقل
+security_settings = SafeInstance.create("SecuritySettings")
+
+# ۷. ImageSettings - وابسته به ConfigManager
+image_settings = SafeInstance.create("ImageSettings", config_manager) if config_manager else None
+
+# ==================== توابع دسترسی ====================
+
+def get_config():
+    """دریافت نمونه ConfigManager"""
     return config_manager
 
-def get_permissions() -> PermissionManager:
+def get_permissions():
+    """دریافت نمونه PermissionManager"""
     return permission_manager
 
-def get_currencies() -> CurrencyManager:
+def get_currencies():
+    """دریافت نمونه CurrencyManager"""
     return currency_manager
 
-def get_time() -> TimeConfig:
+def get_time():
+    """دریافت نمونه TimeConfig"""
     return time_config
 
-def get_market_settings() -> MarketSettings:
+def get_market_settings():
+    """دریافت نمونه MarketSettings"""
     return market_settings
 
-def get_security() -> SecuritySettings:
+def get_security():
+    """دریافت نمونه SecuritySettings"""
     return security_settings
 
-def get_image_settings() -> ImageSettings:
+def get_image_settings():
+    """دریافت نمونه ImageSettings"""
     return image_settings
+
+# ==================== تابع کمکی برای دیباگ ====================
+
+def check_instances():
+    """بررسی سلامت نمونه‌ها"""
+    instances = {
+        "config_manager": config_manager,
+        "permission_manager": permission_manager,
+        "currency_manager": currency_manager,
+        "time_config": time_config,
+        "market_settings": market_settings,
+        "security_settings": security_settings,
+        "image_settings": image_settings
+    }
+    
+    result = {}
+    for name, instance in instances.items():
+        result[name] = "✅ OK" if instance else "❌ FAILED"
+    
+    return result
