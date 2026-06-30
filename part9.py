@@ -3,7 +3,7 @@
 
 """
 CryptoPulse AI Bot v3.0 - Main Handlers Module
-نسخه نهایی، کامل، بدون خطا و بدون لاگ
+نسخه نهایی - بدون خطا و بدون لاگ
 """
 
 import os
@@ -14,15 +14,36 @@ from telegram.ext import Application, CommandHandler, CallbackQueryHandler, Mess
 from telegram.constants import ParseMode
 
 # ============================================================
-#                    تنظیمات اولیه
+#                    تنظیمات اولیه (با مدیریت خطا)
 # ============================================================
 
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "")
-ADMIN_IDS = [int(x) for x in os.environ.get("ADMIN_IDS", "").split(",") if x]
 CHANNEL_ID = os.environ.get("CHANNEL_ID", "@CryptoPulse606")
 SUPPORT_USERNAME = os.environ.get("VIP_ADMIN_USERNAME", "Amir92aa")
 VIP_CARD = os.environ.get("VIP_PAYMENT_CARD", "6063731196254479")
-VIP_HOLDER = os.environ.get("VIP_PAYMENT_HOLDER", "بهمرد")
+VIP_HOLDER = os.environ.get("VIP_PAYMENT_HOLDER", "به مرد")
+
+# ADMIN_IDS - تبدیل ایمن به عدد
+ADMIN_IDS = []
+admin_ids_str = os.environ.get("ADMIN_IDS", "")
+for x in admin_ids_str.split(","):
+    x = x.strip()
+    if x:
+        try:
+            ADMIN_IDS.append(int(x))
+        except ValueError:
+            # اگر عدد نبود، نادیده بگیر
+            pass
+
+# ============================================================
+#                    توابع کمکی
+# ============================================================
+
+def is_admin(user_id: str) -> bool:
+    return int(user_id) in ADMIN_IDS if user_id.isdigit() else False
+
+def get_time():
+    return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
 # ============================================================
 #                    کیبوردها
