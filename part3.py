@@ -1052,19 +1052,82 @@ class PaymentRepository(BaseRepository):
 
 # ==================== Export ====================
 
-db_manager = DatabaseManager()
-user_repo = UserRepository(db_manager)
-signal_repo = SignalRepository(db_manager)
-payment_repo = PaymentRepository(db_manager)
+import sys
+import traceback
 
-def get_db() -> DatabaseManager:
+class SafeDBInstance:
+    """ایمن‌ساز ایجاد نمونه از کلاس‌های دیتابیس"""
+    
+    _instances = {}
+    
+    @classmethod
+    def create(cls, class_name, *args, **kwargs):
+        """ایجاد ایمن نمونه از کلاس"""
+        key = f"{class_name}_{args}_{kwargs}"
+        
+        if key in cls._instances:
+            return cls._instances[key]
+        
+        try:
+            # دریافت کلاس از فضای نام جهانی
+            if class_name in globals():
+                instance = globals()[class_name](*args, **kwargs)
+            elif class_name in sys.modules.get('__main__', {}).__dict__:
+                instance = sys.modules['__main__'].__dict__[class_name](*args, **kwargs)
+            else:
+                instance = None
+            
+            cls._instances[key] = instance
+            return instance
+        except Exception:
+            cls._instances[key] = None
+            return None
+
+# ==================== ایجاد نمونه‌ها ====================
+
+# ۱. DatabaseManager - اصلی‌ترین
+db_manager = SafeDBInstance.create("DatabaseManager")
+
+# ۲. UserRepository - وابسته به db_manager
+user_repo = SafeDBInstance.create("UserRepository", db_manager) if db_manager else None
+
+# ۳. SignalRepository - وابسته به db_manager
+signal_repo = SafeDBInstance.create("SignalRepository", db_manager) if db_manager else None
+
+# ۴. PaymentRepository - وابسته به db_manager
+payment_repo = SafeDBInstance.create("PaymentRepository", db_manager) if db_manager else None
+
+# ==================== توابع دسترسی ====================
+
+def get_db() -> Optional[DatabaseManager]:
+    """دریافت نمونه DatabaseManager"""
     return db_manager
 
-def get_user_repo() -> UserRepository:
+def get_user_repo() -> Optional[UserRepository]:
+    """دریافت نمونه UserRepository"""
     return user_repo
 
-def get_signal_repo() -> SignalRepository:
+def get_signal_repo() -> Optional[SignalRepository]:
+    """دریافت نمونه SignalRepository"""
     return signal_repo
 
-def get_payment_repo() -> PaymentRepository:
+def get_payment_repo() -> Optional[PaymentRepository]:
+    """دریافت نمونه PaymentRepository"""
     return payment_repo
+
+# ==================== تابع کمکی برای دیباگ ====================
+
+def check_db_instances():
+    """بررسی سلامت نمونه‌های دیتابیس"""
+    instances = {
+        "db_manager": db_manager,
+        "user_repo": user_repo,
+        "signal_repo": signal_repo,
+        "payment_repo": payment_repo
+    }
+    
+    result = {}
+    for name, instance in instances.items():
+        result[name] = "✅ OK" if instance else "❌ FAILED"
+    
+    return result
