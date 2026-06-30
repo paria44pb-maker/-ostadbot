@@ -22,7 +22,7 @@ ADMIN_IDS = [int(x) for x in os.environ.get("ADMIN_IDS", "").split(",") if x]
 CHANNEL_ID = os.environ.get("CHANNEL_ID", "@CryptoPulse606")
 SUPPORT_USERNAME = os.environ.get("VIP_ADMIN_USERNAME", "Amir92aa")
 VIP_CARD = os.environ.get("VIP_PAYMENT_CARD", "6063731196254479")
-VIP_HOLDER = os.environ.get("VIP_PAYMENT_HOLDER", "به مرد")
+VIP_HOLDER = os.environ.get("VIP_PAYMENT_HOLDER", "بهمرد")
 
 # ============================================================
 #                    کیبوردها
