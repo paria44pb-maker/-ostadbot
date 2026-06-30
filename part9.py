@@ -2057,7 +2057,7 @@ class BotHandlers:
         self.application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, message_handler))
 
         # ====== Conversation Handler (کامل) ======
-        conv_handler = ConversationHandler(
+        conv_handler = ConversationHandler
             entry_points=[
                 CommandHandler("signal", signal_command),
                 CallbackQueryHandler(callback_handler, pattern="^analysis$"),
