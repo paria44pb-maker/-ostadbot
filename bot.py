@@ -2,20 +2,45 @@
 # -*- coding: utf-8 -*-
 
 """
-CryptoPulse AI Bot v3.0 - Main Entry Point
+CryptoPulse AI Bot v3.0 - Simple Entry Point
 """
 
 import os
 import sys
-import asyncio
 import time
 
-print("🚀 Starting CryptoPulse AI Bot v3.0...")
-print("📁 Loading all 15 parts...\n")
+print("🚀 Starting CryptoPulse AI Bot...")
 
 # ============================================================
-#                    IMPORT ALL PARTS
+#                    SIMPLE FASTAPI SERVER
 # ============================================================
+
+from fastapi import FastAPI
+import uvicorn
+
+app = FastAPI(title="CryptoPulse AI", version="3.0.0")
+
+@app.get("/")
+async def root():
+    return {
+        "status": "online",
+        "name": "CryptoPulse AI",
+        "version": "3.0.0",
+        "time": time.strftime("%Y-%m-%d %H:%M:%S")
+    }
+
+@app.get("/health")
+async def health():
+    return {
+        "status": "healthy",
+        "time": time.strftime("%Y-%m-%d %H:%M:%S")
+    }
+
+# ============================================================
+#                    IMPORT ALL PARTS (با مدیریت خطا)
+# ============================================================
+
+print("📁 Loading all 15 parts...")
 
 parts = [
     ("Part 1", "Main Entry Point"),
@@ -35,51 +60,22 @@ parts = [
     ("Part 15", "Media Management")
 ]
 
-for part, name in parts:
+for num, name in parts:
     try:
-        exec(f"from part{part.split()[1]} import *")
-        print(f"  ✅ {part}: {name}")
+        exec(f"from part{num.split()[1]} import *")
+        print(f"  ✅ {num}: {name}")
     except Exception as e:
-        print(f"  ❌ {part}: {e}")
+        print(f"  ❌ {num}: {e}")
 
 print("\n" + "="*50)
 print("🚀 All parts loaded!")
 print("="*50)
 
 # ============================================================
-#                    RUN BOT
+#                    RUN
 # ============================================================
-
-async def run_bot():
-    try:
-        from part9 import get_application
-        app = get_application()
-        
-        if app:
-            print("✅ Bot application created!")
-            
-            # حذف Webhook
-            try:
-                await app.bot.delete_webhook(drop_pending_updates=True)
-                print("✅ Webhook deleted!")
-            except Exception as e:
-                print(f"⚠️ Webhook delete error: {e}")
-            
-            # شروع با Polling
-            await app.initialize()
-            await app.start()
-            await app.updater.start_polling()
-            print("✅ Bot is running with polling!")
-            
-            while True:
-                await asyncio.sleep(1)
-        else:
-            print("⚠️ No bot application found.")
-            
-    except Exception as e:
-        print(f"❌ Bot error: {e}")
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8080))
-    uvicorn.run(app, host="0.0.0.0", port=port)
-            time.sleep(1)
+    print(f"🌐 Server running on port {port}")
+    uvicorn.run(app, host="0.0.0.0", port=port, log_level="error")
