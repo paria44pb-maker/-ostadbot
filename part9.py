@@ -2,33 +2,104 @@
 # -*- coding: utf-8 -*-
 
 """
-CryptoPulse AI Bot v3.0 - Main Handlers Module (Ultimate Edition)
-ماژول هندلرهای اصلی، پردازش پیام‌ها، کالبک‌ها و گفتگوهای هوشمند
-طراحی شده با بهترین استانداردهای حرفه‌ای - بدون خطا و بدون لاگ
+CryptoPulse AI Bot v3.0 - Main Handlers Module
+نسخه نهایی - بدون خطا و بدون لاگ
 """
 
 import os
 import sys
 import json
 import asyncio
-import re
 import time
-import hashlib
 import random
+import hashlib
 from datetime import datetime, timedelta
-from typing import Optional, Dict, Any, List, Tuple, Union
-from enum import Enum
-from dataclasses import dataclass, field
-from collections import defaultdict
+from typing import Optional, Dict, Any, List, Tuple
 
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, InputFile, Bot, ReplyKeyboardMarkup, KeyboardButton
-from telegram.ext import
-    Application, CommandHandler, CallbackQueryHandler,
-    MessageHandler, filters, ContextTypes, ConversationHandler,
-    PreCheckoutQueryHandler, ShippingQueryHandler, PollHandler,
-    ChatMemberHandler, InlineQueryHandler, ChosenInlineResultHandler
+# ============================================================
+#                    TELEGRAM IMPORTS
+# ============================================================
+
+from telegram import (
+    Update,
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+    InputFile,
+    Bot,
+    ReplyKeyboardMarkup,
+    KeyboardButton
+)
+
+from telegram.ext import (
+    Application,
+    CommandHandler,
+    CallbackQueryHandler,
+    MessageHandler,
+    filters,
+    ContextTypes,
+    ConversationHandler
+)
 
 from telegram.constants import ParseMode
+
+# ============================================================
+#                    تنظیمات اولیه (با مدیریت خطا)
+# ============================================================
+
+BOT_TOKEN = os.environ.get("BOT_TOKEN", "")
+CHANNEL_ID = os.environ.get("CHANNEL_ID", "@CryptoPulse606")
+SUPPORT_USERNAME = os.environ.get("VIP_ADMIN_USERNAME", "Amir92aa")
+VIP_CARD = os.environ.get("VIP_PAYMENT_CARD", "6063731196254479")
+VIP_HOLDER = os.environ.get("VIP_PAYMENT_HOLDER", "بهمرد")
+VIP_PRICE_MONTHLY = int(os.environ.get("VIP_PRICE_MONTHLY", 199000))
+VIP_PRICE_YEARLY = int(os.environ.get("VIP_PRICE_YEARLY", 1990000))
+VIP_PRICE_LIFETIME = int(os.environ.get("VIP_PRICE_LIFETIME", 4990000))
+
+# ADMIN_IDS - تبدیل ایمن به عدد
+ADMIN_IDS = []
+admin_ids_str = os.environ.get("ADMIN_IDS", "")
+for x in admin_ids_str.split(","):
+    x = x.strip()
+    if x:
+        try:
+            ADMIN_IDS.append(int(x))
+        except ValueError:
+            pass
+
+# ============================================================
+#                    توابع کمکی
+# ============================================================
+
+def is_admin(user_id: str) -> bool:
+    """بررسی ادمین بودن کاربر"""
+    try:
+        return int(user_id) in ADMIN_IDS
+    except:
+        return False
+
+def get_persian_time() -> str:
+    """دریافت زمان به فرمت فارسی"""
+    return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+def get_emoji(signal_type: str) -> str:
+    """دریافت ایموجی بر اساس نوع سیگنال"""
+    emojis = {
+        "buy": "🟢",
+        "sell": "🔴",
+        "hold": "🟡",
+        "strong_buy": "💚",
+        "strong_sell": "❤️"
+    }
+    return emojis.get(signal_type, "⚪")
+
+def format_price(price: float) -> str:
+    """فرمت قیمت با کاما"""
+    return f"${price:,.2f}"
+
+def format_number(num: float) -> str:
+    """فرمت اعداد با کاما"""
+    return f"{num:,.0f}"
+
 
 # ============================================================
 #                    SAFE IMPORTS
