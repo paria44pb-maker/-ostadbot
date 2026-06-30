@@ -1,31 +1,56 @@
-============================================================
-  CryptoPulse AI Bot v3.0
-  Author: CryptoPulse Team
-  Channel: @CryptoPulse606
-  Build: 2025.01.20
-============================================================
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 
-📁 Loading all 15 parts...
+"""
+CryptoPulse AI Bot v3.0 - Main Entry Point
+ربات هوشمند تحلیل و سیگنال ارزهای دیجیتال
+"""
 
-  ✅ Part  1: Main Entry Point
-  ✅ Part  2: Config & Settings
-  ✅ Part  3: Database Models
-  ✅ Part  4: Utils & Tehran Time
-  ✅ Part  5: CoinEx Exchange
-  ✅ Part  6: Groq AI
-  ✅ Part  7: Technical Analysis
-  ✅ Part  8: Keyboards & Menus
-  ✅ Part  9: Main Handlers
-  ✅ Part 10: Admin Panel
-  ✅ Part 11: VIP & Payment
-  ✅ Part 12: Channel Management
-  ✅ Part 13: FastAPI Server
-  ✅ Part 14: Background Tasks
-  ✅ Part 15: Media Management
+import os
+import sys
+import uvicorn
 
-============================================================
-🚀 All 15 parts loaded successfully!
-⏰ Time: 2025-01-20 14:30:00
-============================================================
+# ============================================================
+#                    IMPORT ALL PARTS
+# ============================================================
 
-🔄 Bot is running...
+from part1 import *
+from part2 import *
+from part3 import *
+from part4 import *
+from part5 import *
+from part6 import *
+from part7 import *
+from part8 import *
+from part9 import *
+from part10 import *
+from part11 import *
+from part12 import *
+from part13 import *
+from part14 import *
+from part15 import *
+
+# ============================================================
+#                    CONFIG
+# ============================================================
+
+try:
+    from part2 import PORT
+except:
+    PORT = int(os.environ.get("PORT", 8080))
+
+# ============================================================
+#                    RUN
+# ============================================================
+
+if __name__ == "__main__":
+    print("🚀 Starting CryptoPulse AI Bot v3.0...")
+    print("📁 All 15 parts imported successfully!")
+    print(f"🌐 Server running on port {PORT}")
+    
+    uvicorn.run(
+        "bot:app",
+        host="0.0.0.0",
+        port=PORT,
+        log_level="info"
+    )
