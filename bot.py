@@ -4,19 +4,20 @@
 """
 CryptoPulse AI Bot v3.0 - Main Entry Point
 ربات هوشمند تحلیل و سیگنال ارزهای دیجیتال
-فقط بارگذاری و اجرای تمام ۱۵ بخش
+اجرای تمام ۱۵ بخش
 """
 
 import os
 import sys
 import asyncio
 import time
+import uvicorn
 
 print("🚀 Starting CryptoPulse AI Bot v3.0...")
 print("📁 Loading all 15 parts...\n")
 
 # ============================================================
-#                    LOAD ALL 15 PARTS
+#                    IMPORT ALL PARTS
 # ============================================================
 
 try:
@@ -119,18 +120,23 @@ print("="*50)
 
 if __name__ == "__main__":
     try:
-        # اجرای اپلیکیشن از part9
+        # دریافت اپلیکیشن از part9
         from part9 import get_application
         app = get_application()
+        
         if app:
             print("✅ Bot application created!")
+            print("🔄 Bot is running...")
             asyncio.run(app.run_polling())
         else:
-            print("⚠️ No application found. Running idle...")
-            while True:
-                time.sleep(1)
-    except ImportError:
-        print("⚠️ part9 not found. Running idle...")
+            print("⚠️ No application found. Running server only...")
+            from part13 import app as fastapi_app
+            port = int(os.environ.get("PORT", 8080))
+            uvicorn.run(fastapi_app, host="0.0.0.0", port=port)
+            
+    except ImportError as e:
+        print(f"⚠️ Import error: {e}")
+        print("🔄 Running in idle mode...")
         while True:
             time.sleep(1)
     except KeyboardInterrupt:
