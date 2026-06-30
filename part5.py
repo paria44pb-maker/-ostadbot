@@ -1046,10 +1046,69 @@ class MarketManager:
 
 # ==================== Export ====================
 
-market_manager = MarketManager()
+import sys
+import os
 
-def get_market() -> MarketManager:
+class SafeMarketInstance:
+    """ایمن‌ساز ایجاد نمونه از کلاس‌های بازار"""
+    
+    _instances = {}
+    
+    @classmethod
+    def create(cls, class_name, *args, **kwargs):
+        """ایجاد ایمن نمونه از کلاس"""
+        key = f"{class_name}_{args}_{kwargs}"
+        
+        if key in cls._instances:
+            return cls._instances[key]
+        
+        try:
+            # دریافت کلاس از فضای نام جهانی
+            if class_name in globals():
+                instance = globals()[class_name](*args, **kwargs)
+            elif class_name in sys.modules.get('__main__', {}).__dict__:
+                instance = sys.modules['__main__'].__dict__[class_name](*args, **kwargs)
+            else:
+                instance = None
+            
+            cls._instances[key] = instance
+            return instance
+        except Exception:
+            cls._instances[key] = None
+            return None
+
+# ==================== ایجاد نمونه‌ها ====================
+
+# ۱. MarketManager - اصلی‌ترین
+market_manager = SafeMarketInstance.create(
+    "MarketManager",
+    api_key=os.environ.get("COINEX_API_KEY", ""),
+    secret_key=os.environ.get("COINEX_SECRET_KEY", "")
+)
+
+# ۲. CoinExExchange - از داخل MarketManager گرفته میشود
+def get_coinex_instance():
+    """دریافت نمونه CoinExExchange از داخل MarketManager"""
+    if market_manager and hasattr(market_manager, 'coinex'):
+        return market_manager.coinex
+    return None
+
+# ==================== توابع دسترسی ====================
+
+def get_market():
+    """دریافت نمونه MarketManager"""
     return market_manager
 
-def get_coinex() -> CoinExExchange:
-    return market_manager.coinex
+def get_coinex():
+    """دریافت نمونه CoinExExchange"""
+    return get_coinex_instance()
+
+# ==================== تابع کمکی برای دیباگ ====================
+
+def check_market_instances():
+    """بررسی سلامت نمونه‌های بازار"""
+    result = {
+        "market_manager": "✅ OK" if market_manager else "❌ FAILED",
+        "coinex": "✅ OK" if get_coinex() else "❌ FAILED"
+    }
+    return result
