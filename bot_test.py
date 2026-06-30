@@ -6,11 +6,11 @@ from telegram.ext import Application, CommandHandler, ContextTypes
 TOKEN = os.environ.get("BOT_TOKEN", "")
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("✅ ربات زنده است!")
+    await update.message.reply_text("✅ ربات با موفقیت اجرا شد!")
 
 async def main():
     if not TOKEN:
-        print("❌ TOKEN not found")
+        print("❌ BOT_TOKEN not found!")
         return
     
     app = Application.builder().token(TOKEN).build()
@@ -20,7 +20,7 @@ async def main():
     await app.start()
     await app.updater.start_polling()
     
-    print("✅ Bot is running...")
+    print("✅ Telegram Bot is running!")
     
     while True:
         await asyncio.sleep(1)
