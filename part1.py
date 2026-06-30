@@ -1,4 +1,3 @@
-
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
@@ -9,7 +8,7 @@ CryptoPulse AI Bot v3.0 - Main Entry Point
 
 ویژگی‌ها:
 - پشتیبانی از ۴۰+ ارز دیجیتال
-- تحلیل تکنیکال با ۲۰+ اندیکاتور
+- تحلیل تکنیکال با ۳۰+ اندیکاتور
 - هوش مصنوعی Groq
 - زمان تهران (با ساعت تابستانی)
 - ارز دلخواه کاربر
@@ -17,7 +16,6 @@ CryptoPulse AI Bot v3.0 - Main Entry Point
 - ارسال خودکار سیگنال به کانال
 - مدیریت VIP با قیمت ۱۹۹,۰۰۰ تومان
 - ارسال عکس به صفحات ربات
-- و ...
 """
 
 import os
@@ -66,7 +64,6 @@ os.environ.setdefault("TZ", "Asia/Tehran")
 # ==================== لیست کامل ارزها ====================
 
 ALL_COINS = [
-    # ارزهای اصلی
     "BTC", "ETH", "USDT", "BNB", "SOL", "XRP", "ADA", "DOGE",
     "DOT", "MATIC", "SHIB", "AVAX", "LINK", "UNI", "ATOM",
     "LTC", "BCH", "NEAR", "VET", "ALGO", "FTM", "EOS",
@@ -210,10 +207,8 @@ class MemoryOptimizer:
         try:
             process = psutil.Process()
             self.current_usage = process.memory_info().rss / (1024 * 1024)
-
             if self.current_usage > self.max_memory_mb * self.warning_threshold:
                 gc.collect()
-
             if self.current_usage > self.max_memory_mb * self.critical_threshold:
                 self._emergency_cleanup()
         except:
@@ -238,14 +233,12 @@ class MemoryOptimizer:
     def cached(self, key: str, ttl: int = 60):
         now = datetime.now()
         cache_key = f"{key}_{ttl}"
-
         if cache_key in self._cache:
             cached_data = self._cache[cache_key]
             if (now - cached_data['timestamp']).seconds < ttl:
                 cached_data['last_access'] = now
                 yield cached_data['data']
                 return
-
         data = yield
         self._cache[cache_key] = {
             'data': data,
@@ -292,10 +285,8 @@ class RateLimiter:
         user_requests = self.requests[user_id]
         user_requests = [t for t in user_requests if now - t < self.period]
         self.requests[user_id] = user_requests
-
         if len(user_requests) >= self.max_requests:
             return False
-
         self.requests[user_id].append(now)
         return True
 
@@ -414,7 +405,6 @@ def async_retry(max_retries: int = 3, delay: int = 1, backoff: int = 2):
 def rate_limit(requests: int = 100, period: int = 60):
     def decorator(func):
         limiter = RateLimiter(requests, period)
-
         @wraps(func)
         async def wrapper(self, update, context, *args, **kwargs):
             user_id = str(update.effective_user.id)
@@ -438,17 +428,7 @@ def vip_only(func):
     @wraps(func)
     async def wrapper(self, update, context, *args, **kwargs):
         user_id = str(update.effective_user.id)
-        # بررسی VIP از دیتابیس
         return await func(self, update, context, *args, **kwargs)
-    return wrapper
-
-def measure_time(func):
-    @wraps(func)
-    async def wrapper(*args, **kwargs):
-        start = time.time()
-        result = await func(*args, **kwargs)
-        elapsed = time.time() - start
-        return result
     return wrapper
 
 def no_log(func):
@@ -458,6 +438,15 @@ def no_log(func):
             return await func(*args, **kwargs)
         except:
             return None
+    return wrapper
+
+def measure_time(func):
+    @wraps(func)
+    async def wrapper(*args, **kwargs):
+        start = time.time()
+        result = await func(*args, **kwargs)
+        elapsed = time.time() - start
+        return result
     return wrapper
 
 # ==================== Main Application Class ====================
@@ -531,11 +520,9 @@ class CryptoPulseBot:
         def handle_critical(error):
             self.status = BotStatus.ERROR
             self.metrics.errors_count += 1
-
         self.error_handler.register_handler(Exception, handle_critical)
 
     def _setup_image_cache(self):
-        """تنظیم کش تصاویر"""
         self.image_cache = {
             'welcome': 'assets/welcome_image.jpg',
             'logo': 'assets/logo.png',
@@ -550,37 +537,26 @@ class CryptoPulseBot:
     async def run(self):
         if self.status != BotStatus.RUNNING:
             self.initialize()
-
         try:
             if 'handlers' in self.modules:
                 self.application = self.modules['handlers'].get_application()
-
             if 'server' in self.modules:
-                server_task = asyncio.create_task(
-                    self.modules['server'].start()
-                )
+                server_task = asyncio.create_task(self.modules['server'].start())
                 self.tasks.append(server_task)
-
             if 'background' in self.modules:
-                bg_task = asyncio.create_task(
-                    self.modules['background'].start_all()
-                )
+                bg_task = asyncio.create_task(self.modules['background'].start_all())
                 self.tasks.append(bg_task)
-
             if self.application:
                 await self.application.initialize()
                 await self.application.start()
-
                 webhook_url = self.config.get('webhook_url')
                 if webhook_url:
                     await self.application.bot.set_webhook(url=webhook_url)
                 else:
                     await self.application.updater.start_polling()
-
             while not self.shutdown_event.is_set():
                 await self._maintenance_loop()
                 await asyncio.sleep(60)
-
         except:
             raise
         finally:
@@ -590,24 +566,19 @@ class CryptoPulseBot:
         now = datetime.now()
         self.metrics.uptime_seconds = (now - self.metrics.start_time).total_seconds()
         self.metrics.last_activity = now
-
         if len(self.price_cache) > 100:
             self.price_cache.clear()
-
         if 'database' in self.modules:
             await self.modules['database'].health_check()
 
     async def shutdown(self):
         self.status = BotStatus.STOPPING
         self.shutdown_event.set()
-
         for task in self.tasks:
             task.cancel()
-
         if self.application:
             await self.application.stop()
             await self.application.shutdown()
-
         self.memory_optimizer.stop()
         self.thread_pool.shutdown()
         self.status = BotStatus.STOPPED
@@ -622,13 +593,10 @@ def signal_handler(signum, frame):
 
 def main():
     global bot
-
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)
-
     bot = CryptoPulseBot()
     bot.initialize()
-
     try:
         asyncio.run(bot.run())
     except KeyboardInterrupt:
