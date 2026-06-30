@@ -1,2 +1,0 @@
-
-print("Server is running!")
