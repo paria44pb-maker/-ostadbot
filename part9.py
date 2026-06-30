@@ -2349,28 +2349,79 @@ class BotHandlers:
 bot_handlers = BotHandlers()
 
 def get_handlers():
-    """دریافت نمونه BotHandlers"""
+    """
+    دریافت نمونه BotHandlers
+    
+    Returns:
+        BotHandlers: نمونه هندلرهای ربات
+    """
     return bot_handlers
 
 def get_application():
-    """دریافت اپلیکیشن ربات"""
-    return bot_handlers.get_application() if bot_handlers else None
+    """
+    دریافت اپلیکیشن ربات
+    
+    Returns:
+        Application: اپلیکیشن تلگرام یا None در صورت خطا
+    """
+    if bot_handlers:
+        try:
+            return bot_handlers.get_application()
+        except Exception:
+            return None
+    return None
 
 def check_handlers():
-    """بررسی وضعیت هندلرها"""
+    """
+    بررسی وضعیت هندلرها
+    
+    Returns:
+        dict: وضعیت هر بخش
+    """
+    app = get_application()
     return {
         "bot_handlers": "✅ OK" if bot_handlers else "❌ FAILED",
-        "application": "✅ OK" if bot_handlers and bot_handlers.get_application() else "❌ FAILED"
+        "application": "✅ OK" if app else "❌ FAILED",
+        "status": "✅ ONLINE" if app else "❌ OFFLINE"
     }
 
+def get_bot_token():
+    """
+    دریافت توکن ربات
+    
+    Returns:
+        str: توکن ربات
+    """
+    return BOT_TOKEN
+
+def get_admin_ids():
+    """
+    دریافت لیست ادمین‌ها
+    
+    Returns:
+        list: لیست ادمین‌ها
+    """
+    return ADMIN_IDS
+
 # ============================================================
-#                    در صورت اجرای مستقیم
+#                    تست سریع
 # ============================================================
 
 if __name__ == "__main__":
-    # تست اتصال
+    # بررسی وضعیت
+    status = check_handlers()
+    print("="*50)
+    print("🔍 CryptoPulse AI - Status Check")
+    print("="*50)
+    for key, value in status.items():
+        print(f"{key}: {value}")
+    print("="*50)
+    
+    # نمایش اطلاعات
     app = get_application()
     if app:
-        print("✅ Bot application is ready!")
+        print("✅ Bot is ready to run!")
+        print(f"📱 Token: {BOT_TOKEN[:10]}...")
+        print(f"👑 Admins: {ADMIN_IDS}")
     else:
-        print("❌ Bot application not available!")
+        print("❌ Bot is not ready!")
