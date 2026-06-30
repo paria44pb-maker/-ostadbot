@@ -16,3 +16,4 @@ plotly==5.19.0
 mplfinance==0.12.10b0
 Pillow==10.3.0
 requests==2.31.0
+emoji==2.8.0
