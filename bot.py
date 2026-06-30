@@ -80,11 +80,6 @@ async def run_bot():
         print(f"❌ Bot error: {e}")
 
 if __name__ == "__main__":
-    try:
-        asyncio.run(run_bot())
-    except KeyboardInterrupt:
-        print("\n🛑 Bot stopped")
-    except Exception as e:
-        print(f"❌ Error: {e}")
-        while True:
+    port = int(os.environ.get("PORT", 8080))
+    uvicorn.run(app, host="0.0.0.0", port=port)
             time.sleep(1)
