@@ -3,8 +3,6 @@
 
 """
 CryptoPulse AI Bot v3.0 - Main Entry Point
-ربات هوشمند تحلیل و سیگنال ارزهای دیجیتال
-اجرای تمام ۱۵ بخش - با Polling
 """
 
 import os
@@ -110,25 +108,24 @@ try:
 except Exception as e:
     print(f"  ❌ Part 15: {e}")
 
-# ============================================================
-#                    RUN
-# ============================================================
-
 print("\n" + "="*50)
 print("🚀 All 15 parts loaded successfully!")
 print("="*50)
 
+# ============================================================
+#                    RUN BOT WITH POLLING
+# ============================================================
+
 async def run_bot():
-    # اجرای ربات با Polling (بدون Webhook)
     try:
+        # اجرای ربات تلگرام با Polling
         from part9 import get_application
         app = get_application()
         
         if app:
             print("✅ Bot application created!")
-            print("🔄 Bot is running with polling...")
             
-            # حذف Webhook قبلی
+            # حذف Webhook
             try:
                 await app.bot.delete_webhook(drop_pending_updates=True)
                 print("✅ Webhook deleted!")
@@ -139,20 +136,30 @@ async def run_bot():
             await app.initialize()
             await app.start()
             await app.updater.start_polling()
-            print("✅ Polling started!")
+            print("✅ Bot is running with polling!")
             
             # نگه داشتن
             while True:
                 await asyncio.sleep(1)
         else:
-            print("⚠️ No application found.")
+            print("⚠️ No bot application found.")
             
     except Exception as e:
-        print(f"❌ Bot error: {e}")
-        print("🔄 Running server only...")
-        from part13 import app as fastapi_app
-        port = int(os.environ.get("PORT", 8080))
-        uvicorn.run(fastapi_app, host="0.0.0.0", port=port)
+        print(f"⚠️ Bot error: {e}")
+    
+    # اجرای سرور FastAPI
+    print("🌐 Starting FastAPI server...")
+    from part13 import app as fastapi_app
+    port = int(os.environ.get("PORT", 8080))
+    
+    config = uvicorn.Config(
+        fastapi_app,
+        host="0.0.0.0",
+        port=port,
+        log_level="error"
+    )
+    server = uvicorn.Server(config)
+    await server.serve()
 
 if __name__ == "__main__":
     try:
@@ -160,6 +167,6 @@ if __name__ == "__main__":
     except KeyboardInterrupt:
         print("\n🛑 Bot stopped by user")
     except Exception as e:
-        print(f"❌ Error: {e}")
+        print(f"❌ Fatal error: {e}")
         while True:
             time.sleep(1)
