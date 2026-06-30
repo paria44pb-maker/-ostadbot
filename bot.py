@@ -4,7 +4,7 @@
 """
 CryptoPulse AI Bot v3.0 - Main Entry Point
 ربات هوشمند تحلیل و سیگنال ارزهای دیجیتال
-اجرای تمام ۱۵ بخش
+اجرای تمام ۱۵ بخش - با Polling
 """
 
 import os
@@ -118,27 +118,45 @@ print("\n" + "="*50)
 print("🚀 All 15 parts loaded successfully!")
 print("="*50)
 
-if __name__ == "__main__":
+async def run_bot():
+    # اجرای ربات با Polling (بدون Webhook)
     try:
-        # دریافت اپلیکیشن از part9
         from part9 import get_application
         app = get_application()
         
         if app:
             print("✅ Bot application created!")
-            print("🔄 Bot is running...")
-            asyncio.run(app.run_polling())
-        else:
-            print("⚠️ No application found. Running server only...")
-            from part13 import app as fastapi_app
-            port = int(os.environ.get("PORT", 8080))
-            uvicorn.run(fastapi_app, host="0.0.0.0", port=port)
+            print("🔄 Bot is running with polling...")
             
-    except ImportError as e:
-        print(f"⚠️ Import error: {e}")
-        print("🔄 Running in idle mode...")
-        while True:
-            time.sleep(1)
+            # حذف Webhook قبلی
+            try:
+                await app.bot.delete_webhook(drop_pending_updates=True)
+                print("✅ Webhook deleted!")
+            except:
+                pass
+            
+            # شروع با Polling
+            await app.initialize()
+            await app.start()
+            await app.updater.start_polling()
+            print("✅ Polling started!")
+            
+            # نگه داشتن
+            while True:
+                await asyncio.sleep(1)
+        else:
+            print("⚠️ No application found.")
+            
+    except Exception as e:
+        print(f"❌ Bot error: {e}")
+        print("🔄 Running server only...")
+        from part13 import app as fastapi_app
+        port = int(os.environ.get("PORT", 8080))
+        uvicorn.run(fastapi_app, host="0.0.0.0", port=port)
+
+if __name__ == "__main__":
+    try:
+        asyncio.run(run_bot())
     except KeyboardInterrupt:
         print("\n🛑 Bot stopped by user")
     except Exception as e:
