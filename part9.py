@@ -571,10 +571,10 @@ SUPPORT_TEXT = """
 🆘 **پشتیبانی CryptoPulse AI**
 
 📱 **ادمین:** @{support}
-📧 **ایمیل:** support@cryptopulse.ai
+📧 **ایمیل:** paria44.pb@gmail.com
 🌐 **وبسایت:** https://cryptopulse.ai
 
-⏰ **ساعات پاسخگویی:** ۲۴/۷
+⏰ **ساعات پاسخگویی:** ۲۴/۸
 
 📝 **برای ارسال تیکت، روی دکمه زیر کلیک کنید.**
 
