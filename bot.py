@@ -1,3 +1,4 @@
+
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
@@ -6,10 +7,6 @@ import asyncio
 import uvicorn
 
 print("🚀 Starting CryptoPulse AI Bot v3.0...")
-
-# ============================================================
-#                    IMPORT ALL PARTS
-# ============================================================
 
 from part1 import *
 from part2 import *
@@ -29,12 +26,8 @@ from part15 import *
 
 print("✅ All 15 parts loaded!")
 
-# ============================================================
-#                    RUN BOT & SERVER
-# ============================================================
-
 async def main():
-    # 1. اجرای ربات تلگرام
+    # اجرای ربات تلگرام
     try:
         from part9 import get_application
         bot_app = get_application()
@@ -47,7 +40,7 @@ async def main():
     except Exception as e:
         print(f"⚠️ Bot error: {e}")
     
-    # 2. اجرای سرور FastAPI
+    # اجرای سرور
     from part13 import app
     port = int(os.environ.get("PORT", 8080))
     config = uvicorn.Config(app, host="0.0.0.0", port=port, log_level="error")
