@@ -1,13 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-"""
-CryptoPulse AI Bot v3.0 - Main Entry Point
-نسخه نهایی - با تمام هندلرها و متغیرها
-"""
-
 import os
-import sys
 import asyncio
 import time
 import uvicorn
@@ -40,20 +34,36 @@ print(f"✅ COINEX_API_KEY: {'SET' if COINEX_API_KEY else 'NOT SET'}")
 print()
 
 # ============================================================
-#                    SIMPLE BOT (مستقل)
+#                    FASTAPI SERVER
+# ============================================================
+
+from fastapi import FastAPI
+
+app = FastAPI(title="CryptoPulse AI", version="3.0.0")
+
+@app.get("/")
+async def root():
+    return {
+        "status": "online",
+        "name": "CryptoPulse AI",
+        "version": "3.0.0",
+        "time": time.strftime("%Y-%m-%d %H:%M:%S")
+    }
+
+@app.get("/health")
+async def health():
+    return {
+        "status": "healthy",
+        "time": time.strftime("%Y-%m-%d %H:%M:%S")
+    }
+
+# ============================================================
+#                    TELEGRAM BOT
 # ============================================================
 
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
 from telegram.constants import ParseMode
-
-if not BOT_TOKEN:
-    print("❌ BOT_TOKEN not found!")
-    exit(1)
-
-# ============================================================
-#                    KEYBOARDS
-# ============================================================
 
 def user_keyboard():
     keyboard = [
@@ -76,19 +86,15 @@ def admin_keyboard():
     ]
     return InlineKeyboardMarkup(keyboard)
 
-# ============================================================
-#                    HANDLERS
-# ============================================================
-
 async def start(update, context):
     user_id = str(update.effective_user.id)
     is_admin = int(user_id) in ADMIN_IDS if user_id.isdigit() else False
     
     if is_admin:
-        text = "👑 **پنل مدیریت**\n\nبه پنل ادمین خوش آمدید!"
+        text = "👑 **پنل مدیریت**"
         keyboard = admin_keyboard()
     else:
-        text = "🌟 **به CryptoPulse AI خوش آمدید!**\n\nربات هوشمند تحلیل و سیگنال ارزهای دیجیتال"
+        text = "🌟 **به CryptoPulse AI خوش آمدید!**"
         keyboard = user_keyboard()
     
     await update.message.reply_text(text, reply_markup=keyboard, parse_mode=ParseMode.MARKDOWN)
@@ -103,20 +109,6 @@ async def admin_command(update, context):
     
     await update.message.reply_text("👑 **پنل مدیریت**", reply_markup=admin_keyboard(), parse_mode=ParseMode.MARKDOWN)
 
-async def vip_command(update, context):
-    await update.message.reply_text(
-        "💎 **VIP**\n\n💰 قیمت: ۱۹۹,۰۰۰ تومان\n💳 کارت: 6063731196254479\n🏦 به نام: به مرد",
-        reply_markup=user_keyboard(),
-        parse_mode=ParseMode.MARKDOWN
-    )
-
-async def wallet_command(update, context):
-    await update.message.reply_text(
-        "💰 **کیف پول**\n\n💵 موجودی: $0.00\n📊 سود: $0.00",
-        reply_markup=user_keyboard(),
-        parse_mode=ParseMode.MARKDOWN
-    )
-
 async def callback_handler(update, context):
     query = update.callback_query
     await query.answer()
@@ -125,18 +117,6 @@ async def callback_handler(update, context):
     
     if data == "back_main":
         await query.edit_message_text("🏠 **منوی اصلی**", reply_markup=user_keyboard(), parse_mode=ParseMode.MARKDOWN)
-    elif data == "analysis":
-        await query.edit_message_text("📊 **تحلیل**", reply_markup=user_keyboard(), parse_mode=ParseMode.MARKDOWN)
-    elif data == "signal":
-        await query.edit_message_text("🚨 **سیگنال**", reply_markup=user_keyboard(), parse_mode=ParseMode.MARKDOWN)
-    elif data == "wallet":
-        await query.edit_message_text("💰 **کیف پول**", reply_markup=user_keyboard(), parse_mode=ParseMode.MARKDOWN)
-    elif data == "vip":
-        await query.edit_message_text("💎 **VIP**", reply_markup=user_keyboard(), parse_mode=ParseMode.MARKDOWN)
-    elif data == "help":
-        await query.edit_message_text("📖 **راهنما**", reply_markup=user_keyboard(), parse_mode=ParseMode.MARKDOWN)
-    elif data == "support":
-        await query.edit_message_text("🆘 **پشتیبانی**\n\n📱 @Amir92aa", reply_markup=user_keyboard(), parse_mode=ParseMode.MARKDOWN)
     elif data == "admin_users":
         await query.edit_message_text("👥 **مدیریت کاربران**", reply_markup=admin_keyboard(), parse_mode=ParseMode.MARKDOWN)
     elif data == "admin_payments":
@@ -152,27 +132,31 @@ async def callback_handler(update, context):
 #                    MAIN
 # ============================================================
 
-async def main():
-    app = Application.builder().token(BOT_TOKEN).build()
+async def run_bot():
+    # ربات تلگرام
+    if BOT_TOKEN:
+        bot_app = Application.builder().token(BOT_TOKEN).build()
+        bot_app.add_handler(CommandHandler("start", start))
+        bot_app.add_handler(CommandHandler("admin", admin_command))
+        bot_app.add_handler(CallbackQueryHandler(callback_handler))
+        
+        await bot_app.bot.delete_webhook(drop_pending_updates=True)
+        await bot_app.initialize()
+        await bot_app.start()
+        await bot_app.updater.start_polling()
+        print("✅ Telegram Bot is running!")
     
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("admin", admin_command))
-    app.add_handler(CommandHandler("vip", vip_command))
-    app.add_handler(CommandHandler("wallet", wallet_command))
-    app.add_handler(CallbackQueryHandler(callback_handler))
-    
-    await app.bot.delete_webhook(drop_pending_updates=True)
-    print("✅ Webhook deleted!")
-    
-    await app.initialize()
-    await app.start()
-    await app.updater.start_polling()
-    print("✅ Bot is running with polling!")
+    # سرور FastAPI
+    config = uvicorn.Config(app, host="0.0.0.0", port=PORT, log_level="error")
+    server = uvicorn.Server(config)
+    await server.serve()
 
 if __name__ == "__main__":
     try:
-        asyncio.run(main())
+        asyncio.run(run_bot())
     except KeyboardInterrupt:
         print("\n🛑 Bot stopped")
     except Exception as e:
         print(f"❌ Error: {e}")
+        while True:
+            time.sleep(1)
