@@ -86,6 +86,34 @@ from telegram.ext import (
 )
 from telegram.constants import ParseMode
 from telegram.warnings import PTBUserWarning
+from telegram.ext import (
+    Application,
+    CommandHandler,
+    CallbackQueryHandler,
+    MessageHandler,
+    filters,
+    ContextTypes,
+    ConversationHandler,
+    TypeHandler,
+    StringCommandHandler,
+    StringRegexHandler,
+    ChatMemberHandler,
+    InlineQueryHandler,
+    ChosenInlineResultHandler,
+    PreCheckoutQueryHandler,
+    ShippingQueryHandler,
+    PollHandler,
+    CallbackContext,
+    JobQueue,
+    Defaults,
+    ApplicationBuilder,
+    ExtBot,
+    StopHandler,
+    StopPropagation,
+    ContinuePropagation,
+    MessageReactionHandler,
+    AIORateLimiter
+)
 
 warnings.filterwarnings("ignore", message=r".*CallbackQueryHandler", category=PTBUserWarning)
 
