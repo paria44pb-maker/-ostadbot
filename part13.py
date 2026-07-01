@@ -15,20 +15,23 @@ import asyncio
 import hashlib
 import hmac
 import base64
+import secrets
+import string
 from datetime import datetime, timedelta
 from typing import Optional, Dict, Any, List, Tuple, Union
 from contextlib import asynccontextmanager
 from enum import Enum
 from dataclasses import dataclass, field
 
-from fastapi import FastAPI, Request, Response, HTTPException, Depends, Header, Query, Body
-from fastapi.responses import JSONResponse, FileResponse, HTMLResponse, RedirectResponse, PlainTextResponse
+from fastapi import FastAPI, Request, Response, HTTPException, Depends, Header, Query, Body, Path, Form
+from fastapi.responses import JSONResponse, FileResponse, HTMLResponse, RedirectResponse, PlainTextResponse, StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials, APIKeyHeader
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, Field, validator, EmailStr, HttpUrl
+from fastapi.templating import Jinja2Templates
+from pydantic import BaseModel, Field, validator, EmailStr, HttpUrl, conint, confloat, constr
 import uvicorn
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.interval import IntervalTrigger
@@ -101,6 +104,7 @@ PORT = int(os.environ.get("PORT", 8080))
 DEBUG = os.environ.get("DEBUG", "False").lower() == "true"
 SECRET_KEY = os.environ.get("SECRET_KEY", "cryptopulse_secret_key_2024")
 API_KEY = os.environ.get("API_KEY", "")
+ENVIRONMENT = os.environ.get("ENVIRONMENT", "production")
 
 # ============================================================
 #                    ENUMS & CONSTANTS
@@ -111,6 +115,7 @@ class APIStatus(Enum):
     OFFLINE = "offline"
     MAINTENANCE = "maintenance"
     ERROR = "error"
+    DEGRADED = "degraded"
 
 class SecurityLevel(Enum):
     PUBLIC = "public"
@@ -124,6 +129,15 @@ class ResponseType(Enum):
     TEXT = "text"
     FILE = "file"
     STREAM = "stream"
+    REDIRECT = "redirect"
+
+class CacheControl(Enum):
+    NO_CACHE = "no-cache"
+    NO_STORE = "no-store"
+    PUBLIC = "public"
+    PRIVATE = "private"
+    MUST_REVALIDATE = "must-revalidate"
+    MAX_AGE = "max-age"
 
 # ============================================================
 #                    PYDANTIC MODELS
@@ -137,6 +151,7 @@ class HealthResponse(BaseModel):
     database: str
     memory: Dict[str, Any]
     cpu: Dict[str, Any]
+    environment: str
 
 class StatsResponse(BaseModel):
     users: Dict[str, int]
@@ -173,8 +188,11 @@ class UserResponse(BaseModel):
     telegram_id: str
     username: Optional[str]
     first_name: Optional[str]
+    last_name: Optional[str]
     is_vip: bool
     is_admin: bool
+    is_banned: bool
+    balance: float
     registered_at: str
 
 class PaymentResponse(BaseModel):
@@ -184,6 +202,7 @@ class PaymentResponse(BaseModel):
     currency: str
     status: str
     created_at: str
+    completed_at: Optional[str]
 
 class CoinResponse(BaseModel):
     coins: List[str]
@@ -194,11 +213,23 @@ class ErrorResponse(BaseModel):
     error: str
     status_code: int
     timestamp: str
+    path: Optional[str] = None
 
 class WebhookPayload(BaseModel):
     update_id: Optional[int] = None
     message: Optional[Dict] = None
     callback_query: Optional[Dict] = None
+
+class MetricResponse(BaseModel):
+    requests: Dict[str, Union[int, float, str]]
+    cache: Dict[str, int]
+    uptime: Dict[str, Union[int, str]]
+    timestamp: str
+
+class TokenResponse(BaseModel):
+    token: str
+    expires: str
+    type: str
 
 # ============================================================
 #                    LIFESPAN
@@ -213,6 +244,7 @@ async def lifespan(app: FastAPI):
     asyncio.create_task(background_health_check())
     asyncio.create_task(background_cache_cleanup())
     asyncio.create_task(background_stats_update())
+    asyncio.create_task(background_metrics_collector())
     
     # زمانبندی تسک‌ها
     scheduler = AsyncIOScheduler()
@@ -231,6 +263,16 @@ async def lifespan(app: FastAPI):
         CronTrigger(hour=2, minute=0),
         id='daily_backup'
     )
+    scheduler.add_job(
+        generate_daily_report,
+        CronTrigger(hour=20, minute=0),
+        id='generate_daily_report'
+    )
+    scheduler.add_job(
+        cleanup_expired_tokens,
+        IntervalTrigger(hours=6),
+        id='cleanup_expired_tokens'
+    )
     scheduler.start()
     
     yield
@@ -248,7 +290,17 @@ app = FastAPI(
     lifespan=lifespan,
     docs_url="/docs",
     redoc_url="/redoc",
-    openapi_url="/openapi.json"
+    openapi_url="/openapi.json",
+    terms_of_service="https://cryptopulse.ai/terms",
+    contact={
+        "name": "CryptoPulse Team",
+        "url": "https://cryptopulse.ai",
+        "email": "support@cryptopulse.ai"
+    },
+    license_info={
+        "name": "MIT",
+        "url": "https://opensource.org/licenses/MIT"
+    }
 )
 
 # ============================================================
@@ -280,12 +332,13 @@ app.add_middleware(
 # ============================================================
 
 security = HTTPBearer()
+api_key_header = APIKeyHeader(name="X-API-Key")
 
-async def verify_api_key(credentials: HTTPAuthorizationCredentials = Depends(security)):
+async def verify_api_key(api_key: str = Depends(api_key_header)):
     """بررسی کلید API"""
     if not API_KEY:
         return True
-    if credentials.credentials == API_KEY:
+    if api_key == API_KEY:
         return True
     raise HTTPException(status_code=401, detail="Invalid API Key")
 
@@ -295,6 +348,11 @@ async def verify_admin(user_id: str) -> bool:
         return int(user_id) in ADMIN_IDS
     except:
         return False
+
+async def get_current_user(token: str = Depends(security)):
+    """دریافت کاربر فعلی از توکن"""
+    # پیاده‌سازی احراز هویت JWT
+    return {"user_id": "123", "is_admin": True}
 
 # ============================================================
 #                    VARIABLES
@@ -311,7 +369,13 @@ CACHE_STATS = {
 HEALTH_STATUS = {
     'status': APIStatus.ONLINE.value,
     'last_check': None,
-    'errors': []
+    'errors': [],
+    'components': {}
+}
+METRICS_DATA = {
+    'requests_per_minute': [],
+    'response_times': [],
+    'error_rates': []
 }
 
 # ============================================================
@@ -324,18 +388,50 @@ async def background_health_check():
     
     while True:
         try:
-            db_health = db_manager.health_check() if db_manager else {'status': 'unknown'}
-            HEALTH_STATUS['last_check'] = datetime.now().isoformat()
-            HEALTH_STATUS['status'] = APIStatus.ONLINE.value if db_health.get('connected') else APIStatus.ERROR.value
+            components = {}
             
+            # بررسی دیتابیس
+            if db_manager:
+                try:
+                    health = db_manager.health_check()
+                    components['database'] = health.get('status', 'unknown')
+                except:
+                    components['database'] = 'error'
+            else:
+                components['database'] = 'unavailable'
+            
+            # بررسی بازار
             if get_market:
-                ticker = await get_market().get_market_data("BTC")
-                HEALTH_STATUS['market'] = "healthy" if ticker else "unhealthy"
+                try:
+                    ticker = await get_market().get_market_data("BTC")
+                    components['market'] = "healthy" if ticker else "unhealthy"
+                except:
+                    components['market'] = "error"
+            else:
+                components['market'] = "unavailable"
+            
+            # بررسی کش
+            if get_cache:
+                try:
+                    cache = get_cache()
+                    if cache:
+                        components['cache'] = "healthy"
+                    else:
+                        components['cache'] = "unavailable"
+                except:
+                    components['cache'] = "error"
+            else:
+                components['cache'] = "unavailable"
+            
+            HEALTH_STATUS['components'] = components
+            HEALTH_STATUS['last_check'] = datetime.now().isoformat()
+            HEALTH_STATUS['status'] = APIStatus.ONLINE.value
             
         except Exception as e:
             HEALTH_STATUS['errors'].append(str(e))
             if len(HEALTH_STATUS['errors']) > 100:
                 HEALTH_STATUS['errors'] = HEALTH_STATUS['errors'][-50:]
+            HEALTH_STATUS['status'] = APIStatus.DEGRADED.value
         
         await asyncio.sleep(60)
 
@@ -358,6 +454,17 @@ async def background_stats_update():
             if db_manager:
                 db_manager.get_stats()
             await asyncio.sleep(300)
+        except:
+            await asyncio.sleep(60)
+
+async def background_metrics_collector():
+    """جمع‌آوری متریک‌ها"""
+    while True:
+        try:
+            # نگهداری ۶۰ دقیقه داده
+            if len(METRICS_DATA['requests_per_minute']) > 60:
+                METRICS_DATA['requests_per_minute'].pop(0)
+            await asyncio.sleep(60)
         except:
             await asyncio.sleep(60)
 
@@ -407,6 +514,20 @@ def daily_backup():
     except:
         pass
 
+def generate_daily_report():
+    """تولید گزارش روزانه"""
+    try:
+        if db_manager:
+            stats = db_manager.get_stats()
+            # ارسال گزارش به ادمین‌ها
+            pass
+    except:
+        pass
+
+def cleanup_expired_tokens():
+    """پاکسازی توکن‌های منقضی"""
+    pass
+
 # ============================================================
 #                    ROUTES
 # ============================================================
@@ -423,17 +544,7 @@ async def root():
         "version": "3.0.0",
         "channel": "@CryptoPulse606",
         "time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-        "endpoints": {
-            "health": "/health",
-            "stats": "/stats",
-            "metrics": "/metrics",
-            "docs": "/docs",
-            "price": "/api/v1/price/{coin}",
-            "signal": "/api/v1/signal/{coin}",
-            "market": "/api/v1/market",
-            "coins": "/api/v1/coins",
-            "webhook": "/webhook"
-        }
+        "environment": ENVIRONMENT
     }
 
 @app.get("/health", response_model=HealthResponse)
@@ -443,14 +554,12 @@ async def health_check():
     
     REQUEST_COUNT += 1
     
-    # محاسبه آپتایم
     uptime_seconds = (datetime.now() - START_TIME).total_seconds()
     days = int(uptime_seconds // 86400)
     hours = int((uptime_seconds % 86400) // 3600)
     minutes = int((uptime_seconds % 3600) // 60)
     uptime_str = f"{days}d {hours}h {minutes}m"
     
-    # بررسی دیتابیس
     db_status = "healthy"
     if db_manager:
         try:
@@ -459,7 +568,6 @@ async def health_check():
         except:
             db_status = "error"
     
-    # اطلاعات حافظه
     memory_info = {}
     try:
         import psutil
@@ -485,7 +593,8 @@ async def health_check():
         time=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         database=db_status,
         memory=memory_info,
-        cpu=cpu_info
+        cpu=cpu_info,
+        environment=ENVIRONMENT
     )
 
 @app.get("/stats", response_model=StatsResponse)
@@ -528,27 +637,27 @@ async def get_stats():
         timestamp=datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     )
 
-@app.get("/metrics")
+@app.get("/metrics", response_model=MetricResponse)
 async def get_metrics():
     """دریافت متریک‌های سرور"""
     global REQUEST_COUNT, ERROR_COUNT, CACHE_STATS, START_TIME
     
     uptime = (datetime.now() - START_TIME).total_seconds()
     
-    return {
-        "requests": {
+    return MetricResponse(
+        requests={
             "total": REQUEST_COUNT,
             "errors": ERROR_COUNT,
             "success_rate": f"{((REQUEST_COUNT - ERROR_COUNT) / max(REQUEST_COUNT, 1) * 100):.2f}%",
             "requests_per_minute": round(REQUEST_COUNT / max(uptime / 60, 1), 2)
         },
-        "cache": CACHE_STATS,
-        "uptime": {
+        cache=CACHE_STATS,
+        uptime={
             "seconds": uptime,
             "formatted": f"{int(uptime // 86400)}d {int((uptime % 86400) // 3600)}h {int((uptime % 3600) // 60)}m"
         },
-        "time": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    }
+        timestamp=datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    )
 
 # ============================================================
 #                    API V1
@@ -562,7 +671,6 @@ async def get_price(coin: str):
     REQUEST_COUNT += 1
     coin = coin.upper()
     
-    # بررسی کش
     if get_cache:
         cache = get_cache()
         cache_key = f"price_{coin}"
@@ -589,7 +697,6 @@ async def get_price(coin: str):
         timestamp=datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     )
     
-    # ذخیره در کش
     if get_cache:
         cache = get_cache()
         if cache:
@@ -670,10 +777,37 @@ async def get_user_info(user_id: str):
         telegram_id=user.telegram_id,
         username=user.username,
         first_name=user.first_name,
+        last_name=user.last_name,
         is_vip=user.is_vip,
         is_admin=user.is_admin,
+        is_banned=user.is_banned,
+        balance=user.balance or 0.0,
         registered_at=user.registered_at.strftime("%Y-%m-%d %H:%M:%S")
     )
+
+@app.get("/api/v1/payments/{user_id}", response_model=List[PaymentResponse])
+async def get_user_payments(user_id: str):
+    """دریافت پرداخت‌های کاربر"""
+    global REQUEST_COUNT
+    
+    REQUEST_COUNT += 1
+    
+    if not payment_repo:
+        raise HTTPException(status_code=500, detail="Payment repository not available")
+    
+    payments = payment_repo.get_user_payments(user_id) if hasattr(payment_repo, 'get_user_payments') else []
+    
+    return [
+        PaymentResponse(
+            payment_id=p.payment_id,
+            user_id=p.user_id,
+            amount=p.amount,
+            currency=p.currency,
+            status=p.status,
+            created_at=p.created_at.strftime("%Y-%m-%d %H:%M:%S"),
+            completed_at=p.completed_at.strftime("%Y-%m-%d %H:%M:%S") if p.completed_at else None
+        ) for p in payments
+    ]
 
 @app.post("/api/v1/webhook")
 async def api_webhook(request: Request):
@@ -684,10 +818,23 @@ async def api_webhook(request: Request):
     
     try:
         data = await request.json()
-        # پردازش داده
-        return {"status": "ok", "received": True}
+        return {"status": "ok", "received": True, "timestamp": datetime.now().isoformat()}
     except:
         raise HTTPException(status_code=400, detail="Invalid JSON")
+
+@app.post("/api/v1/webhook/telegram")
+async def telegram_webhook(request: Request):
+    """Webhook مخصوص تلگرام"""
+    global REQUEST_COUNT
+    
+    REQUEST_COUNT += 1
+    
+    try:
+        data = await request.json()
+        # پردازش آپدیت تلگرام
+        return {"status": "ok"}
+    except:
+        raise HTTPException(status_code=400, detail="Invalid request")
 
 # ============================================================
 #                    WEBHOOK
@@ -709,6 +856,68 @@ async def webhook(request: Request):
             status_code=400,
             content={"status": "error", "message": str(e)}
         )
+
+@app.post("/webhook/github")
+async def github_webhook(request: Request):
+    """Webhook برای GitHub"""
+    try:
+        data = await request.json()
+        return {"status": "ok"}
+    except:
+        return JSONResponse(status_code=400, content={"status": "error"})
+
+@app.post("/webhook/coinex")
+async def coinex_webhook(request: Request):
+    """Webhook برای CoinEx"""
+    try:
+        data = await request.json()
+        return {"status": "ok"}
+    except:
+        return JSONResponse(status_code=400, content={"status": "error"})
+
+# ============================================================
+#                    ADMIN ROUTES
+# ============================================================
+
+@app.get("/admin/health")
+async def admin_health():
+    """بررسی سلامت برای ادمین"""
+    return {
+        "status": HEALTH_STATUS,
+        "timestamp": datetime.now().isoformat()
+    }
+
+@app.get("/admin/system")
+async def admin_system():
+    """اطلاعات سیستم برای ادمین"""
+    try:
+        import psutil
+        return {
+            "cpu": psutil.cpu_percent(interval=1),
+            "memory": psutil.virtual_memory()._asdict(),
+            "disk": psutil.disk_usage('/')._asdict(),
+            "timestamp": datetime.now().isoformat()
+        }
+    except:
+        return {"error": "psutil not available"}
+
+@app.post("/admin/clear-cache")
+async def admin_clear_cache():
+    """پاکسازی کش توسط ادمین"""
+    if get_cache:
+        cache = get_cache()
+        if cache:
+            cache.clear()
+            return {"status": "ok", "message": "Cache cleared"}
+    return {"status": "error", "message": "Cache not available"}
+
+@app.post("/admin/backup")
+async def admin_create_backup():
+    """ایجاد بکاپ توسط ادمین"""
+    if db_manager:
+        result = db_manager.backup()
+        return result
+    return {"status": "error", "message": "Database not available"}
 
 # ============================================================
 #                    ERROR HANDLERS
@@ -758,10 +967,12 @@ class ServerManager:
         self.port = PORT
         self.server = None
         self._running = False
+        self._start_time = datetime.now()
     
     async def start(self):
         """شروع سرور"""
         self._running = True
+        self._start_time = datetime.now()
         
         config = uvicorn.Config(
             "part13:app",
@@ -789,8 +1000,12 @@ class ServerManager:
             "running": self._running,
             "host": self.host,
             "port": self.port,
-            "uptime": (datetime.now() - START_TIME).total_seconds()
+            "uptime": (datetime.now() - self._start_time).total_seconds(),
+            "start_time": self._start_time.isoformat()
         }
+    
+    def is_running(self) -> bool:
+        return self._running
 
 # ============================================================
 #                    EXPORT
