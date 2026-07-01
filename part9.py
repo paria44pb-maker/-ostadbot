@@ -74,16 +74,7 @@ from telegram import (
     KeyboardButtonRequestUser, KeyboardButtonRequestUsers,
     ReplyKeyboardRemove, ForceReply, InlineKeyboardButton
 )
-from telegram.ext import (
-    Application, CommandHandler, CallbackQueryHandler,
-    MessageHandler, filters, ContextTypes, ConversationHandler,
-    TypeHandler, StringCommandHandler, StringRegexHandler,
-    ChatMemberHandler, InlineQueryHandler, ChosenInlineResultHandler,
-    PreCheckoutQueryHandler, ShippingQueryHandler, PollHandler,
-    CallbackContext, JobQueue, Defaults, ApplicationBuilder,
-    ExtBot, BaseHandler, BaseFilter, MessageReactionHandler,
-    AIORateLimiter, StopHandler, StopPropagation, ContinuePropagation
-)
+
 from telegram.constants import ParseMode
 from telegram.warnings import PTBUserWarning
 from telegram.ext import (
