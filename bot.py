@@ -105,52 +105,38 @@ except Exception as e:
 print("✅ All 15 parts loaded!")
 
 # ============================================================
-#                    SIMPLE FASTAPI SERVER
+#                    SIMPLE BOT (بدون وابستگی)
 # ============================================================
 
-from fastapi import FastAPI
-app = FastAPI(title="CryptoPulse AI", version="3.0.0")
+from telegram import Update
+from telegram.ext import Application, CommandHandler, ContextTypes
 
-@app.get("/")
-async def root():
-    return {"status": "online", "message": "CryptoPulse AI is running!"}
+TOKEN = os.environ.get("BOT_TOKEN", "")
 
-@app.get("/health")
-async def health():
-    return {"status": "healthy"}
+if not TOKEN:
+    print("❌ BOT_TOKEN not found!")
+    exit(1)
 
-# ============================================================
-#                    RUN BOT WITH POLLING
-# ============================================================
+print("✅ BOT_TOKEN loaded!")
 
-async def run_bot():
-    # حذف Webhook
-    try:
-        from part9 import get_application
-        bot_app = get_application()
-        if bot_app:
-            await bot_app.bot.delete_webhook(drop_pending_updates=True)
-            print("✅ Webhook deleted!")
-            
-            await bot_app.initialize()
-            await bot_app.start()
-            await bot_app.updater.start_polling()
-            print("✅ Telegram Bot is running with polling!")
-    except Exception as e:
-        print(f"⚠️ Bot error: {e}")
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("🚀 CryptoPulse AI is running!")
+
+async def main():
+    app = Application.builder().token(TOKEN).build()
+    app.add_handler(CommandHandler("start", start))
     
-    # اجرای سرور
-    port = int(os.environ.get("PORT", 8080))
-    config = uvicorn.Config(app, host="0.0.0.0", port=port, log_level="error")
-    server = uvicorn.Server(config)
-    await server.serve()
+    await app.bot.delete_webhook(drop_pending_updates=True)
+    print("✅ Webhook deleted!")
+    
+    await app.initialize()
+    await app.start()
+    await app.updater.start_polling()
+    print("✅ Bot is running with polling!")
+
+# ============================================================
+#                    RUN
+# ============================================================
 
 if __name__ == "__main__":
-    try:
-        asyncio.run(run_bot())
-    except KeyboardInterrupt:
-        print("\n🛑 Bot stopped")
-    except Exception as e:
-        print(f"❌ Error: {e}")
-        while True:
-            time.sleep(1)
+    asyncio.run(main())
