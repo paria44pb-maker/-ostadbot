@@ -45,10 +45,10 @@ warnings.filterwarnings("ignore")
 # ============================================================
 
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, InputFile
-from telegram.ext import 
+from telegram.ext import (
     Application, CommandHandler, CallbackQueryHandler,
     MessageHandler, filters, ContextTypes, ConversationHandler
-
+)
 from telegram.constants import ParseMode
 from telegram.warnings import PTBUserWarning
 
