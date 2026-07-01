@@ -16,6 +16,21 @@ print("🚀 Starting CryptoPulse AI Bot v3.0...")
 print("📁 Loading all 15 parts...\n")
 
 # ============================================================
+#                    API KEY ها
+# ============================================================
+
+BOT_TOKEN = os.environ.get("BOT_TOKEN", "")
+GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")
+COINEX_API_KEY = os.environ.get("COINEX_API_KEY", "")
+COINEX_SECRET_KEY = os.environ.get("COINEX_SECRET_KEY", "")
+
+print(f"✅ BOT_TOKEN: {'SET' if BOT_TOKEN else 'NOT SET'}")
+print(f"✅ GROQ_API_KEY: {'SET' if GROQ_API_KEY else 'NOT SET'}")
+print(f"✅ COINEX_API_KEY: {'SET' if COINEX_API_KEY else 'NOT SET'}")
+print(f"✅ COINEX_SECRET_KEY: {'SET' if COINEX_SECRET_KEY else 'NOT SET'}")
+print()
+
+# ============================================================
 #                    استارت اجباری هر ۱۵ پارت
 # ============================================================
 
