@@ -1,122 +1,22 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-"""
-CryptoPulse AI Bot v3.0 - Complete Bot
-تعریف و اجرای تمام ۱۵ بخش - نسخه نهایی
-"""
-
 import os
-import sys
 import asyncio
 import time
+import aiohttp
 import uvicorn
-import signal
 from datetime import datetime
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
+from telegram.constants import ParseMode
 
-print("🚀 Starting CryptoPulse AI Bot v3.0...")
-print("📁 Loading all 15 parts...\n")
-
-# ============================================================
-#                    IMPORT ALL 15 PARTS
-# ============================================================
-
-try:
-    from part1 import *
-    print("  ✅ Part 1: Main Entry Point")
-except Exception as e:
-    print(f"  ❌ Part 1: {e}")
-
-try:
-    from part2 import *
-    print("  ✅ Part 2: Config & Settings")
-except Exception as e:
-    print(f"  ❌ Part 2: {e}")
-
-try:
-    from part3 import *
-    print("  ✅ Part 3: Database Models")
-except Exception as e:
-    print(f"  ❌ Part 3: {e}")
-
-try:
-    from part4 import *
-    print("  ✅ Part 4: Utils & Tehran Time")
-except Exception as e:
-    print(f"  ❌ Part 4: {e}")
-
-try:
-    from part5 import *
-    print("  ✅ Part 5: CoinEx Exchange")
-except Exception as e:
-    print(f"  ❌ Part 5: {e}")
-
-try:
-    from part6 import *
-    print("  ✅ Part 6: Groq AI")
-except Exception as e:
-    print(f"  ❌ Part 6: {e}")
-
-try:
-    from part7 import *
-    print("  ✅ Part 7: Technical Analysis")
-except Exception as e:
-    print(f"  ❌ Part 7: {e}")
-
-try:
-    from part8 import *
-    print("  ✅ Part 8: Keyboards & Menus")
-except Exception as e:
-    print(f"  ❌ Part 8: {e}")
-
-try:
-    from part9 import *
-    print("  ✅ Part 9: Main Handlers")
-except Exception as e:
-    print(f"  ❌ Part 9: {e}")
-
-try:
-    from part10 import *
-    print("  ✅ Part 10: Admin Panel")
-except Exception as e:
-    print(f"  ❌ Part 10: {e}")
-
-try:
-    from part11 import *
-    print("  ✅ Part 11: VIP & Payment")
-except Exception as e:
-    print(f"  ❌ Part 11: {e}")
-
-try:
-    from part12 import *
-    print("  ✅ Part 12: Channel Management")
-except Exception as e:
-    print(f"  ❌ Part 12: {e}")
-
-try:
-    from part13 import *
-    print("  ✅ Part 13: FastAPI Server")
-except Exception as e:
-    print(f"  ❌ Part 13: {e}")
-
-try:
-    from part14 import *
-    print("  ✅ Part 14: Background Tasks")
-except Exception as e:
-    print(f"  ❌ Part 14: {e}")
-
-try:
-    from part15 import *
-    print("  ✅ Part 15: Media Management")
-except Exception as e:
-    print(f"  ❌ Part 15: {e}")
-
-print("\n" + "="*50)
-print("🚀 All 15 parts loaded successfully!")
-print("="*50)
+print("🚀 Starting CryptoPulse AI Bot...")
 
 # ============================================================
-#                    CHECK ENV VARIABLES
+#                    LOAD ENV
 # ============================================================
 
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "")
@@ -133,156 +33,266 @@ GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")
 COINEX_API_KEY = os.environ.get("COINEX_API_KEY", "")
 COINEX_SECRET_KEY = os.environ.get("COINEX_SECRET_KEY", "")
 PORT = int(os.environ.get("PORT", 8080))
-CHANNEL_ID = os.environ.get("CHANNEL_ID", "@CryptoPulse606")
-SUPPORT_USERNAME = os.environ.get("VIP_ADMIN_USERNAME", "Amir92aa")
 
-print(f"\n✅ BOT_TOKEN: {'SET' if BOT_TOKEN else 'NOT SET'}")
+print(f"✅ BOT_TOKEN: {'SET' if BOT_TOKEN else 'NOT SET'}")
 print(f"✅ ADMIN_IDS: {ADMIN_IDS}")
 print(f"✅ GROQ_API_KEY: {'SET' if GROQ_API_KEY else 'NOT SET'}")
 print(f"✅ COINEX_API_KEY: {'SET' if COINEX_API_KEY else 'NOT SET'}")
-print(f"✅ PORT: {PORT}")
 print()
 
 # ============================================================
-#                    SIGNAL HANDLER
+#                    COINEX PRICE
 # ============================================================
 
-def signal_handler(sig, frame):
-    print(f"\n🛑 Signal {sig} received. Shutting down gracefully...")
-    sys.exit(0)
-
-signal.signal(signal.SIGINT, signal_handler)
-signal.signal(signal.SIGTERM, signal_handler)
+async def get_coinex_price(symbol="BTC"):
+    try:
+        url = f"https://api.coinex.com/v1/market/ticker?market={symbol}USDT"
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url) as response:
+                data = await response.json()
+                if data.get("code") == 0:
+                    ticker = data.get("data", {}).get("ticker", {})
+                    return {
+                        "price": float(ticker.get("last", 0)),
+                        "change": float(ticker.get("change", 0)),
+                        "high": float(ticker.get("high", 0)),
+                        "low": float(ticker.get("low", 0)),
+                        "volume": float(ticker.get("vol", 0))
+                    }
+    except Exception as e:
+        print(f"CoinEx error: {e}")
+    return None
 
 # ============================================================
-#                    FASTAPI APP (از part13)
+#                    GROQ AI
 # ============================================================
 
-try:
-    from part13 import app
-    print("✅ FastAPI app loaded from part13")
-except Exception as e:
-    print(f"⚠️ part13 error: {e}")
+async def get_groq_analysis(coin, price_data):
+    if not GROQ_API_KEY:
+        return "⚠️ کلید API Groq تنظیم نشده است."
     
-    from fastapi import FastAPI, Request
-    from fastapi.responses import JSONResponse
-    
-    app = FastAPI(title="CryptoPulse AI", version="3.0.0")
-    
-    @app.get("/")
-    async def root():
-        return {
-            "status": "online",
-            "name": "CryptoPulse AI",
-            "version": "3.0.0",
-            "time": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    try:
+        url = "https://api.groq.com/openai/v1/chat/completions"
+        headers = {
+            "Authorization": f"Bearer {GROQ_API_KEY}",
+            "Content-Type": "application/json"
         }
-    
-    @app.get("/health")
-    async def health():
-        return {"status": "healthy", "time": datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
-    
-    @app.post("/webhook")
-    async def webhook(request: Request):
-        try:
-            data = await request.json()
-            return {"status": "ok"}
-        except:
-            return JSONResponse(status_code=400, content={"status": "error"})
-
-# ============================================================
-#                    TELEGRAM BOT (از part9)
-# ============================================================
-
-async def run_telegram_bot():
-    """اجرای ربات تلگرام"""
-    if not BOT_TOKEN:
-        print("⚠️ BOT_TOKEN not set. Telegram bot disabled.")
-        return False
-    
-    try:
-        from part9 import get_application
-        bot_app = get_application()
-        if bot_app:
-            await bot_app.bot.delete_webhook(drop_pending_updates=True)
-            await bot_app.initialize()
-            await bot_app.start()
-            await bot_app.updater.start_polling()
-            print("✅ Telegram Bot is running with polling!")
-            return True
+        data = {
+            "model": "llama-3.2-90b-vision-preview",
+            "messages": [
+                {"role": "system", "content": "شما یک تحلیلگر حرفه‌ای بازار ارزهای دیجیتال هستید."},
+                {"role": "user", "content": f"تحلیل تکنیکال {coin} با قیمت {price_data.get('price', 0)} و تغییر {price_data.get('change', 0)}% را انجام بده."}
+            ],
+            "temperature": 0.3,
+            "max_tokens": 300
+        }
+        async with aiohttp.ClientSession() as session:
+            async with session.post(url, headers=headers, json=data) as response:
+                result = await response.json()
+                return result.get("choices", [{}])[0].get("message", {}).get("content", "تحلیل در دسترس نیست.")
     except Exception as e:
-        print(f"⚠️ Bot error from part9: {e}")
-    
-    # Fallback: ربات ساده
+        print(f"Groq error: {e}")
+        return "⚠️ خطا در ارتباط با Groq."
+
+# ============================================================
+#                    FASTAPI SERVER
+# ============================================================
+
+app = FastAPI(title="CryptoPulse AI", version="3.0.0")
+
+@app.get("/")
+async def root():
+    return {"status": "online", "name": "CryptoPulse AI", "version": "3.0.0", "time": datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
+
+@app.get("/health")
+async def health():
+    return {"status": "healthy", "time": datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
+
+@app.get("/api/v1/price/{coin}")
+async def get_price(coin: str):
+    data = await get_coinex_price(coin.upper())
+    if data:
+        return {"coin": coin.upper(), **data, "time": datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
+    return {"error": "Price not available"}
+
+@app.post("/webhook")
+async def webhook(request: Request):
     try:
-        from telegram import Update
-        from telegram.ext import Application, CommandHandler, ContextTypes
-        
-        async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-            await update.message.reply_text(
-                "🚀 **CryptoPulse AI**\n\n"
-                "ربات هوشمند تحلیل و سیگنال ارزهای دیجیتال\n\n"
-                "📊 /price - قیمت لحظه‌ای\n"
-                "📈 /signal - سیگنال\n"
-                "👑 /admin - پنل ادمین\n"
-                "💎 /vip - VIP",
-                parse_mode="Markdown"
-            )
-        
-        async def price(update: Update, context: ContextTypes.DEFAULT_TYPE):
-            await update.message.reply_text("💰 قیمت BTC: $67,845.32")
-        
-        bot_app = Application.builder().token(BOT_TOKEN).build()
-        bot_app.add_handler(CommandHandler("start", start))
-        bot_app.add_handler(CommandHandler("price", price))
-        
-        await bot_app.bot.delete_webhook(drop_pending_updates=True)
-        await bot_app.initialize()
-        await bot_app.start()
-        await bot_app.updater.start_polling()
-        print("✅ Fallback Bot is running with polling!")
-        return True
-        
-    except Exception as e:
-        print(f"❌ Fallback bot error: {e}")
-        return False
+        data = await request.json()
+        return {"status": "ok"}
+    except:
+        return JSONResponse(status_code=400, content={"status": "error"})
 
 # ============================================================
-#                    BACKGROUND TASKS
+#                    TELEGRAM BOT
 # ============================================================
 
-async def background_worker():
-    """تسک‌های پس‌زمینه"""
-    while True:
-        try:
-            # به‌روزرسانی وضعیت
-            pass
-        except:
-            pass
-        await asyncio.sleep(60)
+def user_keyboard():
+    keyboard = [
+        [InlineKeyboardButton("📊 تحلیل", callback_data="analysis")],
+        [InlineKeyboardButton("🚨 سیگنال", callback_data="signal")],
+        [InlineKeyboardButton("💰 قیمت", callback_data="price")],
+        [InlineKeyboardButton("💎 VIP", callback_data="vip")],
+        [InlineKeyboardButton("📖 راهنما", callback_data="help")],
+        [InlineKeyboardButton("🆘 پشتیبانی", callback_data="support")]
+    ]
+    return InlineKeyboardMarkup(keyboard)
+
+def admin_keyboard():
+    keyboard = [
+        [InlineKeyboardButton("📊 مدیریت کاربران", callback_data="admin_users")],
+        [InlineKeyboardButton("💰 مدیریت پرداخت‌ها", callback_data="admin_payments")],
+        [InlineKeyboardButton("💎 مدیریت VIP", callback_data="admin_vip")],
+        [InlineKeyboardButton("📢 ارسال همگانی", callback_data="admin_broadcast")],
+        [InlineKeyboardButton("🔙 بازگشت", callback_data="back_main")]
+    ]
+    return InlineKeyboardMarkup(keyboard)
+
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = str(update.effective_user.id)
+    is_admin = int(user_id) in ADMIN_IDS if user_id.isdigit() else False
+    
+    if is_admin:
+        text = "👑 **پنل مدیریت**\n\nبه پنل ادمین خوش آمدید!"
+        keyboard = admin_keyboard()
+    else:
+        text = "🌟 **به CryptoPulse AI خوش آمدید!**\n\nربات هوشمند تحلیل و سیگنال ارزهای دیجیتال"
+        keyboard = user_keyboard()
+    
+    await update.message.reply_text(text, reply_markup=keyboard, parse_mode=ParseMode.MARKDOWN)
+
+async def admin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = str(update.effective_user.id)
+    is_admin = int(user_id) in ADMIN_IDS if user_id.isdigit() else False
+    
+    if not is_admin:
+        await update.message.reply_text("❌ دسترسی غیرمجاز!")
+        return
+    
+    await update.message.reply_text("👑 **پنل مدیریت**", reply_markup=admin_keyboard(), parse_mode=ParseMode.MARKDOWN)
+
+async def price_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("⏳ در حال دریافت قیمت...", reply_markup=user_keyboard())
+    
+    data = await get_coinex_price("BTC")
+    if data:
+        text = f"""
+📊 **قیمت لحظه‌ای BTC**
+
+💰 **قیمت:** ${data['price']:,.2f}
+📈 **تغییر ۲۴ساعته:** {data['change']:+.2f}%
+📊 **بالاترین:** ${data['high']:,.2f}
+📉 **پایین‌ترین:** ${data['low']:,.2f}
+📊 **حجم:** ${data['volume']:,.0f}
+
+⏰ **زمان:** {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
+"""
+        await update.message.reply_text(text, reply_markup=user_keyboard(), parse_mode=ParseMode.MARKDOWN)
+    else:
+        await update.message.reply_text("❌ خطا در دریافت قیمت!", reply_markup=user_keyboard())
+
+async def analysis_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("⏳ در حال دریافت تحلیل از AI...", reply_markup=user_keyboard())
+    
+    price_data = await get_coinex_price("BTC")
+    if price_data:
+        analysis = await get_groq_analysis("BTC", price_data)
+        text = f"""
+📊 **تحلیل تکنیکال BTC**
+
+🤖 **تحلیل هوش مصنوعی:**
+
+{analysis}
+
+💰 **قیمت فعلی:** ${price_data['price']:,.2f}
+📈 **تغییر ۲۴ساعته:** {price_data['change']:+.2f}%
+
+⏰ **زمان:** {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
+"""
+        await update.message.reply_text(text, reply_markup=user_keyboard(), parse_mode=ParseMode.MARKDOWN)
+    else:
+        await update.message.reply_text("❌ خطا در دریافت داده!", reply_markup=user_keyboard())
+
+async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    
+    data = query.data
+    
+    if data == "back_main":
+        await query.edit_message_text("🏠 **منوی اصلی**", reply_markup=user_keyboard(), parse_mode=ParseMode.MARKDOWN)
+    elif data == "price":
+        await query.edit_message_text("⏳ در حال دریافت قیمت...", reply_markup=user_keyboard())
+        price_data = await get_coinex_price("BTC")
+        if price_data:
+            text = f"""
+📊 **قیمت لحظه‌ای BTC**
+
+💰 **قیمت:** ${price_data['price']:,.2f}
+📈 **تغییر ۲۴ساعته:** {price_data['change']:+.2f}%
+⏰ **زمان:** {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
+"""
+            await query.edit_message_text(text, reply_markup=user_keyboard(), parse_mode=ParseMode.MARKDOWN)
+        else:
+            await query.edit_message_text("❌ خطا در دریافت قیمت!", reply_markup=user_keyboard())
+    elif data == "analysis":
+        await query.edit_message_text("⏳ در حال دریافت تحلیل...", reply_markup=user_keyboard())
+        price_data = await get_coinex_price("BTC")
+        if price_data:
+            analysis = await get_groq_analysis("BTC", price_data)
+            text = f"""
+📊 **تحلیل تکنیکال BTC**
+
+🤖 **تحلیل هوش مصنوعی:**
+
+{analysis}
+
+💰 **قیمت فعلی:** ${price_data['price']:,.2f}
+📈 **تغییر ۲۴ساعته:** {price_data['change']:+.2f}%
+
+⏰ **زمان:** {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
+"""
+            await query.edit_message_text(text, reply_markup=user_keyboard(), parse_mode=ParseMode.MARKDOWN)
+        else:
+            await query.edit_message_text("❌ خطا در دریافت داده!", reply_markup=user_keyboard())
+    elif data == "admin_users":
+        await query.edit_message_text("👥 **مدیریت کاربران**", reply_markup=admin_keyboard(), parse_mode=ParseMode.MARKDOWN)
+    elif data == "admin_payments":
+        await query.edit_message_text("💰 **مدیریت پرداخت‌ها**", reply_markup=admin_keyboard(), parse_mode=ParseMode.MARKDOWN)
+    elif data == "admin_vip":
+        await query.edit_message_text("💎 **مدیریت VIP**", reply_markup=admin_keyboard(), parse_mode=ParseMode.MARKDOWN)
+    elif data == "admin_broadcast":
+        await query.edit_message_text("📢 **ارسال همگانی**", reply_markup=admin_keyboard(), parse_mode=ParseMode.MARKDOWN)
+    else:
+        await query.edit_message_text("ℹ️ در حال توسعه...", reply_markup=user_keyboard(), parse_mode=ParseMode.MARKDOWN)
 
 # ============================================================
 #                    MAIN
 # ============================================================
 
+async def run_bot():
+    if not BOT_TOKEN:
+        print("❌ BOT_TOKEN not found!")
+        return
+    
+    bot_app = Application.builder().token(BOT_TOKEN).build()
+    bot_app.add_handler(CommandHandler("start", start))
+    bot_app.add_handler(CommandHandler("admin", admin_command))
+    bot_app.add_handler(CommandHandler("price", price_command))
+    bot_app.add_handler(CommandHandler("analysis", analysis_command))
+    bot_app.add_handler(CallbackQueryHandler(callback_handler))
+    
+    await bot_app.bot.delete_webhook(drop_pending_updates=True)
+    print("✅ Webhook deleted!")
+    
+    await bot_app.initialize()
+    await bot_app.start()
+    await bot_app.updater.start_polling()
+    print("✅ Telegram Bot is running with polling!")
+
 async def main():
-    """اجرای همزمان ربات و سرور"""
-    
-    # اجرای ربات تلگرام
-    bot_task = asyncio.create_task(run_telegram_bot())
-    
-    # اجرای تسک‌های پس‌زمینه
-    bg_task = asyncio.create_task(background_worker())
-    
-    # اجرای سرور FastAPI
-    print(f"🌐 Starting FastAPI server on port {PORT}")
-    config = uvicorn.Config(
-        app,
-        host="0.0.0.0",
-        port=PORT,
-        log_level="error",
-        loop="asyncio"
-    )
+    bot_task = asyncio.create_task(run_bot())
+    config = uvicorn.Config(app, host="0.0.0.0", port=PORT, log_level="error")
     server = uvicorn.Server(config)
     await server.serve()
 
@@ -290,8 +300,8 @@ if __name__ == "__main__":
     try:
         asyncio.run(main())
     except KeyboardInterrupt:
-        print("\n🛑 Bot stopped by user")
+        print("\n🛑 Bot stopped")
     except Exception as e:
-        print(f"❌ Fatal error: {e}")
+        print(f"❌ Error: {e}")
         while True:
             time.sleep(1)
