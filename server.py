@@ -1,25 +1,16 @@
 from fastapi import FastAPI
 import uvicorn
 import os
-import time
 
-app = FastAPI(title="CryptoPulse AI", version="3.0.0")
+app = FastAPI()
 
 @app.get("/")
 async def root():
-    return {
-        "status": "online",
-        "name": "CryptoPulse AI",
-        "version": "3.0.0",
-        "time": time.strftime("%Y-%m-%d %H:%M:%S")
-    }
+    return {"status": "online", "message": "CryptoPulse AI is running!"}
 
 @app.get("/health")
 async def health():
-    return {
-        "status": "healthy",
-        "time": time.strftime("%Y-%m-%d %H:%M:%S")
-    }
+    return {"status": "healthy"}
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8080))
