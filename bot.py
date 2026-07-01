@@ -1,15 +1,10 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-"""
-CryptoPulse AI Bot v3.0 - Main Entry Point
-استارت اجباری هر ۱۵ پارت
-"""
-
 import os
 import sys
-import time
 import asyncio
+import time
 import uvicorn
 
 print("🚀 Starting CryptoPulse AI Bot v3.0...")
@@ -64,17 +59,41 @@ print("🚀 All 15 parts loaded successfully!")
 print("="*50)
 
 # ============================================================
-#                    اجرا
+#                    اجرای ربات و سرور
 # ============================================================
 
-if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 8080))
-    print(f"🌐 Server running on port {port}")
+async def run_bot():
+    # اجرای ربات تلگرام
+    try:
+        from part9 import get_application
+        bot_app = get_application()
+        if bot_app:
+            await bot_app.bot.delete_webhook(drop_pending_updates=True)
+            await bot_app.initialize()
+            await bot_app.start()
+            await bot_app.updater.start_polling()
+            print("✅ Telegram Bot is running with polling!")
+    except Exception as e:
+        print(f"⚠️ Bot error: {e}")
     
+    # اجرای سرور FastAPI
     try:
         from part13 import app
-        uvicorn.run(app, host="0.0.0.0", port=port, log_level="error")
-    except:
-        print("⚠️ Server not available. Running idle...")
+        port = int(os.environ.get("PORT", 8080))
+        config = uvicorn.Config(app, host="0.0.0.0", port=port, log_level="error")
+        server = uvicorn.Server(config)
+        await server.serve()
+    except Exception as e:
+        print(f"⚠️ Server error: {e}")
+        while True:
+            await asyncio.sleep(1)
+
+if __name__ == "__main__":
+    try:
+        asyncio.run(run_bot())
+    except KeyboardInterrupt:
+        print("\n🛑 Bot stopped")
+    except Exception as e:
+        print(f"❌ Error: {e}")
         while True:
             time.sleep(1)
