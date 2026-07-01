@@ -1,218 +1,105 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-"""
-╔══════════════════════════════════════════════════════════════════╗
-║                                                                  ║
-║   ██████╗██████╗██╗   ██╗██████╗████████╗██████╗ ██╗   ██╗ █████╗ ███████╗███████╗
-║  ██╔════╝██╔══██╗╚██╗ ██╔╝██╔══██╗╚══██╔══╝██╔══██╗╚██╗ ██╔╝██╔══██╗██╔════╝██╔════╝
-║  ██║     ██████╔╝ ╚████╔╝ ██████╔╝   ██║   ██████╔╝ ╚████╔╝ ███████║███████╗███████╗
-║  ██║     ██╔══██╗  ╚██╔╝  ██╔═══╝    ██║   ██╔══██╗  ╚██╔╝  ██╔══██║╚════██║╚════██║
-║  ╚██████╗██║  ██║   ██║   ██║        ██║   ██║  ██║   ██║   ██║  ██║███████║███████║
-║   ╚═════╝╚═╝  ╚═╝   ╚═╝   ╚═╝        ╚═╝   ╚═╝  ╚═╝   ╚═╝   ╚═╝  ╚═╝╚══════╝╚══════╝
-║                                                                  ║
-║  🚀 CryptoPulse AI Bot v3.0 - Ultimate Edition                   ║
-║  ───────────────────────────────────────────────────────────       ║
-║  📁 ۱۵ بخش کامل  |  ⚡ استارت اجباری  |  🛡️ بدون خطا           ║
-║                                                                  ║
-╚══════════════════════════════════════════════════════════════════╝
-"""
-
 import os
 import sys
 import asyncio
 import time
 import uvicorn
 
-print("\n" + "="*70)
-print("🚀 CryptoPulse AI Bot v3.0 - استارت اجباری ۱۵ بخش")
-print("📁 بارگذاری و اجرای تمام بخش‌ها...\n")
-print("="*70 + "\n")
+print("🚀 Starting CryptoPulse AI Bot v3.0...")
+print("📁 Loading all 15 parts...\n")
 
 # ============================================================
-#                    بخش ۱: نقطه ورود و مدیریت اصلی
+#                    API KEY ها
 # ============================================================
 
-print("📁 بخش ۱: part1.py - نقطه ورود و مدیریت اصلی")
-try:
-    from part1 import *
-    print("  ✅ بخش ۱ با موفقیت بارگذاری شد\n")
-except Exception as e:
-    print(f"  ❌ خطا در بخش ۱: {e}\n")
+BOT_TOKEN = os.environ.get("BOT_TOKEN", "")
+GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")
+COINEX_API_KEY = os.environ.get("COINEX_API_KEY", "")
+COINEX_SECRET_KEY = os.environ.get("COINEX_SECRET_KEY", "")
+
+print(f"✅ BOT_TOKEN: {'SET' if BOT_TOKEN else 'NOT SET'}")
+print(f"✅ GROQ_API_KEY: {'SET' if GROQ_API_KEY else 'NOT SET'}")
+print(f"✅ COINEX_API_KEY: {'SET' if COINEX_API_KEY else 'NOT SET'}")
+print(f"✅ COINEX_SECRET_KEY: {'SET' if COINEX_SECRET_KEY else 'NOT SET'}")
+print()
 
 # ============================================================
-#                    بخش ۲: کانفیگ و تنظیمات محیطی
+#                    استارت اجباری هر ۱۵ پارت
 # ============================================================
 
-print("📁 بخش ۲: part2.py - کانفیگ و تنظیمات محیطی")
-try:
-    from part2 import *
-    print("  ✅ بخش ۲ با موفقیت بارگذاری شد\n")
-except Exception as e:
-    print(f"  ❌ خطا در بخش ۲: {e}\n")
+parts = [
+    ("part1", "Main Entry Point"),
+    ("part2", "Config & Settings"),
+    ("part3", "Database Models"),
+    ("part4", "Utils & Tehran Time"),
+    ("part5", "CoinEx Exchange"),
+    ("part6", "Groq AI"),
+    ("part7", "Technical Analysis"),
+    ("part8", "Keyboards & Menus"),
+    ("part9", "Main Handlers"),
+    ("part10", "Admin Panel"),
+    ("part11", "VIP & Payment"),
+    ("part12", "Channel Management"),
+    ("part13", "FastAPI Server"),
+    ("part14", "Background Tasks"),
+    ("part15", "Media Management")
+]
 
-# ============================================================
-#                    بخش ۳: مدل‌های دیتابیس
-# ============================================================
+for part, name in parts:
+    try:
+        exec(f"from {part} import *")
+        print(f"  ✅ Part: {name}")
+    except Exception as e:
+        print(f"  ❌ Part: {name} - {e}")
 
-print("📁 بخش ۳: part3.py - مدل‌های دیتابیس")
-try:
-    from part3 import *
-    print("  ✅ بخش ۳ با موفقیت بارگذاری شد\n")
-except Exception as e:
-    print(f"  ❌ خطا در بخش ۳: {e}\n")
-
-# ============================================================
-#                    بخش ۴: ابزارها و زمان تهران
-# ============================================================
-
-print("📁 بخش ۴: part4.py - ابزارها و زمان تهران")
-try:
-    from part4 import *
-    print("  ✅ بخش ۴ با موفقیت بارگذاری شد\n")
-except Exception as e:
-    print(f"  ❌ خطا در بخش ۴: {e}\n")
-
-# ============================================================
-#                    بخش ۵: صرافی CoinEx
-# ============================================================
-
-print("📁 بخش ۵: part5.py - صرافی CoinEx")
-try:
-    from part5 import *
-    print("  ✅ بخش ۵ با موفقیت بارگذاری شد\n")
-except Exception as e:
-    print(f"  ❌ خطا در بخش ۵: {e}\n")
-
-# ============================================================
-#                    بخش ۶: هوش مصنوعی Groq
-# ============================================================
-
-print("📁 بخش ۶: part6.py - هوش مصنوعی Groq")
-try:
-    from part6 import *
-    print("  ✅ بخش ۶ با موفقیت بارگذاری شد\n")
-except Exception as e:
-    print(f"  ❌ خطا در بخش ۶: {e}\n")
-
-# ============================================================
-#                    بخش ۷: تحلیل تکنیکال پیشرفته
-# ============================================================
-
-print("📁 بخش ۷: part7.py - تحلیل تکنیکال پیشرفته")
-try:
-    from part7 import *
-    print("  ✅ بخش ۷ با موفقیت بارگذاری شد\n")
-except Exception as e:
-    print(f"  ❌ خطا در بخش ۷: {e}\n")
-
-# ============================================================
-#                    بخش ۸: کیبوردها و منوها
-# ============================================================
-
-print("📁 بخش ۸: part8.py - کیبوردها و منوها")
-try:
-    from part8 import *
-    print("  ✅ بخش ۸ با موفقیت بارگذاری شد\n")
-except Exception as e:
-    print(f"  ❌ خطا در بخش ۸: {e}\n")
-
-# ============================================================
-#                    بخش ۹: هندلرهای اصلی
-# ============================================================
-
-print("📁 بخش ۹: part9.py - هندلرهای اصلی")
-try:
-    from part9 import *
-    print("  ✅ بخش ۹ با موفقیت بارگذاری شد\n")
-except Exception as e:
-    print(f"  ❌ خطا در بخش ۹: {e}\n")
-
-# ============================================================
-#                    بخش ۱۰: پنل ادمین کامل
-# ============================================================
-
-print("📁 بخش ۱۰: part10.py - پنل ادمین کامل")
-try:
-    from part10 import *
-    print("  ✅ بخش ۱۰ با موفقیت بارگذاری شد\n")
-except Exception as e:
-    print(f"  ❌ خطا در بخش ۱۰: {e}\n")
-
-# ============================================================
-#                    بخش ۱۱: مدیریت VIP و پرداخت
-# ============================================================
-
-print("📁 بخش ۱۱: part11.py - مدیریت VIP و پرداخت")
-try:
-    from part11 import *
-    print("  ✅ بخش ۱۱ با موفقیت بارگذاری شد\n")
-except Exception as e:
-    print(f"  ❌ خطا در بخش ۱۱: {e}\n")
-
-# ============================================================
-#                    بخش ۱۲: مدیریت کانال
-# ============================================================
-
-print("📁 بخش ۱۲: part12.py - مدیریت کانال")
-try:
-    from part12 import *
-    print("  ✅ بخش ۱۲ با موفقیت بارگذاری شد\n")
-except Exception as e:
-    print(f"  ❌ خطا در بخش ۱۲: {e}\n")
-
-# ============================================================
-#                    بخش ۱۳: سرور FastAPI
-# ============================================================
-
-print("📁 بخش ۱۳: part13.py - سرور FastAPI")
-try:
-    from part13 import *
-    print("  ✅ بخش ۱۳ با موفقیت بارگذاری شد\n")
-except Exception as e:
-    print(f"  ❌ خطا در بخش ۱۳: {e}\n")
-
-# ============================================================
-#                    بخش ۱۴: تسک‌های پس‌زمینه
-# ============================================================
-
-print("📁 بخش ۱۴: part14.py - تسک‌های پس‌زمینه")
-try:
-    from part14 import *
-    print("  ✅ بخش ۱۴ با موفقیت بارگذاری شد\n")
-except Exception as e:
-    print(f"  ❌ خطا در بخش ۱۴: {e}\n")
-
-# ============================================================
-#                    بخش ۱۵: مدیریت عکس و رسانه
-# ============================================================
-
-print("📁 بخش ۱۵: part15.py - مدیریت عکس و رسانه")
-try:
-    from part15 import *
-    print("  ✅ بخش ۱۵ با موفقیت بارگذاری شد\n")
-except Exception as e:
-    print(f"  ❌ خطا در بخش ۱۵: {e}\n")
-
-# ============================================================
-#                    اجرای نهایی
-# ============================================================
-
-print("\n" + "="*70)
+print("\n" + "="*50)
 print("🚀 All 15 parts loaded successfully!")
-print("📅 زمان: " + time.strftime("%Y-%m-%d %H:%M:%S"))
-print("="*70 + "\n")
+print("="*50)
+
+# ============================================================
+#                    اجرای ربات و سرور
+# ============================================================
+
+from fastapi import FastAPI
+from datetime import datetime
+
+app = FastAPI(title="CryptoPulse AI", version="3.0.0")
+
+@app.get("/")
+async def root():
+    return {"status": "online", "name": "CryptoPulse AI", "version": "3.0.0", "time": datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
+
+@app.get("/health")
+async def health():
+    return {"status": "healthy", "time": datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
+
+async def run_bot():
+    try:
+        from part9 import get_application
+        bot_app = get_application()
+        if bot_app:
+            await bot_app.bot.delete_webhook(drop_pending_updates=True)
+            await bot_app.initialize()
+            await bot_app.start()
+            await bot_app.updater.start_polling()
+            print("✅ Telegram Bot is running with polling!")
+    except Exception as e:
+        print(f"⚠️ Bot error: {e}")
+
+async def main():
+    bot_task = asyncio.create_task(run_bot())
+    config = uvicorn.Config(app, host="0.0.0.0", port=int(os.environ.get("PORT", 8080)), log_level="error")
+    server = uvicorn.Server(config)
+    await server.serve()
 
 if __name__ == "__main__":
-    print("🔄 Bot is running...\n")
-    
-    # اجرای سرور FastAPI از بخش ۱۳
     try:
-        from part13 import app
-        port = int(os.environ.get("PORT", 8080))
-        print(f"🌐 Starting FastAPI server on port {port}")
-        uvicorn.run(app, host="0.0.0.0", port=port, log_level="error")
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        print("\n🛑 Bot stopped")
     except Exception as e:
-        print(f"⚠️ خطا در اجرای سرور: {e}")
+        print(f"❌ Error: {e}")
         while True:
             time.sleep(1)
