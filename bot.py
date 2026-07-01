@@ -6,7 +6,7 @@ app = FastAPI()
 
 @app.get("/")
 async def root():
-    return {"status": "online", "message": "CryptoPulse AI is running!"}
+    return {"status": "online"}
 
 @app.get("/health")
 async def health():
