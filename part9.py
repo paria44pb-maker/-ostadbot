@@ -72,7 +72,7 @@ from telegram import (
     MenuButtonWebApp, MenuButtonDefault, WebAppData, WebAppInfo,
     KeyboardButtonPollType, KeyboardButtonRequestChat,
     KeyboardButtonRequestUser, KeyboardButtonRequestUsers,
-    ReplyKeyboardRemove, ForceReply, InlineKeyboardButton
+    ReplyKeyboardRemove, ForceReply
 )
 
 from telegram.constants import ParseMode
@@ -106,6 +106,7 @@ from telegram.ext import (
     AIORateLimiter
 )
 
+import warnings
 warnings.filterwarnings("ignore", message=r".*CallbackQueryHandler", category=PTBUserWarning)
 
 # ============================================================
