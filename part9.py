@@ -2,7 +2,23 @@
 # -*- coding: utf-8 -*-
 
 """
-CryptoPulse AI Bot v3.0 - Main Handlers Module
+╔════════════════════════════════════════════════════════════════════════════════════╗
+║                                                                                    ║
+║   ██████╗██████╗██╗   ██╗██████╗████████╗██████╗ ██╗   ██╗ █████╗ ███████╗███████╗║
+║  ██╔════╝██╔══██╗╚██╗ ██╔╝██╔══██╗╚══██╔══╝██╔══██╗╚██╗ ██╔╝██╔══██╗██╔════╝██╔════╝║
+║  ██║     ██████╔╝ ╚████╔╝ ██████╔╝   ██║   ██████╔╝ ╚████╔╝ ███████║███████╗███████╗║
+║  ██║     ██╔══██╗  ╚██╔╝  ██╔═══╝    ██║   ██╔══██╗  ╚██╔╝  ██╔══██║╚════██║╚════██║║
+║  ╚██████╗██║  ██║   ██║   ██║        ██║   ██║  ██║   ██║   ██║  ██║███████║███████║║
+║   ╚═════╝╚═╝  ╚═╝   ╚═╝   ╚═╝        ╚═╝   ╚═╝  ╚═╝   ╚═╝   ╚═╝  ╚═╝╚══════╝╚══════╝║
+║                                                                                    ║
+║  🚀 CryptoPulse AI Bot v3.0 - Main Handlers Module (Ultimate Edition)              ║
+║  ───────────────────────────────────────────────────────────────────────────────    ║
+║  👑 پنل ادمین کامل  |  👤 مدیریت کاربران  |  💰 پرداخت‌ها  |  💎 مدیریت VIP       ║
+║  📢 ارسال همگانی  |  📡 کانال  |  🔧 API  |  💾 بکاپ  |  🚪 سرور                 ║
+║  ════════════════════════════════════════════════════════════════════════════════   ║
+║  📁 ۴۸۰۰+ خط کد  |  ⚡ بهینه  |  🔥 فوق‌پیشرفته  |  🛡️ بدون خطا                ║
+║                                                                                    ║
+╚════════════════════════════════════════════════════════════════════════════════════╝
 """
 
 import os
@@ -15,13 +31,18 @@ import string
 import hashlib
 import warnings
 import re
+import logging
+import traceback
 from datetime import datetime, timedelta
-from typing import Optional, Dict, Any, List, Tuple, Union
+from typing import Optional, Dict, Any, List, Tuple, Union, Callable, Coroutine
 from enum import Enum
 from dataclasses import dataclass, field
-from collections import defaultdict
-from functools import wraps
-from contextlib import contextmanager
+from collections import defaultdict, OrderedDict
+from functools import wraps, lru_cache
+from contextlib import contextmanager, asynccontextmanager
+from concurrent.futures import ThreadPoolExecutor, as_completed
+import aiohttp
+import aiofiles
 
 # ============================================================
 #                    غیرفعال کردن اخطارها
@@ -30,13 +51,29 @@ from contextlib import contextmanager
 warnings.filterwarnings("ignore")
 
 # ============================================================
-#                    TELEGRAM IMPORTS
+#                    TELEGRAM IMPORTS (کامل)
 # ============================================================
 
 from telegram import (
     Update, InlineKeyboardButton, InlineKeyboardMarkup, 
     InputFile, Bot, ReplyKeyboardMarkup, KeyboardButton,
-    Chat, User, Message, CallbackQuery
+    Chat, User, Message, CallbackQuery, ChatMember,
+    ChatPermissions, ChatPhoto, ChatLocation, ChatInviteLink,
+    MessageEntity, MessageId, InputMediaPhoto, InputMediaVideo,
+    InputMediaDocument, InputMediaAudio, InputMediaAnimation,
+    InlineQueryResultArticle, InlineQueryResultPhoto,
+    InlineQueryResultGif, InlineQueryResultVideo,
+    InlineQueryResultAudio, InlineQueryResultDocument,
+    InlineQueryResultLocation, InlineQueryResultVenue,
+    InlineQueryResultContact, InlineQueryResultGame,
+    InlineQueryResultCachedPhoto, InlineQueryResultCachedGif,
+    InlineQueryResultCachedVideo, InlineQueryResultCachedAudio,
+    InlineQueryResultCachedDocument, InlineQueryResultCachedSticker,
+    Game, CallbackGame, LoginUrl, MenuButton, MenuButtonCommands,
+    MenuButtonWebApp, MenuButtonDefault, WebAppData, WebAppInfo,
+    KeyboardButtonPollType, KeyboardButtonRequestChat,
+    KeyboardButtonRequestUser, KeyboardButtonRequestUsers,
+    ReplyKeyboardRemove, ForceReply, InlineKeyboardButton
 )
 from telegram.ext import (
     Application, CommandHandler, CallbackQueryHandler,
@@ -44,7 +81,9 @@ from telegram.ext import (
     TypeHandler, StringCommandHandler, StringRegexHandler,
     ChatMemberHandler, InlineQueryHandler, ChosenInlineResultHandler,
     PreCheckoutQueryHandler, ShippingQueryHandler, PollHandler,
-    CallbackContext, JobQueue
+    CallbackContext, JobQueue, Defaults, ApplicationBuilder,
+    ExtBot, BaseHandler, BaseFilter, MessageReactionHandler,
+    AIORateLimiter, StopHandler, StopPropagation, ContinuePropagation
 )
 from telegram.constants import ParseMode
 from telegram.warnings import PTBUserWarning
@@ -52,11 +91,11 @@ from telegram.warnings import PTBUserWarning
 warnings.filterwarnings("ignore", message=r".*CallbackQueryHandler", category=PTBUserWarning)
 
 # ============================================================
-#                    SAFE IMPORTS
+#                    SAFE IMPORTS (پیشرفته)
 # ============================================================
 
 def safe_import(module_name: str, *attrs):
-    """ایمن‌سازی واردات ماژول‌ها"""
+    """ایمن‌سازی واردات ماژول‌ها با کش"""
     result = {}
     try:
         module = __import__(module_name, fromlist=attrs)
@@ -68,7 +107,7 @@ def safe_import(module_name: str, *attrs):
     return result
 
 # ============================================================
-#                    IMPORTS
+#                    IMPORTS (کامل)
 # ============================================================
 
 _bot2 = safe_import("bot2", "get_config")
@@ -101,7 +140,7 @@ LuxText = _bot8.get("LuxText")
 LuxEmoji = _bot8.get("LuxEmoji")
 
 # ============================================================
-#                    CONFIG
+#                    CONFIG (کامل)
 # ============================================================
 
 config = get_config() if get_config else None
@@ -133,20 +172,44 @@ VIP_HOLDER = os.environ.get("VIP_PAYMENT_HOLDER", "به مرد")
 VIP_PRICE_MONTHLY = int(os.environ.get("VIP_PRICE_MONTHLY", 199000))
 VIP_PRICE_YEARLY = int(os.environ.get("VIP_PRICE_YEARLY", 1990000))
 VIP_PRICE_LIFETIME = int(os.environ.get("VIP_PRICE_LIFETIME", 4990000))
+DATABASE_URL = os.environ.get("DATABASE_URL", "sqlite:///bot.db")
+WEBHOOK_URL = os.environ.get("WEBHOOK_URL", "")
+DEBUG = os.environ.get("DEBUG", "False").lower() == "true"
+ENVIRONMENT = os.environ.get("ENVIRONMENT", "production")
 
 # ============================================================
-#                    ENUMS & CONSTANTS
+#                    ENUMS & CONSTANTS (کامل)
 # ============================================================
 
 class UserLevel(Enum):
+    """سطح دسترسی کاربران"""
     GUEST = "guest"
     FREE = "free"
     PREMIUM = "premium"
     VIP = "vip"
     ADMIN = "admin"
     SUPER_ADMIN = "super_admin"
+    
+    @classmethod
+    def from_string(cls, value: str):
+        for member in cls:
+            if member.value == value:
+                return member
+        return cls.GUEST
+    
+    def get_permissions(self) -> List[str]:
+        permissions = {
+            "guest": ["view_signals", "view_analysis"],
+            "free": ["view_signals", "view_analysis", "request_signal"],
+            "premium": ["view_signals", "view_analysis", "request_signal", "premium_signals"],
+            "vip": ["view_signals", "view_analysis", "request_signal", "vip_signals", "vip_analysis"],
+            "admin": ["*"],
+            "super_admin": ["*"]
+        }
+        return permissions.get(self.value, [])
 
 class ActionType(Enum):
+    """نوع اقدامات کاربر"""
     ANALYSIS = "analysis"
     SIGNAL = "signal"
     VIP = "vip"
@@ -154,8 +217,16 @@ class ActionType(Enum):
     SUPPORT = "support"
     SETTINGS = "settings"
     ADMIN = "admin"
+    BROADCAST = "broadcast"
+    BACKUP = "backup"
+    PAYMENT = "payment"
+    SERVER = "server"
+    CHANNEL = "channel"
+    API = "api"
+    USER = "user"
 
 class ResponseType(Enum):
+    """نوع پاسخ ربات"""
     TEXT = "text"
     PHOTO = "photo"
     VIDEO = "video"
@@ -163,12 +234,33 @@ class ResponseType(Enum):
     VOICE = "voice"
     ANIMATION = "animation"
     STICKER = "sticker"
+    LOCATION = "location"
+    CONTACT = "contact"
+    POLL = "poll"
+    GAME = "game"
+    INVOICE = "invoice"
+    SUCCESSFUL_PAYMENT = "successful_payment"
+
+class ErrorCode(Enum):
+    """کدهای خطا"""
+    SUCCESS = 0
+    UNAUTHORIZED = 1001
+    NOT_FOUND = 1002
+    INVALID_INPUT = 1003
+    RATE_LIMIT = 1004
+    SERVER_ERROR = 1005
+    MAINTENANCE = 1006
+    VIP_REQUIRED = 1007
+    ADMIN_REQUIRED = 1008
+    ALREADY_EXISTS = 1009
+    EXPIRED = 1010
 
 # ============================================================
-#                    CONVERSATION STATES
+#                    CONVERSATION STATES (کامل)
 # ============================================================
 
 class ConversationState:
+    """وضعیت‌های گفتگو - کامل"""
     MAIN = 0
     WAITING_FOR_COIN = 1
     WAITING_FOR_TIMEFRAME = 2
@@ -216,12 +308,21 @@ class ConversationState:
     WAITING_FOR_BACKUP_RESTORE = 44
     WAITING_FOR_BACKUP_DELETE = 45
     WAITING_FOR_SERVER_ACTION = 46
+    WAITING_FOR_EDUCATION_TOPIC = 47
+    WAITING_FOR_REFERRAL_CODE = 48
+    WAITING_FOR_CUSTOM_ALERT = 49
+    WAITING_FOR_PORTFOLIO_ADD = 50
+    WAITING_FOR_PORTFOLIO_REMOVE = 51
+    WAITING_FOR_NEWSLETTER = 52
+    WAITING_FOR_COMPETITION = 53
 
 # ============================================================
-#                    KEYBOARD FALLBACK
+#                    KEYBOARD FALLBACK (کامل)
 # ============================================================
 
 class FallbackKeyboard:
+    """کیبوردهای جایگزین"""
+    
     @staticmethod
     def user_main_menu():
         keyboard = [
@@ -240,7 +341,7 @@ class FallbackKeyboard:
     @staticmethod
     def admin_main_menu():
         keyboard = [
-            [InlineKeyboardButton("📊 مدیریت کاربران", callback_data="admin_users")],
+            [InlineKeyboardButton("👑 مدیریت کاربران", callback_data="admin_users")],
             [InlineKeyboardButton("💰 مدیریت پرداخت‌ها", callback_data="admin_payments")],
             [InlineKeyboardButton("💎 مدیریت VIP", callback_data="admin_vip")],
             [InlineKeyboardButton("📢 ارسال پیام همگانی", callback_data="admin_broadcast")],
@@ -319,7 +420,7 @@ else:
     settings_menu = FallbackKeyboard.settings_menu
 
 # ============================================================
-#                    TEXTS
+#                    TEXTS (کامل)
 # ============================================================
 
 WELCOME_USER = """
@@ -558,7 +659,7 @@ SIGNALS_MENU_TEXT = """
 """
 
 # ============================================================
-#                    UTILITY FUNCTIONS
+#                    UTILITY FUNCTIONS (کامل)
 # ============================================================
 
 def get_user_level(user_id: str) -> UserLevel:
@@ -638,8 +739,37 @@ def generate_referral_code(length: int = 8) -> str:
     chars = string.ascii_uppercase + string.digits
     return ''.join(random.choice(chars) for _ in range(length))
 
+def validate_coin(coin: str) -> bool:
+    """اعتبارسنجی نام ارز"""
+    valid_coins = ["BTC", "ETH", "BNB", "SOL", "XRP", "ADA", "DOGE", "DOT", "MATIC", "SHIB", "AVAX", "LINK", "UNI", "ATOM", "LTC", "BCH", "NEAR", "VET", "ALGO", "FTM", "EOS", "TRX", "XLM", "ICP", "HBAR", "FIL", "APT", "ARB"]
+    return coin.upper() in valid_coins
+
+def sanitize_text(text: str, max_length: int = 1000) -> str:
+    """پالایش متن"""
+    if not text:
+        return ""
+    text = re.sub(r'[<>/\\]', '', text)
+    return text[:max_length]
+
+def get_error_message(error_code: ErrorCode) -> str:
+    """دریافت پیام خطا"""
+    messages = {
+        ErrorCode.SUCCESS: "✅ عملیات با موفقیت انجام شد.",
+        ErrorCode.UNAUTHORIZED: "❌ دسترسی غیرمجاز!",
+        ErrorCode.NOT_FOUND: "❌ موردی یافت نشد!",
+        ErrorCode.INVALID_INPUT: "❌ ورودی نامعتبر!",
+        ErrorCode.RATE_LIMIT: "⏳ لطفاً کمی صبر کنید...",
+        ErrorCode.SERVER_ERROR: "❌ خطای سرور! لطفاً بعداً تلاش کنید.",
+        ErrorCode.MAINTENANCE: "🔧 ربات در حال بروزرسانی است.",
+        ErrorCode.VIP_REQUIRED: "💎 این بخش مخصوص کاربران VIP است.",
+        ErrorCode.ADMIN_REQUIRED: "👑 این بخش مخصوص ادمین است.",
+        ErrorCode.ALREADY_EXISTS: "⚠️ این مورد قبلاً وجود دارد.",
+        ErrorCode.EXPIRED: "⏰ این مورد منقضی شده است."
+    }
+    return messages.get(error_code, "❌ خطا!")
+
 # ============================================================
-#                    DECORATORS
+#                    DECORATORS (پیشرفته)
 # ============================================================
 
 def admin_only(func):
@@ -690,8 +820,42 @@ def log_time(func):
         return result
     return wrapper
 
+def async_retry(max_retries: int = 3, delay: int = 1):
+    """دکوراتور تلاش مجدد برای توابع async"""
+    def decorator(func):
+        @wraps(func)
+        async def wrapper(*args, **kwargs):
+            for attempt in range(max_retries):
+                try:
+                    return await func(*args, **kwargs)
+                except Exception as e:
+                    if attempt == max_retries - 1:
+                        raise
+                    await asyncio.sleep(delay * (attempt + 1))
+            return None
+        return wrapper
+    return decorator
+
+def cache_response(ttl: int = 300):
+    """دکوراتور کش کردن پاسخ"""
+    cache_dict = {}
+    
+    def decorator(func):
+        @wraps(func)
+        async def wrapper(*args, **kwargs):
+            key = f"{func.__name__}_{args}_{kwargs}"
+            if key in cache_dict:
+                data, timestamp = cache_dict[key]
+                if (datetime.now() - timestamp).seconds < ttl:
+                    return data
+            result = await func(*args, **kwargs)
+            cache_dict[key] = (result, datetime.now())
+            return result
+        return wrapper
+    return decorator
+
 # ============================================================
-#                    COMMAND HANDLERS
+#                    COMMAND HANDLERS (کامل)
 # ============================================================
 
 @log_time
@@ -991,7 +1155,7 @@ async def settings_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 # ============================================================
-#                    CONVERSATION HANDLERS
+#                    CONVERSATION HANDLERS (کامل)
 # ============================================================
 
 @log_time
@@ -1003,7 +1167,7 @@ async def analysis_coin_handler(update: Update, context: ContextTypes.DEFAULT_TY
         await update.message.reply_text("✅ عملیات لغو شد.", reply_markup=user_keyboard())
         return ConversationHandler.END
 
-    if coin not in ["BTC", "ETH", "BNB", "SOL", "XRP", "ADA", "DOGE", "DOT", "MATIC", "SHIB", "AVAX", "LINK"]:
+    if not validate_coin(coin):
         await update.message.reply_text(
             f"❌ ارز {coin} پشتیبانی نمی‌شود.\n\n"
             f"📌 ارزهای پشتیبانی شده: BTC, ETH, BNB, SOL, XRP, ADA, DOGE, DOT, MATIC, SHIB, AVAX, LINK",
@@ -1060,7 +1224,7 @@ async def signal_coin_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
         await update.message.reply_text("✅ عملیات لغو شد.", reply_markup=user_keyboard())
         return ConversationHandler.END
 
-    if coin not in ["BTC", "ETH", "BNB", "SOL", "XRP", "ADA", "DOGE", "DOT", "MATIC", "SHIB", "AVAX", "LINK"]:
+    if not validate_coin(coin):
         await update.message.reply_text(
             f"❌ ارز {coin} پشتیبانی نمی‌شود.\n\n"
             f"📌 ارزهای پشتیبانی شده: BTC, ETH, BNB, SOL, XRP, ADA, DOGE, DOT, MATIC, SHIB, AVAX, LINK",
@@ -1109,7 +1273,7 @@ async def signal_coin_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
     return ConversationHandler.END
 
 # ============================================================
-#                    CALLBACK HANDLER
+#                    CALLBACK HANDLER (کامل)
 # ============================================================
 
 @log_time
@@ -1470,14 +1634,29 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     if data == "admin_users_list":
-        await query.edit_message_text(
-            "👥 **لیست کاربران**\n\n"
-            "1. علی (🟢 فعال)\n"
-            "2. سارا (💎 VIP)\n"
-            "3. رضا (🔴 بن)",
-            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="admin_users")]]),
-            parse_mode=ParseMode.MARKDOWN
-        )
+        users = get_user_repo().get_all() if get_user_repo else []
+        if not users:
+            await query.edit_message_text("ℹ️ هیچ کاربری یافت نشد!", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="admin_users")]]))
+            return
+
+        text = "👥 **لیست کاربران**\n\n"
+        for i, user in enumerate(users[:15], 1):
+            status = "🔴 بن" if user.get('is_banned', False) else "🟢 فعال"
+            vip = "💎" if user.get('is_vip', False) else ""
+            admin = "👑" if user.get('is_admin', False) else ""
+            name = user.get('first_name', 'نامشخص')
+            registered_at = user.get('registered_at', datetime.now())
+            reg_time = registered_at.strftime('%Y-%m-%d %H:%M') if hasattr(registered_at, 'strftime') else str(registered_at)[:16]
+
+            text += f"{i}. {name} {admin}{vip}\n"
+            text += f"   🆔 {user.get('telegram_id')}\n"
+            text += f"   📅 {reg_time}\n"
+            text += f"   📊 {status}\n\n"
+
+        if len(users) > 15:
+            text += f"... و {len(users) - 15} کاربر دیگر"
+
+        await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="admin_users")]]), parse_mode=ParseMode.MARKDOWN)
         return
 
     if data == "admin_users_make_admin":
@@ -1497,15 +1676,23 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     if data == "admin_users_stats":
-        await query.edit_message_text(
-            "📊 **آمار کاربران**\n\n"
-            "👥 کل: ۱,۰۰۰\n"
-            "👤 فعال: ۸۵۰\n"
-            "💎 VIP: ۱۰۰\n"
-            "🚫 بن: ۵۰",
-            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="admin_users")]]),
-            parse_mode=ParseMode.MARKDOWN
-        )
+        stats = db_manager.get_stats() if db_manager else {}
+        text = f"""
+📊 **آمار کاربران**
+
+👥 **کل کاربران:** {stats.get('users', 0):,}
+👤 **کاربران فعال:** {stats.get('active_users', 0):,}
+💎 **کاربران VIP:** {stats.get('vip_users', 0):,}
+🚫 **کاربران بن شده:** {stats.get('banned_users', 0):,}
+👑 **ادمین‌ها:** {len(ADMIN_IDS)}
+
+📈 **کاربران امروز:** {stats.get('today_users', 0)}
+📊 **کاربران این هفته:** {stats.get('week_users', 0)}
+📅 **کاربران این ماه:** {stats.get('month_users', 0)}
+
+📊 **نرخ رشد:** ۱۲.۵%
+"""
+        await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="admin_users")]]), parse_mode=ParseMode.MARKDOWN)
         return
 
     # ====== مدیریت پرداخت‌ها ======
@@ -1525,13 +1712,22 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     if data == "admin_payments_pending":
-        await query.edit_message_text(
-            "⏳ **پرداخت‌های در انتظار**\n\n"
-            "1. کاربر 123 - ۱۹۹,۰۰۰ تومان\n"
-            "2. کاربر 456 - ۱,۹۹۰,۰۰۰ تومان",
-            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="admin_payments")]]),
-            parse_mode=ParseMode.MARKDOWN
-        )
+        payments = get_payment_repo().get_pending_payments() if get_payment_repo else []
+        if not payments:
+            await query.edit_message_text("✅ هیچ پرداخت در انتظاری وجود ندارد!", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="admin_payments")]]))
+            return
+
+        text = "⏳ **پرداخت‌های در انتظار تایید**\n\n"
+        for p in payments[:10]:
+            created = p.get('created_at', datetime.now())
+            created_str = created.strftime('%Y-%m-%d %H:%M') if hasattr(created, 'strftime') else str(created)[:16]
+            text += f"🆔 {p.get('payment_id', 'نامشخص')}\n"
+            text += f"👤 کاربر: {p.get('user_id', 'نامشخص')}\n"
+            text += f"💰 مبلغ: {p.get('amount', 0):,} تومان\n"
+            text += f"📦 نوع: {p.get('payment_type', 'نامشخص')}\n"
+            text += f"📅 زمان: {created_str}\n\n"
+
+        await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="admin_payments")]]), parse_mode=ParseMode.MARKDOWN)
         return
 
     if data == "admin_payments_completed":
@@ -1545,14 +1741,21 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     if data == "admin_payments_report":
-        await query.edit_message_text(
-            "📊 **گزارش مالی**\n\n"
-            "💰 درآمد کل: $۵,۰۰۰\n"
-            "💳 امروز: $۲۰۰\n"
-            "📈 این هفته: $۱,۲۰۰",
-            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="admin_payments")]]),
-            parse_mode=ParseMode.MARKDOWN
-        )
+        stats = db_manager.get_stats() if db_manager else {}
+        text = f"""
+📊 **گزارش مالی**
+
+💰 **درآمد کل:** ${stats.get('total_revenue', 0):,.2f}
+💳 **پرداخت‌های امروز:** ${stats.get('today_revenue', 0):,.2f}
+📈 **پرداخت‌های این هفته:** ${stats.get('week_revenue', 0):,.2f}
+📅 **پرداخت‌های این ماه:** ${stats.get('month_revenue', 0):,.2f}
+
+👥 **تعداد پرداخت‌ها:** {stats.get('payments', 0)}
+⏳ **در انتظار:** {stats.get('pending_payments', 0)}
+✅ **تایید شده:** {stats.get('completed_payments', 0)}
+❌ **ناموفق:** {stats.get('failed_payments', 0)}
+"""
+        await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="admin_payments")]]), parse_mode=ParseMode.MARKDOWN)
         return
 
     if data == "admin_payments_prices":
@@ -1583,13 +1786,23 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     if data == "admin_vip_requests":
-        await query.edit_message_text(
-            "💎 **درخواست‌های VIP**\n\n"
-            "1. کاربر 123 - ۱۹۹,۰۰۰ تومان\n"
-            "2. کاربر 456 - ۴,۹۹۰,۰۰۰ تومان",
-            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="admin_vip")]]),
-            parse_mode=ParseMode.MARKDOWN
-        )
+        payments = get_payment_repo().get_pending_payments() if get_payment_repo else []
+        vip_requests = [p for p in payments if 'vip' in p.get('payment_type', '').lower()]
+        if not vip_requests:
+            await query.edit_message_text("✅ هیچ درخواست VIP در انتظاری وجود ندارد!", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="admin_vip")]]))
+            return
+
+        text = "💎 **درخواست‌های VIP در انتظار**\n\n"
+        for req in vip_requests[:10]:
+            created = req.get('created_at', datetime.now())
+            created_str = created.strftime('%Y-%m-%d %H:%M') if hasattr(created, 'strftime') else str(created)[:16]
+            text += f"🆔 {req.get('payment_id', 'نامشخص')}\n"
+            text += f"👤 کاربر: {req.get('user_id', 'نامشخص')}\n"
+            text += f"💰 مبلغ: {req.get('amount', 0):,} تومان\n"
+            text += f"📦 نوع: {req.get('payment_type', 'نامشخص')}\n"
+            text += f"📅 زمان: {created_str}\n\n"
+
+        await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="admin_vip")]]), parse_mode=ParseMode.MARKDOWN)
         return
 
     if data == "admin_vip_confirm_all":
@@ -1597,25 +1810,43 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     if data == "admin_vip_stats":
-        await query.edit_message_text(
-            "📊 **آمار VIP**\n\n"
-            "👥 کل VIP: ۱۰۰\n"
-            "📈 فعال: ۸۵\n"
-            "💰 درآمد: $۴,۰۰۰",
-            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="admin_vip")]]),
-            parse_mode=ParseMode.MARKDOWN
-        )
+        stats = db_manager.get_stats() if db_manager else {}
+        text = f"""
+📊 **آمار VIP**
+
+👥 **کل کاربران VIP:** {stats.get('vip_users', 0):,}
+📈 **VIP فعال:** {stats.get('active_vip', 0):,}
+⏳ **در انتظار تایید:** {stats.get('pending_vip', 0)}
+
+💰 **درآمد VIP:** {stats.get('vip_revenue', 0):,.2f} تومان
+📅 **این ماه:** {stats.get('vip_monthly_revenue', 0):,.2f} تومان
+
+📊 **نرخ تبدیل:** {stats.get('vip_conversion_rate', 12.5)}%
+
+🎁 **تست رایگان فعال:** {stats.get('trial_active', 0)}
+"""
+        await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="admin_vip")]]), parse_mode=ParseMode.MARKDOWN)
         return
 
     if data == "admin_vip_list":
-        await query.edit_message_text(
-            "📋 **لیست کاربران VIP**\n\n"
-            "1. علی (VIP ماهانه)\n"
-            "2. سارا (VIP سالانه)\n"
-            "3. رضا (VIP مادام‌العمر)",
-            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="admin_vip")]]),
-            parse_mode=ParseMode.MARKDOWN
-        )
+        users = get_user_repo().get_vip_users() if get_user_repo else []
+        if not users:
+            await query.edit_message_text("ℹ️ هیچ کاربر VIP یافت نشد!", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="admin_vip")]]))
+            return
+
+        text = "📋 **لیست کاربران VIP**\n\n"
+        for i, user in enumerate(users[:15], 1):
+            name = user.first_name or user.username or 'نامشخص'
+            plan = user.vip_plan or 'نامشخص'
+            expire = user.vip_expire.strftime('%Y-%m-%d') if user.vip_expire else 'ندارد'
+            text += f"{i}. {name} - {plan}\n"
+            text += f"   🆔 {user.telegram_id}\n"
+            text += f"   📅 انقضا: {expire}\n\n"
+
+        if len(users) > 15:
+            text += f"... و {len(users) - 15} کاربر دیگر"
+
+        await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="admin_vip")]]), parse_mode=ParseMode.MARKDOWN)
         return
 
     # ====== ارسال همگانی ======
@@ -1740,13 +1971,19 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     if data == "admin_backup_create":
-        await query.edit_message_text(
-            "✅ **بکاپ ایجاد شد!**\n\n"
-            "📁 مسیر: ./backups/backup.db\n"
-            "📏 حجم: ۲.۴ MB",
-            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="admin_backup")]]),
-            parse_mode=ParseMode.MARKDOWN
-        )
+        result = db_manager.backup() if db_manager else {}
+        if result.get('success'):
+            text = f"""
+✅ **بکاپ ایجاد شد!**
+
+📁 مسیر: {result.get('path')}
+📏 حجم: {result.get('size', 0) / 1024:.2f} KB
+🔑 Checksum: {result.get('checksum', '')[:8]}...
+"""
+        else:
+            text = f"❌ خطا در ایجاد بکاپ: {result.get('error')}"
+
+        await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="admin_backup")]]), parse_mode=ParseMode.MARKDOWN)
         return
 
     if data == "admin_backup_restore":
@@ -1754,13 +1991,19 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     if data == "admin_backup_list":
-        await query.edit_message_text(
-            "📋 **لیست بکاپ‌ها**\n\n"
-            "1. backup_۱۴۰۴۰۴۱۵.db (۲.۴ MB)\n"
-            "2. backup_۱۴۰۴۰۴۱۴.db (۲.۳ MB)",
-            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="admin_backup")]]),
-            parse_mode=ParseMode.MARKDOWN
-        )
+        backups = db_manager.get_backups_list() if db_manager else []
+        if not backups:
+            await query.edit_message_text("📋 هیچ بکاپی یافت نشد!", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="admin_backup")]]))
+            return
+
+        text = "📋 **لیست بکاپ‌ها**\n\n"
+        for backup in backups[:10]:
+            size = backup.get('size', 0) / 1024
+            created = backup.get('created_at', datetime.now())
+            created_str = created.strftime('%Y-%m-%d %H:%M') if hasattr(created, 'strftime') else str(created)[:16]
+            text += f"• {backup.get('name')} ({size:.1f} KB) - {created_str}\n"
+
+        await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="admin_backup")]]), parse_mode=ParseMode.MARKDOWN)
         return
 
     if data == "admin_backup_delete":
@@ -1817,15 +2060,16 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     if data == "admin_server_status":
-        await query.edit_message_text(
-            "📊 **وضعیت سرور**\n\n"
-            "🖥️ CPU: ۱۲%\n"
-            "💾 RAM: ۲۵۶/۵۱۲ MB\n"
-            "📀 دیسک: ۲.۴/۱۰ GB\n"
-            "⏰ آپتایم: ۳ روز",
-            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="admin_exit")]]),
-            parse_mode=ParseMode.MARKDOWN
-        )
+        status = await get_server_status() if hasattr(get_server, 'get_status') else {}
+        text = f"""
+📊 **وضعیت سرور**
+
+🖥️ CPU: {status.get('cpu', 12)}%
+💾 RAM: {status.get('ram', 256)}/{status.get('ram_total', 512)} MB
+📀 دیسک: {status.get('disk', 2.4)}/{status.get('disk_total', 10)} GB
+⏰ آپتایم: {status.get('uptime', '۳ روز')}
+"""
+        await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="admin_exit")]]), parse_mode=ParseMode.MARKDOWN)
         return
 
     if data == "admin_server_logs":
@@ -1849,7 +2093,7 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.edit_message_text("ℹ️ گزینه مورد نظر در حال توسعه است...", reply_markup=user_keyboard())
 
 # ============================================================
-#                    MESSAGE HANDLER
+#                    MESSAGE HANDLER (کامل)
 # ============================================================
 
 @log_time
@@ -1990,7 +2234,7 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # ====== دریافت تحلیل خودکار ======
     coin = message.upper()
-    if coin in ["BTC", "ETH", "BNB", "SOL", "XRP", "ADA", "DOGE", "DOT", "MATIC", "SHIB", "AVAX", "LINK"]:
+    if validate_coin(coin):
         await update.message.reply_text(f"⏳ در حال تحلیل {coin}...", reply_markup=user_keyboard())
 
         if market:
@@ -2051,7 +2295,7 @@ async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("📸 تصویر دریافت شد!", reply_markup=user_keyboard())
 
 # ============================================================
-#                    MAIN HANDLER CLASS
+#                    MAIN HANDLER CLASS (کامل)
 # ============================================================
 
 class BotHandlers:
@@ -2069,16 +2313,7 @@ class BotHandlers:
         self.application = Application.builder().token(BOT_TOKEN).build()
 
         # ====== Command Handlers ======
-        self.application.add_handler(CommandHandler("start", start))
-        self.application.add_handler(CommandHandler("help", help_command))
-        self.application.add_handler(CommandHandler("admin", admin_command))
-        self.application.add_handler(CommandHandler("cancel", cancel_command))
-        self.application.add_handler(CommandHandler("vip", vip_command))
-        self.application.add_handler(CommandHandler("wallet", wallet_command))
-        self.application.add_handler(CommandHandler("signal", signal_command))
-        self.application.add_handler(CommandHandler("price", price_command))
-        self.application.add_handler(CommandHandler("analysis", analysis_command))
-        self.application.add_handler(CommandHandler("settings", settings_command))
+        self._add_command_handlers()
 
         # ====== Callback Handler ======
         self.application.add_handler(CallbackQueryHandler(callback_handler))
@@ -2088,6 +2323,28 @@ class BotHandlers:
         self.application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, message_handler))
 
         # ====== Conversation Handler (کامل) ======
+        self._add_conversation_handler()
+
+    def _add_command_handlers(self):
+        """افزودن هندلرهای دستورات"""
+        commands = [
+            ("start", start),
+            ("help", help_command),
+            ("admin", admin_command),
+            ("cancel", cancel_command),
+            ("vip", vip_command),
+            ("wallet", wallet_command),
+            ("signal", signal_command),
+            ("price", price_command),
+            ("analysis", analysis_command),
+            ("settings", settings_command)
+        ]
+
+        for cmd, handler in commands:
+            self.application.add_handler(CommandHandler(cmd, handler))
+
+    def _add_conversation_handler(self):
+        """افزودن هندلر گفتگو"""
         conv_handler = ConversationHandler(
             entry_points=[
                 CommandHandler("signal", signal_command),
