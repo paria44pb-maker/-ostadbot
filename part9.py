@@ -42,7 +42,6 @@ from functools import wraps, lru_cache
 from contextlib import contextmanager, asynccontextmanager
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import aiohttp
-import aiofiles
 
 # ============================================================
 #                    غیرفعال کردن اخطارها
