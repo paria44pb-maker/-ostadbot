@@ -1,23 +1,31 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-"""
-CryptoPulse AI Bot v3.0 - Complete Bot
-تعریف و اجرای تمام ۱۵ بخش - نسخه نهایی
-"""
-
 import os
-import sys
 import asyncio
 import time
 import uvicorn
+import signal
+import sys
 
 print("🚀 Starting CryptoPulse AI Bot v3.0...")
-print("📁 Loading all 15 parts...\n")
 
 # ============================================================
-#                    IMPORT ALL 15 PARTS
+#                    SIGNAL HANDLER
 # ============================================================
+
+def signal_handler(sig, frame):
+    print(f"⚠️ Signal {sig} received, ignoring...")
+    # ری‌استارت نمیکنیم، فقط ادامه میدهیم
+
+signal.signal(signal.SIGINT, signal_handler)
+signal.signal(signal.SIGTERM, signal_handler)
+
+# ============================================================
+#                    IMPORT ALL PARTS
+# ============================================================
+
+print("📁 Loading all 15 parts...\n")
 
 try:
     from part1 import *
@@ -114,64 +122,24 @@ print("🚀 All 15 parts loaded successfully!")
 print("="*50)
 
 # ============================================================
-#                    CHECK ENV VARIABLES
+#                    CHECK ENV
 # ============================================================
 
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "")
-ADMIN_IDS = []
-for x in os.environ.get("ADMIN_IDS", "").split(","):
-    x = x.strip()
-    if x:
-        try:
-            ADMIN_IDS.append(int(x))
-        except:
-            pass
-
-GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")
-COINEX_API_KEY = os.environ.get("COINEX_API_KEY", "")
-COINEX_SECRET_KEY = os.environ.get("COINEX_SECRET_KEY", "")
 PORT = int(os.environ.get("PORT", 8080))
 
 print(f"\n✅ BOT_TOKEN: {'SET' if BOT_TOKEN else 'NOT SET'}")
-print(f"✅ ADMIN_IDS: {ADMIN_IDS}")
-print(f"✅ GROQ_API_KEY: {'SET' if GROQ_API_KEY else 'NOT SET'}")
-print(f"✅ COINEX_API_KEY: {'SET' if COINEX_API_KEY else 'NOT SET'}")
 print(f"✅ PORT: {PORT}")
 print()
 
 # ============================================================
-#                    FASTAPI SERVER (از part13)
+#                    RUN BOT
 # ============================================================
 
-try:
-    from part13 import app
-    print("✅ FastAPI app loaded from part13")
-except Exception as e:
-    print(f"⚠️ part13 error: {e}")
+async def run_forever():
+    """اجرای دائمی ربات بدون خاموش شدن"""
     
-    # اگر part13 خطا داشت، یک app ساده بساز
-    from fastapi import FastAPI
-    app = FastAPI(title="CryptoPulse AI", version="3.0.0")
-    
-    @app.get("/")
-    async def root():
-        return {
-            "status": "online",
-            "name": "CryptoPulse AI",
-            "version": "3.0.0",
-            "time": time.strftime("%Y-%m-%d %H:%M:%S")
-        }
-    
-    @app.get("/health")
-    async def health():
-        return {"status": "healthy"}
-
-# ============================================================
-#                    TELEGRAM BOT (از part9)
-# ============================================================
-
-async def run_telegram_bot():
-    """اجرای ربات تلگرام"""
+    # اجرای ربات تلگرام
     try:
         from part9 import get_application
         bot_app = get_application()
@@ -181,57 +149,35 @@ async def run_telegram_bot():
             await bot_app.start()
             await bot_app.updater.start_polling()
             print("✅ Telegram Bot is running with polling!")
-            return True
     except Exception as e:
         print(f"⚠️ Bot error: {e}")
     
-    # اگر part9 کار نکرد، یک ربات ساده اجرا کن
-    if BOT_TOKEN:
-        from telegram import Update
-        from telegram.ext import Application, CommandHandler, ContextTypes
-        
-        async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-            await update.message.reply_text("🚀 CryptoPulse AI is running!")
-        
-        bot_app = Application.builder().token(BOT_TOKEN).build()
-        bot_app.add_handler(CommandHandler("start", start))
-        await bot_app.bot.delete_webhook(drop_pending_updates=True)
-        await bot_app.initialize()
-        await bot_app.start()
-        await bot_app.updater.start_polling()
-        print("✅ Fallback Bot is running with polling!")
-        return True
-    
-    return False
-
-# ============================================================
-#                    MAIN
-# ============================================================
-
-async def main():
-    """اجرای همزمان ربات و سرور"""
-    
-    # اجرای ربات تلگرام
-    bot_task = asyncio.create_task(run_telegram_bot())
-    
     # اجرای سرور FastAPI
-    print(f"🌐 Starting FastAPI server on port {PORT}")
-    config = uvicorn.Config(
-        app,
-        host="0.0.0.0",
-        port=PORT,
-        log_level="error",
-        loop="asyncio"
-    )
-    server = uvicorn.Server(config)
-    await server.serve()
+    try:
+        from part13 import app
+        config = uvicorn.Config(
+            app,
+            host="0.0.0.0",
+            port=PORT,
+            log_level="error",
+            loop="asyncio"
+        )
+        server = uvicorn.Server(config)
+        await server.serve()
+    except Exception as e:
+        print(f"⚠️ Server error: {e}")
+    
+    # اگر همه چیز خاموش شد، دوباره اجرا کن
+    print("🔄 Restarting...")
+    await asyncio.sleep(1)
+    await run_forever()
 
 if __name__ == "__main__":
     try:
-        asyncio.run(main())
+        asyncio.run(run_forever())
     except KeyboardInterrupt:
         print("\n🛑 Bot stopped by user")
     except Exception as e:
-        print(f"❌ Fatal error: {e}")
+        print(f"❌ Error: {e}")
         while True:
             time.sleep(1)
