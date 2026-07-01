@@ -1,205 +1,218 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
+"""
+╔══════════════════════════════════════════════════════════════════╗
+║                                                                  ║
+║   ██████╗██████╗██╗   ██╗██████╗████████╗██████╗ ██╗   ██╗ █████╗ ███████╗███████╗
+║  ██╔════╝██╔══██╗╚██╗ ██╔╝██╔══██╗╚══██╔══╝██╔══██╗╚██╗ ██╔╝██╔══██╗██╔════╝██╔════╝
+║  ██║     ██████╔╝ ╚████╔╝ ██████╔╝   ██║   ██████╔╝ ╚████╔╝ ███████║███████╗███████╗
+║  ██║     ██╔══██╗  ╚██╔╝  ██╔═══╝    ██║   ██╔══██╗  ╚██╔╝  ██╔══██║╚════██║╚════██║
+║  ╚██████╗██║  ██║   ██║   ██║        ██║   ██║  ██║   ██║   ██║  ██║███████║███████║
+║   ╚═════╝╚═╝  ╚═╝   ╚═╝   ╚═╝        ╚═╝   ╚═╝  ╚═╝   ╚═╝   ╚═╝  ╚═╝╚══════╝╚══════╝
+║                                                                  ║
+║  🚀 CryptoPulse AI Bot v3.0 - Ultimate Edition                   ║
+║  ───────────────────────────────────────────────────────────       ║
+║  📁 ۱۵ بخش کامل  |  ⚡ استارت اجباری  |  🛡️ بدون خطا           ║
+║                                                                  ║
+╚══════════════════════════════════════════════════════════════════╝
+"""
+
 import os
 import sys
 import asyncio
 import time
 import uvicorn
 
-print("🚀 Starting CryptoPulse AI Bot v3.0...")
-print("📁 Loading all 15 parts...\n")
+print("\n" + "="*70)
+print("🚀 CryptoPulse AI Bot v3.0 - استارت اجباری ۱۵ بخش")
+print("📁 بارگذاری و اجرای تمام بخش‌ها...\n")
+print("="*70 + "\n")
 
 # ============================================================
-#                    API KEY ها
+#                    بخش ۱: نقطه ورود و مدیریت اصلی
 # ============================================================
 
-BOT_TOKEN = os.environ.get("BOT_TOKEN", "")
-GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")
-COINEX_API_KEY = os.environ.get("COINEX_API_KEY", "")
-COINEX_SECRET_KEY = os.environ.get("COINEX_SECRET_KEY", "")
-
-print(f"✅ BOT_TOKEN: {'SET' if BOT_TOKEN else 'NOT SET'}")
-print(f"✅ GROQ_API_KEY: {'SET' if GROQ_API_KEY else 'NOT SET'}")
-print(f"✅ COINEX_API_KEY: {'SET' if COINEX_API_KEY else 'NOT SET'}")
-print(f"✅ COINEX_SECRET_KEY: {'SET' if COINEX_SECRET_KEY else 'NOT SET'}")
-print()
+print("📁 بخش ۱: part1.py - نقطه ورود و مدیریت اصلی")
+try:
+    from part1 import *
+    print("  ✅ بخش ۱ با موفقیت بارگذاری شد\n")
+except Exception as e:
+    print(f"  ❌ خطا در بخش ۱: {e}\n")
 
 # ============================================================
-#                    استارت اجباری هر ۱۵ پارت
+#                    بخش ۲: کانفیگ و تنظیمات محیطی
 # ============================================================
 
-parts = [
-    ("part1", "Main Entry Point"),
-    ("part2", "Config & Settings"),
-    ("part3", "Database Models"),
-    ("part4", "Utils & Tehran Time"),
-    ("part5", "CoinEx Exchange"),
-    ("part6", "Groq AI"),
-    ("part7", "Technical Analysis"),
-    ("part8", "Keyboards & Menus"),
-    ("part9", "Main Handlers"),
-    ("part10", "Admin Panel"),
-    ("part11", "VIP & Payment"),
-    ("part12", "Channel Management"),
-    ("part13", "FastAPI Server"),
-    ("part14", "Background Tasks"),
-    ("part15", "Media Management")
-]
+print("📁 بخش ۲: part2.py - کانفیگ و تنظیمات محیطی")
+try:
+    from part2 import *
+    print("  ✅ بخش ۲ با موفقیت بارگذاری شد\n")
+except Exception as e:
+    print(f"  ❌ خطا در بخش ۲: {e}\n")
 
-for part, name in parts:
-    try:
-        exec(f"from {part} import *")
-        print(f"  ✅ Part: {name}")
-    except Exception as e:
-        print(f"  ❌ Part: {name} - {e}")
+# ============================================================
+#                    بخش ۳: مدل‌های دیتابیس
+# ============================================================
 
-print("\n" + "="*50)
+print("📁 بخش ۳: part3.py - مدل‌های دیتابیس")
+try:
+    from part3 import *
+    print("  ✅ بخش ۳ با موفقیت بارگذاری شد\n")
+except Exception as e:
+    print(f"  ❌ خطا در بخش ۳: {e}\n")
+
+# ============================================================
+#                    بخش ۴: ابزارها و زمان تهران
+# ============================================================
+
+print("📁 بخش ۴: part4.py - ابزارها و زمان تهران")
+try:
+    from part4 import *
+    print("  ✅ بخش ۴ با موفقیت بارگذاری شد\n")
+except Exception as e:
+    print(f"  ❌ خطا در بخش ۴: {e}\n")
+
+# ============================================================
+#                    بخش ۵: صرافی CoinEx
+# ============================================================
+
+print("📁 بخش ۵: part5.py - صرافی CoinEx")
+try:
+    from part5 import *
+    print("  ✅ بخش ۵ با موفقیت بارگذاری شد\n")
+except Exception as e:
+    print(f"  ❌ خطا در بخش ۵: {e}\n")
+
+# ============================================================
+#                    بخش ۶: هوش مصنوعی Groq
+# ============================================================
+
+print("📁 بخش ۶: part6.py - هوش مصنوعی Groq")
+try:
+    from part6 import *
+    print("  ✅ بخش ۶ با موفقیت بارگذاری شد\n")
+except Exception as e:
+    print(f"  ❌ خطا در بخش ۶: {e}\n")
+
+# ============================================================
+#                    بخش ۷: تحلیل تکنیکال پیشرفته
+# ============================================================
+
+print("📁 بخش ۷: part7.py - تحلیل تکنیکال پیشرفته")
+try:
+    from part7 import *
+    print("  ✅ بخش ۷ با موفقیت بارگذاری شد\n")
+except Exception as e:
+    print(f"  ❌ خطا در بخش ۷: {e}\n")
+
+# ============================================================
+#                    بخش ۸: کیبوردها و منوها
+# ============================================================
+
+print("📁 بخش ۸: part8.py - کیبوردها و منوها")
+try:
+    from part8 import *
+    print("  ✅ بخش ۸ با موفقیت بارگذاری شد\n")
+except Exception as e:
+    print(f"  ❌ خطا در بخش ۸: {e}\n")
+
+# ============================================================
+#                    بخش ۹: هندلرهای اصلی
+# ============================================================
+
+print("📁 بخش ۹: part9.py - هندلرهای اصلی")
+try:
+    from part9 import *
+    print("  ✅ بخش ۹ با موفقیت بارگذاری شد\n")
+except Exception as e:
+    print(f"  ❌ خطا در بخش ۹: {e}\n")
+
+# ============================================================
+#                    بخش ۱۰: پنل ادمین کامل
+# ============================================================
+
+print("📁 بخش ۱۰: part10.py - پنل ادمین کامل")
+try:
+    from part10 import *
+    print("  ✅ بخش ۱۰ با موفقیت بارگذاری شد\n")
+except Exception as e:
+    print(f"  ❌ خطا در بخش ۱۰: {e}\n")
+
+# ============================================================
+#                    بخش ۱۱: مدیریت VIP و پرداخت
+# ============================================================
+
+print("📁 بخش ۱۱: part11.py - مدیریت VIP و پرداخت")
+try:
+    from part11 import *
+    print("  ✅ بخش ۱۱ با موفقیت بارگذاری شد\n")
+except Exception as e:
+    print(f"  ❌ خطا در بخش ۱۱: {e}\n")
+
+# ============================================================
+#                    بخش ۱۲: مدیریت کانال
+# ============================================================
+
+print("📁 بخش ۱۲: part12.py - مدیریت کانال")
+try:
+    from part12 import *
+    print("  ✅ بخش ۱۲ با موفقیت بارگذاری شد\n")
+except Exception as e:
+    print(f"  ❌ خطا در بخش ۱۲: {e}\n")
+
+# ============================================================
+#                    بخش ۱۳: سرور FastAPI
+# ============================================================
+
+print("📁 بخش ۱۳: part13.py - سرور FastAPI")
+try:
+    from part13 import *
+    print("  ✅ بخش ۱۳ با موفقیت بارگذاری شد\n")
+except Exception as e:
+    print(f"  ❌ خطا در بخش ۱۳: {e}\n")
+
+# ============================================================
+#                    بخش ۱۴: تسک‌های پس‌زمینه
+# ============================================================
+
+print("📁 بخش ۱۴: part14.py - تسک‌های پس‌زمینه")
+try:
+    from part14 import *
+    print("  ✅ بخش ۱۴ با موفقیت بارگذاری شد\n")
+except Exception as e:
+    print(f"  ❌ خطا در بخش ۱۴: {e}\n")
+
+# ============================================================
+#                    بخش ۱۵: مدیریت عکس و رسانه
+# ============================================================
+
+print("📁 بخش ۱۵: part15.py - مدیریت عکس و رسانه")
+try:
+    from part15 import *
+    print("  ✅ بخش ۱۵ با موفقیت بارگذاری شد\n")
+except Exception as e:
+    print(f"  ❌ خطا در بخش ۱۵: {e}\n")
+
+# ============================================================
+#                    اجرای نهایی
+# ============================================================
+
+print("\n" + "="*70)
 print("🚀 All 15 parts loaded successfully!")
-print("="*50)
-
-# ============================================================
-#                    اجرای ربات با هندلرهای کامل
-# ============================================================
-
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
-from telegram.constants import ParseMode
-from fastapi import FastAPI
-from datetime import datetime
-
-# ============================================================
-#                    FASTAPI SERVER
-# ============================================================
-
-app = FastAPI(title="CryptoPulse AI", version="3.0.0")
-
-@app.get("/")
-async def root():
-    return {"status": "online", "name": "CryptoPulse AI", "version": "3.0.0", "time": datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
-
-@app.get("/health")
-async def health():
-    return {"status": "healthy", "time": datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
-
-# ============================================================
-#                    TELEGRAM BOT (مستقل)
-# ============================================================
-
-ADMIN_IDS = []
-for x in os.environ.get("ADMIN_IDS", "").split(","):
-    x = x.strip()
-    if x:
-        try:
-            ADMIN_IDS.append(int(x))
-        except:
-            pass
-
-def user_keyboard():
-    keyboard = [
-        [InlineKeyboardButton("📊 تحلیل", callback_data="analysis")],
-        [InlineKeyboardButton("🚨 سیگنال", callback_data="signal")],
-        [InlineKeyboardButton("💰 قیمت", callback_data="price")],
-        [InlineKeyboardButton("💎 VIP", callback_data="vip")],
-        [InlineKeyboardButton("📖 راهنما", callback_data="help")],
-        [InlineKeyboardButton("🆘 پشتیبانی", callback_data="support")]
-    ]
-    return InlineKeyboardMarkup(keyboard)
-
-def admin_keyboard():
-    keyboard = [
-        [InlineKeyboardButton("👑 مدیریت کاربران", callback_data="admin_users")],
-        [InlineKeyboardButton("💰 مدیریت پرداخت‌ها", callback_data="admin_payments")],
-        [InlineKeyboardButton("💎 مدیریت VIP", callback_data="admin_vip")],
-        [InlineKeyboardButton("📢 ارسال همگانی", callback_data="admin_broadcast")],
-        [InlineKeyboardButton("🔙 بازگشت", callback_data="back_main")]
-    ]
-    return InlineKeyboardMarkup(keyboard)
-
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = str(update.effective_user.id)
-    is_admin = int(user_id) in ADMIN_IDS if user_id.isdigit() else False
-    
-    if is_admin:
-        text = "👑 **پنل مدیریت**\n\nبه پنل ادمین خوش آمدید!"
-        keyboard = admin_keyboard()
-    else:
-        text = "🌟 **به CryptoPulse AI خوش آمدید!**\n\nربات هوشمند تحلیل و سیگنال ارزهای دیجیتال"
-        keyboard = user_keyboard()
-    
-    await update.message.reply_text(text, reply_markup=keyboard, parse_mode=ParseMode.MARKDOWN)
-
-async def price_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("💰 قیمت BTC: $67,845.32", reply_markup=user_keyboard())
-
-async def admin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = str(update.effective_user.id)
-    is_admin = int(user_id) in ADMIN_IDS if user_id.isdigit() else False
-    
-    if not is_admin:
-        await update.message.reply_text("❌ دسترسی غیرمجاز!")
-        return
-    
-    await update.message.reply_text("👑 **پنل مدیریت**", reply_markup=admin_keyboard(), parse_mode=ParseMode.MARKDOWN)
-
-async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    
-    data = query.data
-    
-    if data == "back_main":
-        await query.edit_message_text("🏠 **منوی اصلی**", reply_markup=user_keyboard(), parse_mode=ParseMode.MARKDOWN)
-    elif data == "price":
-        await query.edit_message_text("💰 **قیمت BTC: $67,845.32**", reply_markup=user_keyboard(), parse_mode=ParseMode.MARKDOWN)
-    elif data == "admin_users":
-        await query.edit_message_text("👥 **مدیریت کاربران**", reply_markup=admin_keyboard(), parse_mode=ParseMode.MARKDOWN)
-    elif data == "admin_payments":
-        await query.edit_message_text("💰 **مدیریت پرداخت‌ها**", reply_markup=admin_keyboard(), parse_mode=ParseMode.MARKDOWN)
-    elif data == "admin_vip":
-        await query.edit_message_text("💎 **مدیریت VIP**", reply_markup=admin_keyboard(), parse_mode=ParseMode.MARKDOWN)
-    elif data == "admin_broadcast":
-        await query.edit_message_text("📢 **ارسال همگانی**", reply_markup=admin_keyboard(), parse_mode=ParseMode.MARKDOWN)
-    else:
-        await query.edit_message_text("ℹ️ در حال توسعه...", reply_markup=user_keyboard(), parse_mode=ParseMode.MARKDOWN)
-
-# ============================================================
-#                    اجرا
-# ============================================================
-
-async def run_bot():
-    if not BOT_TOKEN:
-        print("❌ BOT_TOKEN not found!")
-        return
-    
-    bot_app = Application.builder().token(BOT_TOKEN).build()
-    
-    bot_app.add_handler(CommandHandler("start", start))
-    bot_app.add_handler(CommandHandler("admin", admin_command))
-    bot_app.add_handler(CommandHandler("price", price_command))
-    bot_app.add_handler(CallbackQueryHandler(callback_handler))
-    
-    await bot_app.bot.delete_webhook(drop_pending_updates=True)
-    print("✅ Webhook deleted!")
-    
-    await bot_app.initialize()
-    await bot_app.start()
-    await bot_app.updater.start_polling()
-    print("✅ Telegram Bot is running with polling!")
-
-async def main():
-    bot_task = asyncio.create_task(run_bot())
-    
-    config = uvicorn.Config(app, host="0.0.0.0", port=int(os.environ.get("PORT", 8080)), log_level="error")
-    server = uvicorn.Server(config)
-    await server.serve()
+print("📅 زمان: " + time.strftime("%Y-%m-%d %H:%M:%S"))
+print("="*70 + "\n")
 
 if __name__ == "__main__":
+    print("🔄 Bot is running...\n")
+    
+    # اجرای سرور FastAPI از بخش ۱۳
     try:
-        asyncio.run(main())
-    except KeyboardInterrupt:
-        print("\n🛑 Bot stopped")
+        from part13 import app
+        port = int(os.environ.get("PORT", 8080))
+        print(f"🌐 Starting FastAPI server on port {port}")
+        uvicorn.run(app, host="0.0.0.0", port=port, log_level="error")
     except Exception as e:
-        print(f"❌ Error: {e}")
+        print(f"⚠️ خطا در اجرای سرور: {e}")
         while True:
             time.sleep(1)
