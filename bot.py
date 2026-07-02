@@ -71,7 +71,7 @@ print("🚀 All 15 parts loaded successfully!")
 print("="*50)
 
 # ============================================================
-#                    FASTAPI SERVER (Fallback)
+#                    FASTAPI SERVER
 # ============================================================
 
 from fastapi import FastAPI
