@@ -14,8 +14,9 @@ import asyncio
 import uvicorn
 import threading
 from datetime import datetime
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 # ============================================================
 #                    CREATOR INFO
@@ -34,6 +35,13 @@ if "Telegram _bot_token" in os.environ:
     print("🔧 Mapped Telegram _bot_token → BOT_TOKEN")
 
 # ============================================================
+#                    STATUS FLAG
+# ============================================================
+
+bot_ready = False
+startup_complete = False
+
+# ============================================================
 #                    CREATOR PAGE API
 # ============================================================
 
@@ -48,15 +56,14 @@ app.add_middleware(
 
 # Store bot application globally
 telegram_bot_app = None
-telegram_bot = None
 
 @app.get("/")
 async def root():
     return {
         "bot": "CryptoPulse AI v3.5",
         "creator": CREATOR_NAME,
-        "status": "online",
-        "message": "🚀 Bot is running successfully!",
+        "status": "online" if bot_ready else "starting",
+        "message": "🚀 Bot is running!" if bot_ready else "⏳ Starting up...",
         "telegram": CREATOR_TELEGRAM,
         "github": CREATOR_GITHUB,
         "uptime": str(datetime.now()),
@@ -67,9 +74,10 @@ async def root():
 async def health():
     ok = len(loaded_modules)
     return {
-        "status": "healthy" if ok >= 9 else "degraded",
+        "status": "healthy" if ok >= 9 and bot_ready else "starting",
         "loaded": ok,
-        "total": 15
+        "total": 15,
+        "bot_ready": bot_ready
     }
 
 @app.get("/status")
@@ -77,24 +85,32 @@ async def status():
     return {
         "modules": {name: "✅" for name in loaded_modules},
         "bot_token": "✅" if BOT_TOKEN else "❌",
-        "running": telegram_bot_app is not None
+        "bot_ready": bot_ready,
+        "startup_complete": startup_complete
     }
 
 @app.post("/webhook")
 async def webhook(request: Request):
     """Receive Telegram updates"""
-    global telegram_bot_app
+    global telegram_bot_app, bot_ready
     
-    if telegram_bot_app:
-        try:
-            data = await request.json()
-            await telegram_bot_app.update_queue.put(data)
-            return {"status": "ok"}
-        except Exception as e:
-            print(f"❌ Webhook error: {e}")
-            return {"status": "error", "message": str(e)}
+    if not bot_ready or not telegram_bot_app:
+        print(f"⏳ Webhook call but bot not ready yet")
+        return JSONResponse(
+            status_code=503,
+            content={"status": "not_ready", "message": "Bot still starting"}
+        )
     
-    return {"status": "error", "message": "Bot not ready"}
+    try:
+        data = await request.json()
+        await telegram_bot_app.update_queue.put(data)
+        return {"status": "ok"}
+    except Exception as e:
+        print(f"❌ Webhook error: {e}")
+        return JSONResponse(
+            status_code=500,
+            content={"status": "error", "message": str(e)}
+        )
 
 # ============================================================
 #                    لیست پارت‌ها
@@ -147,7 +163,7 @@ def load_all_parts():
 # ============================================================
 
 async def start_bot():
-    global telegram_bot_app, telegram_bot
+    global telegram_bot_app, bot_ready, startup_complete
 
     try:
         part9 = loaded_modules.get("part9")
@@ -177,26 +193,40 @@ async def start_bot():
         if not railway_domain:
             railway_domain = os.environ.get("RAILWAY_STATIC_URL", "").replace("https://", "")
 
-        if railway_domain:
-            webhook_url = f"https://{railway_domain}/webhook"
-            print(f"🔗 Setting webhook: {webhook_url}")
-            
-            # Delete old webhook first
-            await telegram_bot_app.bot.delete_webhook(drop_pending_updates=True)
-            
-            # Set new webhook
-            result = await telegram_bot_app.bot.set_webhook(url=webhook_url)
-            
-            if result:
-                print(f"✅ Webhook set successfully!")
-                print(f"🤖 Bot is ready at: {webhook_url}")
-                return True
-            else:
-                print("❌ Failed to set webhook")
-                return False
-        else:
+        if not railway_domain:
             print("❌ No Railway domain found")
             print("💡 Enable Public URL in Railway Settings > Networking")
+            return False
+
+        webhook_url = f"https://{railway_domain}/webhook"
+        print(f"🔗 Setting webhook: {webhook_url}")
+        
+        # Delete old webhook
+        await telegram_bot_app.bot.delete_webhook(drop_pending_updates=True)
+        await asyncio.sleep(1)
+        
+        # Set new webhook
+        result = await telegram_bot_app.bot.set_webhook(
+            url=webhook_url,
+            max_connections=5,
+            drop_pending_updates=True
+        )
+        
+        if result:
+            bot_ready = True
+            startup_complete = True
+            print(f"✅ Webhook set successfully!")
+            print(f"🤖 Bot is ready!")
+            print(f"📡 Webhook URL: {webhook_url}")
+            
+            # Verify webhook
+            info = await telegram_bot_app.bot.get_webhook_info()
+            print(f"🔍 Webhook info: {info.url}")
+            print(f"📊 Pending updates: {info.pending_update_count}")
+            
+            return True
+        else:
+            print("❌ Failed to set webhook")
             return False
 
     except Exception as e:
@@ -212,11 +242,12 @@ async def start_bot():
 def run_server():
     """Run FastAPI server"""
     port = int(os.environ.get("PORT", "8080"))
-    print(f"\n🌐 Creator Page: http://0.0.0.0:{port}")
-    print(f"📊 Health: http://0.0.0.0:{port}/health")
-    print(f"📈 Status: http://0.0.0.0:{port}/status")
-    print(f"🔗 Webhook: http://0.0.0.0:{port}/webhook\n")
-    uvicorn.run(app, host="0.0.0.0", port=port, log_level="info")
+    print(f"\n🌐 Server starting on port {port}...")
+    print(f"   Creator Page: /")
+    print(f"   Health: /health")
+    print(f"   Status: /status")
+    print(f"   Webhook: /webhook\n")
+    uvicorn.run(app, host="0.0.0.0", port=port, log_level="warning")
 
 
 async def main():
@@ -231,29 +262,32 @@ async def main():
 """)
     print(f"⏰ {datetime.now()}\n")
 
-    # 1. Load all parts
-    load_all_parts()
-
-    # 2. Start FastAPI server FIRST
+    # 1. Start FastAPI server FIRST
+    print("🌐 Starting web server...")
     server_thread = threading.Thread(target=run_server, daemon=True)
     server_thread.start()
-    await asyncio.sleep(3)  # Wait for server to start
+    await asyncio.sleep(3)
+    print("✅ Web server ready\n")
+
+    # 2. Load all parts
+    load_all_parts()
 
     # 3. Start bot with webhook
+    print("🤖 Setting up Telegram bot...")
     success = await start_bot()
 
     if success:
         print("\n" + "=" * 50)
         print("✅ ALL SYSTEMS OPERATIONAL")
         print("=" * 50)
+        print("\n💡 Bot is running 24/7. Press Ctrl+C to stop.\n")
     else:
         print("\n" + "=" * 50)
         print("⚠️  Bot webhook failed")
-        print("💡 Check Railway Settings > Networking > Public URL")
+        print("💡 Check: Railway Public URL, BOT_TOKEN")
         print("=" * 50)
 
     # 4. Keep alive
-    print("\n💡 Bot is running. Press Ctrl+C to stop.\n")
     while True:
         await asyncio.sleep(3600)
 
@@ -266,7 +300,7 @@ if __name__ == "__main__":
     try:
         asyncio.run(main())
     except KeyboardInterrupt:
-        print("\n🛑 Stopped")
+        print("\n🛑 Stopped by user")
     except Exception as e:
-        print(f"❌ Fatal: {e}")
+        print(f"❌ Fatal Error: {e}")
         traceback.print_exc()
