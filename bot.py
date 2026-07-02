@@ -3,7 +3,7 @@
 
 """
 CryptoPulse AI Bot - Safe 15 Parts Loader
-Production-safe dynamic module loader with custom API server
+Production-safe dynamic module loader
 """
 
 import os
@@ -23,20 +23,26 @@ if "Telegram _bot_token" in os.environ:
     os.environ["BOT_TOKEN"] = os.environ["Telegram _bot_token"]
     print("🔧 Mapped Telegram _bot_token → BOT_TOKEN")
 
-# Also set custom API server if needed
-if "TELEGRAM_API_SERVER" not in os.environ:
-    # Use local API server or proxy
-    # os.environ["TELEGRAM_API_SERVER"] = "https://api.telegram.org"  # default
-    pass
-
 # ============================================================
 #                    لیست پارت‌ها
 # ============================================================
 
 PARTS = [
-    "part1", "part2", "part3", "part4", "part5",
-    "part6", "part7", "part8", "part9", "part10",
-    "part11", "part12", "part13", "part14", "part15"
+    "part1",
+    "part2",
+    "part3",
+    "part4",
+    "part5",
+    "part6",
+    "part7",
+    "part8",
+    "part9",
+    "part10",
+    "part11",
+    "part12",
+    "part13",
+    "part14",
+    "part15"
 ]
 
 loaded_modules = {}
@@ -58,9 +64,11 @@ def load_part(module_name: str):
 
 
 def load_all_parts():
+    # Check token before loading
     token = os.environ.get("BOT_TOKEN", "")
     if not token:
-        print("❌ BOT_TOKEN not set!")
+        print("❌ BOT_TOKEN not set in environment!")
+        print("💡 Set it in Railway: Variables > BOT_TOKEN")
     else:
         print(f"✅ BOT_TOKEN found: {token[:8]}...")
 
@@ -70,40 +78,51 @@ def load_all_parts():
         load_part(part)
 
     print("\n" + "=" * 50)
-    print(f"✅ Loaded: {len(loaded_modules)}/{len(PARTS)}")
+    print(f"✅ Loaded modules: {len(loaded_modules)}/{len(PARTS)}")
     print("=" * 50 + "\n")
 
 
 # ============================================================
-#                    TELEGRAM BOT
+#                    FASTAPI (optional part13)
+# ============================================================
+
+def start_api():
+    try:
+        part13 = loaded_modules.get("part13")
+
+        if part13 and hasattr(part13, "app"):
+            print("🌐 Starting FastAPI from part13...")
+            uvicorn.run(part13.app, host="0.0.0.0", port=8080)
+        else:
+            print("⚠️ FastAPI app not found in part13")
+
+    except Exception as e:
+        print(f"❌ API Error: {e}")
+
+
+# ============================================================
+#                    TELEGRAM BOT (part9)
 # ============================================================
 
 async def start_bot():
     try:
         part9 = loaded_modules.get("part9")
 
-        if not part9:
-            print("❌ part9 not loaded")
-            return
+        if part9 and hasattr(part9, "get_application"):
+            app = part9.get_application()
 
-        if not hasattr(part9, "get_application"):
-            print("❌ get_application not found in part9")
-            return
+            if app:
+                await app.initialize()
+                await app.start()
+                await app.updater.start_polling()
+                print("🤖 Telegram bot started successfully!")
+                return
 
-        app = part9.get_application()
-
-        if not app:
-            print("⚠️ Bot not found in part9 fallback mode")
-            return
-
-        print("🔄 Initializing bot...")
-        await app.initialize()
-        print("▶️ Starting bot...")
-        await app.start()
-        print("📡 Starting polling...")
-        await app.updater.start_polling(drop_pending_updates=True)
-        print("🤖 Telegram bot started successfully!")
-        print("💡 Bot is now polling for messages...")
+        print("⚠️ Bot not found in part9 fallback mode")
+        print("💡 Possible reasons:")
+        print("   1. BOT_TOKEN env var is empty or wrong name")
+        print("   2. python-telegram-bot not installed")
+        print("   3. safe_import failed for dependencies (bot2-bot8)")
 
     except Exception as e:
         print(f"❌ Bot Error: {e}")
@@ -111,57 +130,25 @@ async def start_bot():
 
 
 # ============================================================
-#                    HEALTH SERVER (Keep Railway alive)
-# ============================================================
-
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
-
-health_app = FastAPI()
-
-health_app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-@health_app.get("/")
-async def root():
-    return {"status": "alive", "bot": "CryptoPulse"}
-
-@health_app.get("/health")
-async def health():
-    return {"status": "ok"}
-
-def run_health_server():
-    port = int(os.environ.get("PORT", "8080"))
-    uvicorn.run(health_app, host="0.0.0.0", port=port, log_level="warning")
-
-
-# ============================================================
 #                    MAIN
 # ============================================================
 
 async def main():
-    print("=" * 50)
-    print("🚀 CryptoPulse AI Bot v3.5")
-    print(f"⏰ {datetime.now()}")
-    print("=" * 50 + "\n")
+    print("🚀 CryptoPulse AI Bot Starting...")
+    print(f"⏰ {datetime.now()}\n")
 
     # 1. Load all modules
     load_all_parts()
 
-    # 2. Start health server in thread
-    server_thread = threading.Thread(target=run_health_server, daemon=True)
-    server_thread.start()
-    print("🏥 Health server started")
+    # 2. Start bot + API together
+    bot_task = asyncio.create_task(start_bot())
 
-    # 3. Start bot
-    await start_bot()
+    # API in background thread (safe)
+    api_thread = threading.Thread(target=start_api, daemon=True)
+    api_thread.start()
 
-    # 4. Keep alive
-    print("\n✅ Bot is running. Press Ctrl+C to stop.")
+    # 3. Keep alive
+    await bot_task
     await asyncio.Event().wait()
 
 
@@ -173,7 +160,7 @@ if __name__ == "__main__":
     try:
         asyncio.run(main())
     except KeyboardInterrupt:
-        print("\n🛑 Stopped")
+        print("\n🛑 Stopped manually")
     except Exception as e:
-        print(f"❌ Fatal: {e}")
+        print(f"❌ Fatal Error: {e}")
         traceback.print_exc()
