@@ -31,12 +31,14 @@ import string
 import hashlib
 import warnings
 import re
+import logging
+import traceback
 from datetime import datetime, timedelta
-from typing import Optional, Dict, Any, List, Tuple, Union
+from typing import Optional, Dict, Any, List, Tuple, Union, Callable
 from enum import Enum
 from dataclasses import dataclass, field
 from collections import defaultdict, OrderedDict
-from functools import wraps
+from functools import wraps, lru_cache
 from contextlib import contextmanager, asynccontextmanager
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
@@ -100,7 +102,6 @@ from telegram.ext import (
     AIORateLimiter
 )
 
-import warnings
 warnings.filterwarnings("ignore", message=r".*CallbackQueryHandler", category=PTBUserWarning)
 
 # ============================================================
@@ -557,10 +558,10 @@ SUPPORT_TEXT = """
 🆘 **پشتیبانی CryptoPulse AI**
 
 📱 **ادمین:** @{support}
-📧 **ایمیل:** paria44.pb@gmail.com
+📧 **ایمیل:** support@cryptopulse.ai
 🌐 **وبسایت:** https://cryptopulse.ai
 
-⏰ **ساعات پاسخگویی:** ۲۴/۸
+⏰ **ساعات پاسخگویی:** ۲۴/۷
 
 📝 **برای ارسال تیکت، روی دکمه زیر کلیک کنید.**
 
@@ -785,15 +786,6 @@ def get_error_message(error_code: ErrorCode) -> str:
 #                    DECORATORS (پیشرفته و حرفه‌ای)
 # ============================================================
 
-import time
-import asyncio
-from functools import wraps
-from collections import defaultdict
-from typing import Callable, Any, Optional, Dict, List
-from telegram import Update
-from telegram.ext import ContextTypes
-
-
 class DecoratorManager:
     """مدیریت دکوراتورهای پیشرفته"""
     
@@ -803,18 +795,13 @@ class DecoratorManager:
     
     @staticmethod
     def admin_only(func: Callable) -> Callable:
-        """
-        دکوراتور محدودیت دسترسی ادمین
-        فقط کاربرانی که در لیست ادمین‌ها هستند می‌توانند از این تابع استفاده کنند
-        """
         @wraps(func)
         async def wrapper(update: Update, context: ContextTypes.DEFAULT_TYPE, *args, **kwargs):
             try:
                 user_id = str(update.effective_user.id)
                 if not is_admin(user_id):
                     await update.message.reply_text(
-                        "❌ **دسترسی غیرمجاز!**\n\n"
-                        "این بخش فقط برای مدیران ربات قابل دسترسی است.",
+                        "❌ **دسترسی غیرمجاز!**\n\nاین بخش فقط برای مدیران ربات قابل دسترسی است.",
                         parse_mode="Markdown"
                     )
                     return
@@ -829,19 +816,13 @@ class DecoratorManager:
     
     @staticmethod
     def vip_only(func: Callable) -> Callable:
-        """
-        دکوراتور محدودیت دسترسی VIP
-        فقط کاربران VIP می‌توانند از این تابع استفاده کنند
-        """
         @wraps(func)
         async def wrapper(update: Update, context: ContextTypes.DEFAULT_TYPE, *args, **kwargs):
             try:
                 user_id = str(update.effective_user.id)
                 if not is_vip(user_id):
                     await update.message.reply_text(
-                        "💎 **بخش اختصاصی VIP**\n\n"
-                        "این بخش فقط برای کاربران ویژه (VIP) قابل دسترسی است.\n\n"
-                        "💰 برای خرید VIP روی دکمه زیر کلیک کنید:",
+                        "💎 **بخش اختصاصی VIP**\n\nاین بخش فقط برای کاربران ویژه (VIP) قابل دسترسی است.",
                         reply_markup=InlineKeyboardMarkup([
                             [InlineKeyboardButton("💎 خرید VIP", callback_data="vip")]
                         ]),
@@ -859,39 +840,23 @@ class DecoratorManager:
     
     @staticmethod
     def rate_limit(limit: int = 5, period: int = 60, message: str = None):
-        """
-        دکوراتور محدودیت نرخ درخواست
-        
-        Args:
-            limit: حداکثر تعداد درخواست در بازه زمانی
-            period: بازه زمانی به ثانیه
-            message: پیام خطای سفارشی
-        """
         def decorator(func: Callable) -> Callable:
             @wraps(func)
             async def wrapper(update: Update, context: ContextTypes.DEFAULT_TYPE, *args, **kwargs):
                 try:
                     user_id = str(update.effective_user.id)
                     now = time.time()
-                    
-                    # پاکسازی درخواست‌های قدیمی
                     DecoratorManager._rate_limit_storage[user_id] = [
                         t for t in DecoratorManager._rate_limit_storage[user_id] 
                         if now - t < period
                     ]
-                    
-                    # بررسی محدودیت
                     if len(DecoratorManager._rate_limit_storage[user_id]) >= limit:
                         wait_time = int(period - (now - DecoratorManager._rate_limit_storage[user_id][0]))
-                        msg = message or f"⏳ **لطفاً صبر کنید!**\n\n"
-                        msg += f"شما {wait_time} ثانیه دیگر می‌توانید درخواست دهید."
+                        msg = message or f"⏳ **لطفاً صبر کنید!**\n\nشما {wait_time} ثانیه دیگر می‌توانید درخواست دهید."
                         await update.message.reply_text(msg, parse_mode="Markdown")
                         return
-                    
-                    # ثبت درخواست جدید
                     DecoratorManager._rate_limit_storage[user_id].append(now)
                     return await func(update, context, *args, **kwargs)
-                    
                 except Exception as e:
                     await update.message.reply_text(
                         f"⚠️ **خطا در محدودیت نرخ:**\n`{str(e)}`",
@@ -903,35 +868,20 @@ class DecoratorManager:
     
     @staticmethod
     def cache_response(ttl: int = 300, key_prefix: str = ""):
-        """
-        دکوراتور کش کردن پاسخ‌ها
-        
-        Args:
-            ttl: زمان اعتبار کش به ثانیه
-            key_prefix: پیشوند کلید کش
-        """
         def decorator(func: Callable) -> Callable:
             @wraps(func)
             async def wrapper(update: Update, context: ContextTypes.DEFAULT_TYPE, *args, **kwargs):
                 try:
-                    # ساخت کلید کش
                     user_id = str(update.effective_user.id)
                     cache_key = f"{key_prefix}_{func.__name__}_{user_id}_{args}_{kwargs}"
                     cache_key = hashlib.md5(cache_key.encode()).hexdigest()
-                    
-                    # بررسی کش
                     if cache_key in DecoratorManager._cache_storage:
                         cached_data, timestamp = DecoratorManager._cache_storage[cache_key]
                         if (datetime.now() - timestamp).seconds < ttl:
                             return cached_data
-                    
-                    # اجرای تابع
                     result = await func(update, context, *args, **kwargs)
-                    
-                    # ذخیره در کش
                     DecoratorManager._cache_storage[cache_key] = (result, datetime.now())
                     return result
-                    
                 except Exception as e:
                     await update.message.reply_text(
                         f"⚠️ **خطا در کش:**\n`{str(e)}`",
@@ -943,7 +893,6 @@ class DecoratorManager:
     
     @staticmethod
     def log_time(func: Callable) -> Callable:
-        """دکوراتور اندازه‌گیری زمان اجرا"""
         @wraps(func)
         async def wrapper(*args, **kwargs):
             start = time.time()
@@ -960,20 +909,11 @@ class DecoratorManager:
     
     @staticmethod
     def async_retry(max_retries: int = 3, delay: int = 1, backoff: int = 2):
-        """
-        دکوراتور تلاش مجدد برای توابع async
-        
-        Args:
-            max_retries: حداکثر تعداد تلاش
-            delay: تأخیر اولیه به ثانیه
-            backoff: ضریب افزایش تأخیر
-        """
         def decorator(func: Callable) -> Callable:
             @wraps(func)
             async def wrapper(*args, **kwargs):
                 current_delay = delay
                 last_exception = None
-                
                 for attempt in range(max_retries):
                     try:
                         return await func(*args, **kwargs)
@@ -983,7 +923,6 @@ class DecoratorManager:
                             raise
                         await asyncio.sleep(current_delay)
                         current_delay *= backoff
-                
                 if last_exception:
                     raise last_exception
                 return None
@@ -992,17 +931,12 @@ class DecoratorManager:
     
     @staticmethod
     def cooldown(seconds: int = 5):
-        """
-        دکوراتور خنک‌سازی (Cool down)
-        کاربر نمی‌تواند بیش از یک بار در بازه زمانی مشخص از تابع استفاده کند
-        """
         def decorator(func: Callable) -> Callable:
             @wraps(func)
             async def wrapper(update: Update, context: ContextTypes.DEFAULT_TYPE, *args, **kwargs):
                 try:
                     user_id = str(update.effective_user.id)
                     now = time.time()
-                    
                     if user_id in DecoratorManager._user_cooldowns:
                         last_use = DecoratorManager._user_cooldowns[user_id]
                         if now - last_use < seconds:
@@ -1012,10 +946,8 @@ class DecoratorManager:
                                 parse_mode="Markdown"
                             )
                             return
-                    
                     DecoratorManager._user_cooldowns[user_id] = now
                     return await func(update, context, *args, **kwargs)
-                    
                 except Exception as e:
                     await update.message.reply_text(
                         f"⚠️ **خطا در خنک‌سازی:**\n`{str(e)}`",
@@ -1027,35 +959,25 @@ class DecoratorManager:
     
     @staticmethod
     def error_handler(func: Callable) -> Callable:
-        """دکوراتور مدیریت خطاهای سراسری"""
         @wraps(func)
         async def wrapper(*args, **kwargs):
             try:
                 return await func(*args, **kwargs)
             except Exception as e:
-                # تلاش برای دریافت update
                 update = None
                 for arg in args:
                     if isinstance(arg, Update):
                         update = arg
                         break
-                
                 if update and update.effective_user:
                     await update.message.reply_text(
-                        f"❌ **خطا!**\n\n"
-                        f"مشکلی پیش آمده است. لطفاً بعداً دوباره تلاش کنید.\n\n"
-                        f"🔍 **کد خطا:** `{str(e)[:50]}...`",
+                        f"❌ **خطا!**\n\nمشکلی پیش آمده است. لطفاً بعداً دوباره تلاش کنید.\n\n🔍 **کد خطا:** `{str(e)[:50]}...`",
                         parse_mode="Markdown"
                     )
                 return None
         return wrapper
 
-
-# ============================================================
-#                    دکوراتورهای ساده (برای استفاده سریع)
-# ============================================================
-
-# برای استفاده آسان‌تر، نام‌های کوتاه
+# دکوراتورهای ساده
 admin_only = DecoratorManager.admin_only
 vip_only = DecoratorManager.vip_only
 rate_limit = DecoratorManager.rate_limit
@@ -1064,6 +986,7 @@ log_time = DecoratorManager.log_time
 async_retry = DecoratorManager.async_retry
 cooldown = DecoratorManager.cooldown
 error_handler = DecoratorManager.error_handler
+
 # ============================================================
 #                    COMMAND HANDLERS (کامل)
 # ============================================================
@@ -1074,7 +997,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     user_id = str(user.id)
 
-    # ثبت یا بروزرسانی کاربر
     if get_user_repo:
         db_user = get_user_repo().get_by_telegram_id(user_id)
         if not db_user:
@@ -1089,7 +1011,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     is_admin_flag = is_admin(user_id)
 
-    # دریافت آمار برای ادمین
     if is_admin_flag:
         stats = db_manager.get_stats() if db_manager else {}
         welcome_text = WELCOME_ADMIN.format(
@@ -1104,7 +1025,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         welcome_text = WELCOME_USER
         keyboard = user_keyboard()
 
-    # ارسال با عکس اگر وجود داشته باشد
     image_path = "assets/welcome_image.jpg"
     if os.path.exists(image_path):
         with open(image_path, 'rb') as photo:
@@ -1134,15 +1054,6 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 @log_time
 async def admin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """دستور پنل ادمین"""
-    user_id = str(update.effective_user.id)
-
-    if not is_admin(user_id):
-        await update.message.reply_text(
-            "❌ دسترسی غیرمجاز!",
-            reply_markup=user_keyboard()
-        )
-        return
-
     stats = db_manager.get_stats() if db_manager else {}
     text = WELCOME_ADMIN.format(
         users=stats.get('users', 0),
@@ -1151,7 +1062,6 @@ async def admin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         revenue=stats.get('total_revenue', 0),
         time=get_persian_time()
     )
-
     await update.message.reply_text(
         text,
         reply_markup=admin_keyboard(),
