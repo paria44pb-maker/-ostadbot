@@ -22,7 +22,9 @@ CREATOR_NAME = os.environ.get("CREATOR_NAME","Farhad Behmard")
 CREATOR_TG = os.environ.get("CREATOR_TELEGRAM","@Amir92aa")
 CREATOR_GH = os.environ.get("CREATOR_GITHUB","github.com/farhadbehmard")
 
-# FastAPI
+# ============================================================
+#                    FASTAPI APP
+# ============================================================
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, HTMLResponse
@@ -43,7 +45,7 @@ async def root():
     u = f"{int(uptime//86400)}d {int((uptime%86400)//3600)}h {int((uptime%3600)//60)}m"
     ok = sum(1 for v in status.values() if "✅" in str(v))
     total = len(status) or 18
-    return f"""<!DOCTYPE html><html lang="fa" dir="rtl"><head><meta charset="UTF-8"><title>CryptoPulse AI v9.0</title><style>*{{margin:0;padding:0}}body{{font-family:system-ui;background:linear-gradient(135deg,#0a0a1a,#1a1a3a,#0d0d2b);color:#e0e0e0;min-height:100vh;display:flex;justify-content:center;align-items:center;padding:20px}}.container{{max-width:800px;width:100%;background:rgba(20,20,50,.9);border-radius:24px;padding:40px;box-shadow:0 20px 60px rgba(0,0,0,.5);border:1px solid rgba(100,150,255,.2)}}h1{{font-size:32px;background:linear-gradient(135deg,#00d4ff,#7b2ff7,#ff2d95);-webkit-background-clip:text;-webkit-text-fill-color:transparent;text-align:center}}.badge{{display:inline-block;padding:8px 20px;border-radius:20px;font-weight:700;margin:5px}}.online{{background:rgba(0,255,100,.2);color:#00ff64;border:1px solid #00ff64}}.grid{{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:15px;margin:25px 0}}.card{{background:rgba(30,30,60,.8);border-radius:16px;padding:20px;text-align:center;border:1px solid rgba(100,150,255,.15)}}.val{{font-size:28px;font-weight:800;background:linear-gradient(135deg,#00d4ff,#7b2ff7);-webkit-background-clip:text;-webkit-text-fill-color:transparent}}.lbl{{font-size:12px;color:#999;margin-top:5px;text-transform:uppercase}}.creator{{background:rgba(30,30,60,.6);border-radius:16px;padding:20px;margin-top:20px;border:1px solid rgba(100,150,255,.15)}}.creator h3{{color:#fff}}.creator p{{color:#aaa;font-size:14px;margin:5px 0}}a{{color:#00d4ff;text-decoration:none}}.endpoints{{margin-top:25px;padding:15px;background:rgba(0,0,0,.3);border-radius:12px;font-family:monospace;font-size:13px;color:#aaa;line-height:1.8}}span{{color:#00d4ff}}.footer{{text-align:center;margin-top:25px;font-size:12px;color:#666}}</style></head><body><div class="container"><h1>🚀 CryptoPulse AI v9.0</h1><p style="text-align:center;color:#888">God Mode Edition — 18 Parts — Polling</p><div style="text-align:center"><span class="badge online">{'🟢 ONLINE' if bot_ready else '🟡 STARTING'}</span><span class="badge online">🤖 AI</span><span class="badge online">🧠 God Mode</span></div><div class="grid"><div class="card"><div class="val">{ok}/{total}</div><div class="lbl">Modules</div></div><div class="card"><div class="val">{u}</div><div class="lbl">Uptime</div></div><div class="card"><div class="val">9.0</div><div class="lbl">Version</div></div><div class="card"><div class="val">{'✅' if bot_ready else '⏳'}</div><div class="lbl">Bot</div></div></div><div class="creator"><h3>👑 {CREATOR_NAME}</h3><p>📱 Telegram: <a href="https://t.me/{CREATOR_TG.replace('@','')}">{CREATOR_TG}</a></p><p>💻 GitHub: <a href="https://{CREATOR_GH}">{CREATOR_GH}</a></p></div><div class="endpoints"><div>🔗 <span>GET /</span> — Creator Page</div><div>🔗 <span>GET /health</span> — Health</div><div>🔗 <span>GET /status</span> — Status</div><div>🔗 <span>POST /webhook</span> — Webhook</div></div><div class="footer">© {datetime.now().year} CryptoPulse AI. Powered by God Mode</div></div></body></html>"""
+    return f"""<!DOCTYPE html><html lang="fa" dir="rtl"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"><title>CryptoPulse AI v9.0</title><style>*{{margin:0;padding:0}}body{{font-family:system-ui;background:linear-gradient(135deg,#0a0a1a,#1a1a3a,#0d0d2b);color:#e0e0e0;min-height:100vh;display:flex;justify-content:center;align-items:center;padding:20px}}.container{{max-width:800px;width:100%;background:rgba(20,20,50,.9);border-radius:24px;padding:40px;box-shadow:0 20px 60px rgba(0,0,0,.5);border:1px solid rgba(100,150,255,.2)}}h1{{font-size:32px;background:linear-gradient(135deg,#00d4ff,#7b2ff7,#ff2d95);-webkit-background-clip:text;-webkit-text-fill-color:transparent;text-align:center}}.badge{{display:inline-block;padding:8px 20px;border-radius:20px;font-weight:700;margin:5px}}.online{{background:rgba(0,255,100,.2);color:#00ff64;border:1px solid #00ff64}}.grid{{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:15px;margin:25px 0}}.card{{background:rgba(30,30,60,.8);border-radius:16px;padding:20px;text-align:center;border:1px solid rgba(100,150,255,.15)}}.val{{font-size:28px;font-weight:800;background:linear-gradient(135deg,#00d4ff,#7b2ff7);-webkit-background-clip:text;-webkit-text-fill-color:transparent}}.lbl{{font-size:12px;color:#999;margin-top:5px;text-transform:uppercase}}.creator{{background:rgba(30,30,60,.6);border-radius:16px;padding:20px;margin-top:20px;border:1px solid rgba(100,150,255,.15)}}.creator h3{{color:#fff}}.creator p{{color:#aaa;font-size:14px;margin:5px 0}}a{{color:#00d4ff;text-decoration:none}}.endpoints{{margin-top:25px;padding:15px;background:rgba(0,0,0,.3);border-radius:12px;font-family:monospace;font-size:13px;color:#aaa;line-height:1.8}}span{{color:#00d4ff}}.footer{{text-align:center;margin-top:25px;font-size:12px;color:#666}}</style></head><body><div class="container"><h1>🚀 CryptoPulse AI v9.0</h1><p style="text-align:center;color:#888">God Mode Edition — 18 Parts</p><div style="text-align:center"><span class="badge online">{'🟢 ONLINE' if bot_ready else '🟡 STARTING'}</span><span class="badge online">🤖 AI</span><span class="badge online">🧠 God Mode</span></div><div class="grid"><div class="card"><div class="val">{ok}/{total}</div><div class="lbl">Modules</div></div><div class="card"><div class="val">{u}</div><div class="lbl">Uptime</div></div><div class="card"><div class="val">9.0</div><div class="lbl">Version</div></div><div class="card"><div class="val">{'✅' if bot_ready else '⏳'}</div><div class="lbl">Bot</div></div></div><div class="creator"><h3>👑 {CREATOR_NAME}</h3><p>📱 Telegram: <a href="https://t.me/{CREATOR_TG.replace('@','')}">{CREATOR_TG}</a></p><p>💻 GitHub: <a href="https://{CREATOR_GH}">{CREATOR_GH}</a></p></div><div class="endpoints"><div>🔗 <span>GET /</span> — Creator Page</div><div>🔗 <span>GET /health</span> — Health</div><div>🔗 <span>GET /status</span> — Status</div><div>🔗 <span>POST /webhook</span> — Webhook</div></div><div class="footer">© {datetime.now().year} CryptoPulse AI. Powered by God Mode</div></div></body></html>"""
 
 @api_app.get("/health")
 async def health():
@@ -72,25 +74,27 @@ async def webhook(request: Request):
 def create_missing_parts():
     """Create missing part files with start() function"""
     parts = {
-        "part1.py": "def start(): return True",
-        "part2.py": "def start(): return True",
-        "part3.py": "def start(): return True",
-        "part4.py": "def start(): return True",
-        "part6.py": "def start(): return True",
-        "part7.py": "def start(): return True",
-        "part8.py": "def start(): return True",
-        "part10.py": "def start(): return True",
-        "part11.py": "def start(): return True",
-        "part12.py": "def start(): return True",
-        "part13.py": "def start(): return True",
-        "part14.py": "def start(): return True",
-        "part15.py": "def start(): return True",
+        "part1.py": "def start(): return True\n",
+        "part2.py": "def start(): return True\n",
+        "part3.py": "def start(): return True\n",
+        "part4.py": "def start(): return True\n",
+        "part6.py": "def start(): return True\n",
+        "part7.py": "def start(): return True\n",
+        "part8.py": "def start(): return True\n",
+        "part10.py": "def start(): return True\n",
+        "part11.py": "def start(): return True\n",
+        "part12.py": "def start(): return True\n",
+        "part13.py": "def start(): return True\n",
+        "part14.py": "def start(): return True\n",
+        "part15.py": "def start(): return True\n",
     }
     for filename, content in parts.items():
         if not os.path.exists(filename):
-            with open(filename, 'w') as f:
-                f.write(content)
-            print(f"   📝 Created {filename}")
+            try:
+                with open(filename, 'w') as f:
+                    f.write(content)
+            except:
+                pass
 
 # Create missing parts before loading
 create_missing_parts()
