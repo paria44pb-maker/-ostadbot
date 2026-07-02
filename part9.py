@@ -782,91 +782,288 @@ def get_error_message(error_code: ErrorCode) -> str:
     return messages.get(error_code, "❌ خطا!")
 
 # ============================================================
-#                    DECORATORS (پیشرفته)
+#                    DECORATORS (پیشرفته و حرفه‌ای)
 # ============================================================
 
-def admin_only(func):
-    """دکوراتور محدودیت دسترسی ادمین"""
-    @wraps(func)
-    async def wrapper(update: Update, context: ContextTypes.DEFAULT_TYPE, *args, **kwargs):
-        user_id = str(update.effective_user.id)
-        if not is_admin(user_id):
-            await update.message.reply_text("❌ دسترسی غیرمجاز!")
-            return
-        return await func(update, context, *args, **kwargs)
-    return wrapper
+import time
+import asyncio
+from functools import wraps
+from collections import defaultdict
+from typing import Callable, Any, Optional, Dict, List
+from telegram import Update
+from telegram.ext import ContextTypes
 
-def vip_only(func):
-    """دکوراتور محدودیت دسترسی VIP"""
-    @wraps(func)
-    async def wrapper(update: Update, context: ContextTypes.DEFAULT_TYPE, *args, **kwargs):
-        user_id = str(update.effective_user.id)
-        if not is_vip(user_id):
-            await update.message.reply_text("💎 این بخش مخصوص کاربران VIP است!")
-            return
-        return await func(update, context, *args, **kwargs)
-    return wrapper
 
-def rate_limit(limit: int = 5, period: int = 60):
-    """دکوراتور محدودیت نرخ"""
-    user_requests = defaultdict(list)
+class DecoratorManager:
+    """مدیریت دکوراتورهای پیشرفته"""
     
-    @wraps(func)
-    async def wrapper(update: Update, context: ContextTypes.DEFAULT_TYPE, *args, **kwargs):
-        user_id = str(update.effective_user.id)
-        now = time.time()
-        user_requests[user_id] = [t for t in user_requests[user_id] if now - t < period]
-        if len(user_requests[user_id]) >= limit:
-            await update.message.reply_text("⏳ لطفاً کمی صبر کنید...")
-            return
-        user_requests[user_id].append(now)
-        return await func(update, context, *args, **kwargs)
-    return wrapper
-
-def log_time(func):
-    """دکوراتور اندازه‌گیری زمان"""
-    @wraps(func)
-    async def wrapper(*args, **kwargs):
-        start = time.time()
-        result = await func(*args, **kwargs)
-        elapsed = time.time() - start
-        return result
-    return wrapper
-
-def async_retry(max_retries: int = 3, delay: int = 1):
-    """دکوراتور تلاش مجدد برای توابع async"""
-    def decorator(func):
+    _rate_limit_storage = defaultdict(list)
+    _cache_storage = {}
+    _user_cooldowns = {}
+    
+    @staticmethod
+    def admin_only(func: Callable) -> Callable:
+        """
+        دکوراتور محدودیت دسترسی ادمین
+        فقط کاربرانی که در لیست ادمین‌ها هستند می‌توانند از این تابع استفاده کنند
+        """
         @wraps(func)
-        async def wrapper(*args, **kwargs):
-            for attempt in range(max_retries):
+        async def wrapper(update: Update, context: ContextTypes.DEFAULT_TYPE, *args, **kwargs):
+            try:
+                user_id = str(update.effective_user.id)
+                if not is_admin(user_id):
+                    await update.message.reply_text(
+                        "❌ **دسترسی غیرمجاز!**\n\n"
+                        "این بخش فقط برای مدیران ربات قابل دسترسی است.",
+                        parse_mode="Markdown"
+                    )
+                    return
+                return await func(update, context, *args, **kwargs)
+            except Exception as e:
+                await update.message.reply_text(
+                    f"⚠️ **خطا در اجرا:**\n`{str(e)}`",
+                    parse_mode="Markdown"
+                )
+                return None
+        return wrapper
+    
+    @staticmethod
+    def vip_only(func: Callable) -> Callable:
+        """
+        دکوراتور محدودیت دسترسی VIP
+        فقط کاربران VIP می‌توانند از این تابع استفاده کنند
+        """
+        @wraps(func)
+        async def wrapper(update: Update, context: ContextTypes.DEFAULT_TYPE, *args, **kwargs):
+            try:
+                user_id = str(update.effective_user.id)
+                if not is_vip(user_id):
+                    await update.message.reply_text(
+                        "💎 **بخش اختصاصی VIP**\n\n"
+                        "این بخش فقط برای کاربران ویژه (VIP) قابل دسترسی است.\n\n"
+                        "💰 برای خرید VIP روی دکمه زیر کلیک کنید:",
+                        reply_markup=InlineKeyboardMarkup([
+                            [InlineKeyboardButton("💎 خرید VIP", callback_data="vip")]
+                        ]),
+                        parse_mode="Markdown"
+                    )
+                    return
+                return await func(update, context, *args, **kwargs)
+            except Exception as e:
+                await update.message.reply_text(
+                    f"⚠️ **خطا در اجرا:**\n`{str(e)}`",
+                    parse_mode="Markdown"
+                )
+                return None
+        return wrapper
+    
+    @staticmethod
+    def rate_limit(limit: int = 5, period: int = 60, message: str = None):
+        """
+        دکوراتور محدودیت نرخ درخواست
+        
+        Args:
+            limit: حداکثر تعداد درخواست در بازه زمانی
+            period: بازه زمانی به ثانیه
+            message: پیام خطای سفارشی
+        """
+        def decorator(func: Callable) -> Callable:
+            @wraps(func)
+            async def wrapper(update: Update, context: ContextTypes.DEFAULT_TYPE, *args, **kwargs):
                 try:
-                    return await func(*args, **kwargs)
+                    user_id = str(update.effective_user.id)
+                    now = time.time()
+                    
+                    # پاکسازی درخواست‌های قدیمی
+                    DecoratorManager._rate_limit_storage[user_id] = [
+                        t for t in DecoratorManager._rate_limit_storage[user_id] 
+                        if now - t < period
+                    ]
+                    
+                    # بررسی محدودیت
+                    if len(DecoratorManager._rate_limit_storage[user_id]) >= limit:
+                        wait_time = int(period - (now - DecoratorManager._rate_limit_storage[user_id][0]))
+                        msg = message or f"⏳ **لطفاً صبر کنید!**\n\n"
+                        msg += f"شما {wait_time} ثانیه دیگر می‌توانید درخواست دهید."
+                        await update.message.reply_text(msg, parse_mode="Markdown")
+                        return
+                    
+                    # ثبت درخواست جدید
+                    DecoratorManager._rate_limit_storage[user_id].append(now)
+                    return await func(update, context, *args, **kwargs)
+                    
                 except Exception as e:
-                    if attempt == max_retries - 1:
-                        raise
-                    await asyncio.sleep(delay * (attempt + 1))
-            return None
-        return wrapper
-    return decorator
-
-def cache_response(ttl: int = 300):
-    """دکوراتور کش کردن پاسخ"""
-    cache_dict = {}
+                    await update.message.reply_text(
+                        f"⚠️ **خطا در محدودیت نرخ:**\n`{str(e)}`",
+                        parse_mode="Markdown"
+                    )
+                    return None
+            return wrapper
+        return decorator
     
-    def decorator(func):
+    @staticmethod
+    def cache_response(ttl: int = 300, key_prefix: str = ""):
+        """
+        دکوراتور کش کردن پاسخ‌ها
+        
+        Args:
+            ttl: زمان اعتبار کش به ثانیه
+            key_prefix: پیشوند کلید کش
+        """
+        def decorator(func: Callable) -> Callable:
+            @wraps(func)
+            async def wrapper(update: Update, context: ContextTypes.DEFAULT_TYPE, *args, **kwargs):
+                try:
+                    # ساخت کلید کش
+                    user_id = str(update.effective_user.id)
+                    cache_key = f"{key_prefix}_{func.__name__}_{user_id}_{args}_{kwargs}"
+                    cache_key = hashlib.md5(cache_key.encode()).hexdigest()
+                    
+                    # بررسی کش
+                    if cache_key in DecoratorManager._cache_storage:
+                        cached_data, timestamp = DecoratorManager._cache_storage[cache_key]
+                        if (datetime.now() - timestamp).seconds < ttl:
+                            return cached_data
+                    
+                    # اجرای تابع
+                    result = await func(update, context, *args, **kwargs)
+                    
+                    # ذخیره در کش
+                    DecoratorManager._cache_storage[cache_key] = (result, datetime.now())
+                    return result
+                    
+                except Exception as e:
+                    await update.message.reply_text(
+                        f"⚠️ **خطا در کش:**\n`{str(e)}`",
+                        parse_mode="Markdown"
+                    )
+                    return await func(update, context, *args, **kwargs)
+            return wrapper
+        return decorator
+    
+    @staticmethod
+    def log_time(func: Callable) -> Callable:
+        """دکوراتور اندازه‌گیری زمان اجرا"""
         @wraps(func)
         async def wrapper(*args, **kwargs):
-            key = f"{func.__name__}_{args}_{kwargs}"
-            if key in cache_dict:
-                data, timestamp = cache_dict[key]
-                if (datetime.now() - timestamp).seconds < ttl:
-                    return data
-            result = await func(*args, **kwargs)
-            cache_dict[key] = (result, datetime.now())
-            return result
+            start = time.time()
+            try:
+                result = await func(*args, **kwargs)
+                elapsed = time.time() - start
+                return result
+            except Exception as e:
+                elapsed = time.time() - start
+                raise e
+            finally:
+                pass
         return wrapper
-    return decorator
+    
+    @staticmethod
+    def async_retry(max_retries: int = 3, delay: int = 1, backoff: int = 2):
+        """
+        دکوراتور تلاش مجدد برای توابع async
+        
+        Args:
+            max_retries: حداکثر تعداد تلاش
+            delay: تأخیر اولیه به ثانیه
+            backoff: ضریب افزایش تأخیر
+        """
+        def decorator(func: Callable) -> Callable:
+            @wraps(func)
+            async def wrapper(*args, **kwargs):
+                current_delay = delay
+                last_exception = None
+                
+                for attempt in range(max_retries):
+                    try:
+                        return await func(*args, **kwargs)
+                    except Exception as e:
+                        last_exception = e
+                        if attempt == max_retries - 1:
+                            raise
+                        await asyncio.sleep(current_delay)
+                        current_delay *= backoff
+                
+                if last_exception:
+                    raise last_exception
+                return None
+            return wrapper
+        return decorator
+    
+    @staticmethod
+    def cooldown(seconds: int = 5):
+        """
+        دکوراتور خنک‌سازی (Cool down)
+        کاربر نمی‌تواند بیش از یک بار در بازه زمانی مشخص از تابع استفاده کند
+        """
+        def decorator(func: Callable) -> Callable:
+            @wraps(func)
+            async def wrapper(update: Update, context: ContextTypes.DEFAULT_TYPE, *args, **kwargs):
+                try:
+                    user_id = str(update.effective_user.id)
+                    now = time.time()
+                    
+                    if user_id in DecoratorManager._user_cooldowns:
+                        last_use = DecoratorManager._user_cooldowns[user_id]
+                        if now - last_use < seconds:
+                            remaining = int(seconds - (now - last_use))
+                            await update.message.reply_text(
+                                f"⏳ **لطفاً {remaining} ثانیه صبر کنید!**",
+                                parse_mode="Markdown"
+                            )
+                            return
+                    
+                    DecoratorManager._user_cooldowns[user_id] = now
+                    return await func(update, context, *args, **kwargs)
+                    
+                except Exception as e:
+                    await update.message.reply_text(
+                        f"⚠️ **خطا در خنک‌سازی:**\n`{str(e)}`",
+                        parse_mode="Markdown"
+                    )
+                    return None
+            return wrapper
+        return decorator
+    
+    @staticmethod
+    def error_handler(func: Callable) -> Callable:
+        """دکوراتور مدیریت خطاهای سراسری"""
+        @wraps(func)
+        async def wrapper(*args, **kwargs):
+            try:
+                return await func(*args, **kwargs)
+            except Exception as e:
+                # تلاش برای دریافت update
+                update = None
+                for arg in args:
+                    if isinstance(arg, Update):
+                        update = arg
+                        break
+                
+                if update and update.effective_user:
+                    await update.message.reply_text(
+                        f"❌ **خطا!**\n\n"
+                        f"مشکلی پیش آمده است. لطفاً بعداً دوباره تلاش کنید.\n\n"
+                        f"🔍 **کد خطا:** `{str(e)[:50]}...`",
+                        parse_mode="Markdown"
+                    )
+                return None
+        return wrapper
 
+
+# ============================================================
+#                    دکوراتورهای ساده (برای استفاده سریع)
+# ============================================================
+
+# برای استفاده آسان‌تر، نام‌های کوتاه
+admin_only = DecoratorManager.admin_only
+vip_only = DecoratorManager.vip_only
+rate_limit = DecoratorManager.rate_limit
+cache_response = DecoratorManager.cache_response
+log_time = DecoratorManager.log_time
+async_retry = DecoratorManager.async_retry
+cooldown = DecoratorManager.cooldown
+error_handler = DecoratorManager.error_handler
 # ============================================================
 #                    COMMAND HANDLERS (کامل)
 # ============================================================
