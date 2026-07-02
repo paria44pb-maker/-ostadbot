@@ -59,7 +59,7 @@ print("🚀 All 15 parts loaded successfully!")
 print("="*50)
 
 # ============================================================
-#                    اجرای ربات و سرور
+#                    FASTAPI SERVER
 # ============================================================
 
 from fastapi import FastAPI
@@ -74,6 +74,10 @@ async def root():
 @app.get("/health")
 async def health():
     return {"status": "healthy", "time": datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
+
+# ============================================================
+#                    اجرای ربات و سرور
+# ============================================================
 
 async def run_bot():
     try:
