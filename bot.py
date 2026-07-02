@@ -3,13 +3,12 @@
 
 """
 CryptoPulse AI Bot v3.0 - Main Entry Point
-استارت اجباری هر ۱۵ پارت
 """
 
 import os
 import sys
-import time
 import asyncio
+import time
 import uvicorn
 
 print("🚀 Starting CryptoPulse AI Bot v3.0...")
@@ -33,10 +32,9 @@ for x in os.environ.get("ADMIN_IDS", "").split(","):
             pass
 
 print(f"✅ BOT_TOKEN: {'SET' if BOT_TOKEN else 'NOT SET'}")
+print(f"✅ ADMIN_IDS: {ADMIN_IDS}")
 print(f"✅ GROQ_API_KEY: {'SET' if GROQ_API_KEY else 'NOT SET'}")
 print(f"✅ COINEX_API_KEY: {'SET' if COINEX_API_KEY else 'NOT SET'}")
-print(f"✅ COINEX_SECRET_KEY: {'SET' if COINEX_SECRET_KEY else 'NOT SET'}")
-print(f"✅ ADMIN_IDS: {ADMIN_IDS}")
 print()
 
 # ============================================================
@@ -73,35 +71,27 @@ print("🚀 All 15 parts loaded successfully!")
 print("="*50)
 
 # ============================================================
-#                    FASTAPI SERVER (از part13)
+#                    FASTAPI SERVER (Fallback)
 # ============================================================
 
-try:
-    from part13 import app
-    print("✅ FastAPI app loaded from part13")
-except Exception as e:
-    print(f"⚠️ Error loading part13: {e}")
-    
-    # Fallback: یک app ساده بساز
-    from fastapi import FastAPI
-    from datetime import datetime
-    
-    app = FastAPI(title="CryptoPulse AI", version="3.0.0")
-    
-    @app.get("/")
-    async def root():
-        return {"status": "online", "name": "CryptoPulse AI", "version": "3.0.0", "time": datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
-    
-    @app.get("/health")
-    async def health():
-        return {"status": "healthy", "time": datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
+from fastapi import FastAPI
+from datetime import datetime
+
+app = FastAPI(title="CryptoPulse AI", version="3.0.0")
+
+@app.get("/")
+async def root():
+    return {"status": "online", "name": "CryptoPulse AI", "version": "3.0.0", "time": datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
+
+@app.get("/health")
+async def health():
+    return {"status": "healthy", "time": datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
 
 # ============================================================
 #                    اجرای ربات تلگرام
 # ============================================================
 
 async def run_telegram_bot():
-    """اجرای ربات تلگرام با Polling"""
     try:
         from part9 import get_application
         bot_app = get_application()
@@ -115,45 +105,25 @@ async def run_telegram_bot():
     except Exception as e:
         print(f"⚠️ Bot error: {e}")
     
-    # Fallback: ربات ساده
+    # Fallback
     if BOT_TOKEN:
         try:
             from telegram import Update
             from telegram.ext import Application, CommandHandler, ContextTypes
             
             async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-                await update.message.reply_text(
-                    "🚀 **CryptoPulse AI**\n\n"
-                    "ربات با موفقیت اجرا شد!\n\n"
-                    "📊 /price - قیمت لحظه‌ای\n"
-                    "📈 /signal - سیگنال\n"
-                    "👑 /admin - پنل ادمین",
-                    parse_mode="Markdown"
-                )
-            
-            async def price(update: Update, context: ContextTypes.DEFAULT_TYPE):
-                await update.message.reply_text("💰 قیمت BTC: $67,845.32")
-            
-            async def admin_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-                user_id = str(update.effective_user.id)
-                if int(user_id) in ADMIN_IDS:
-                    await update.message.reply_text("👑 **پنل مدیریت**", parse_mode="Markdown")
-                else:
-                    await update.message.reply_text("❌ دسترسی غیرمجاز!")
+                await update.message.reply_text("🚀 CryptoPulse AI is running!")
             
             bot_app = Application.builder().token(BOT_TOKEN).build()
             bot_app.add_handler(CommandHandler("start", start))
-            bot_app.add_handler(CommandHandler("price", price))
-            bot_app.add_handler(CommandHandler("admin", admin_cmd))
-            
             await bot_app.bot.delete_webhook(drop_pending_updates=True)
             await bot_app.initialize()
             await bot_app.start()
             await bot_app.updater.start_polling()
-            print("✅ Fallback Bot is running with polling!")
+            print("✅ Fallback Bot is running!")
             return True
-        except Exception as e:
-            print(f"❌ Fallback bot error: {e}")
+        except:
+            pass
     
     return False
 
@@ -162,22 +132,12 @@ async def run_telegram_bot():
 # ============================================================
 
 async def main():
-    """اجرای همزمان ربات و سرور"""
-    
-    # اجرای ربات تلگرام
     bot_task = asyncio.create_task(run_telegram_bot())
     
-    # اجرای سرور FastAPI
     port = int(os.environ.get("PORT", 8080))
-    print(f"🌐 Starting FastAPI server on port {port}")
+    print(f"🌐 Server running on port {port}")
     
-    config = uvicorn.Config(
-        app,
-        host="0.0.0.0",
-        port=port,
-        log_level="error",
-        loop="asyncio"
-    )
+    config = uvicorn.Config(app, host="0.0.0.0", port=port, log_level="error")
     server = uvicorn.Server(config)
     await server.serve()
 
@@ -185,7 +145,7 @@ if __name__ == "__main__":
     try:
         asyncio.run(main())
     except KeyboardInterrupt:
-        print("\n🛑 Bot stopped by user")
+        print("\n🛑 Bot stopped")
     except Exception as e:
         print(f"❌ Error: {e}")
         while True:
