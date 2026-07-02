@@ -99,9 +99,6 @@ from telegram.ext import (
     Defaults,
     ApplicationBuilder,
     ExtBot,
-    StopHandler,
-    StopPropagation,
-    ContinuePropagation,
     MessageReactionHandler,
     AIORateLimiter
 )
