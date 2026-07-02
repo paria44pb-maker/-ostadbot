@@ -2711,7 +2711,19 @@ class BotHandlers:
 # ============================================================
 
 bot_handlers = BotHandlers()
-
+def start(update=None, context=None):
+    """تابع start برای سازگاری با ModuleManager"""
+    try:
+        app = get_application()
+        if app:
+            logger.info("✅ part9 handlers ready")
+            return True
+        else:
+            logger.warning("⚠️ part9 application is None")
+            return False
+    except Exception as e:
+        logger.error(f"❌ part9 start error: {e}")
+        return False
 def get_handlers():
     return bot_handlers
 
