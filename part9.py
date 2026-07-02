@@ -43,6 +43,16 @@ from contextlib import contextmanager, asynccontextmanager
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # ============================================================
+#                    LOGGING SETUP
+# ============================================================
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+)
+logger = logging.getLogger("Part9")
+
+# ============================================================
 #                    غیرفعال کردن اخطارها
 # ============================================================
 
@@ -115,7 +125,9 @@ def safe_import(module_name: str, *attrs):
         module = __import__(module_name, fromlist=attrs)
         for attr in attrs:
             result[attr] = getattr(module, attr) if hasattr(module, attr) else None
-    except:
+        logger.info(f"✅ Successfully imported from {module_name}")
+    except Exception as e:
+        logger.warning(f"⚠️ Failed to import from {module_name}: {e}")
         for attr in attrs:
             result[attr] = None
     return result
@@ -178,7 +190,20 @@ for x in admin_ids_str.split(","):
         except ValueError:
             pass
 
+# Try multiple env var names
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "")
+if not BOT_TOKEN:
+    BOT_TOKEN = os.environ.get("Telegram _bot_token", "")
+if not BOT_TOKEN:
+    BOT_TOKEN = os.environ.get("telegram_bot_token", "")
+if not BOT_TOKEN:
+    BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
+
+if BOT_TOKEN:
+    logger.info(f"✅ BOT_TOKEN loaded: {BOT_TOKEN[:8]}...")
+else:
+    logger.error("❌ BOT_TOKEN not found in any environment variable!")
+
 CHANNEL_ID = os.environ.get("CHANNEL_ID", "@CryptoPulse606")
 SUPPORT_USERNAME = os.environ.get("VIP_ADMIN_USERNAME", "Amir92aa")
 VIP_CARD = os.environ.get("VIP_PAYMENT_CARD", "6063731196254479")
@@ -190,6 +215,12 @@ DATABASE_URL = os.environ.get("DATABASE_URL", "sqlite:///bot.db")
 WEBHOOK_URL = os.environ.get("WEBHOOK_URL", "")
 DEBUG = os.environ.get("DEBUG", "False").lower() == "true"
 ENVIRONMENT = os.environ.get("ENVIRONMENT", "production")
+PROXY_URL = os.environ.get("PROXY_URL", "")
+
+logger.info(f"📋 Config loaded - ENV: {ENVIRONMENT}, DEBUG: {DEBUG}")
+logger.info(f"👑 Admin IDs: {ADMIN_IDS}")
+logger.info(f"📡 Channel: {CHANNEL_ID}")
+logger.info(f"🔧 Proxy: {'Set' if PROXY_URL else 'Not set'}")
 
 # ============================================================
 #                    ENUMS & CONSTANTS (کامل)
@@ -425,6 +456,7 @@ if lux_keyboard:
     signals_menu = lux_keyboard.signals_menu if hasattr(lux_keyboard, 'signals_menu') else FallbackKeyboard.signals_menu
     wallet_menu = lux_keyboard.wallet_menu if hasattr(lux_keyboard, 'wallet_menu') else FallbackKeyboard.wallet_menu
     settings_menu = lux_keyboard.settings_menu if hasattr(lux_keyboard, 'settings_menu') else FallbackKeyboard.settings_menu
+    logger.info("✅ Using lux_keyboard")
 else:
     user_keyboard = FallbackKeyboard.user_main_menu
     admin_keyboard = FallbackKeyboard.admin_main_menu
@@ -432,6 +464,7 @@ else:
     signals_menu = FallbackKeyboard.signals_menu
     wallet_menu = FallbackKeyboard.wallet_menu
     settings_menu = FallbackKeyboard.settings_menu
+    logger.info("⚠️ Using FallbackKeyboard")
 
 # ============================================================
 #                    TEXTS (کامل)
@@ -2180,7 +2213,7 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     if data == "admin_server_status":
-        status = await get_server_status() if hasattr(get_server, 'get_status') else {}
+        status = {}
         text = f"""
 📊 **وضعیت سرور**
 
@@ -2212,6 +2245,7 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # ====== پاسخ پیش‌فرض ======
     await query.edit_message_text("ℹ️ گزینه مورد نظر در حال توسعه است...", reply_markup=user_keyboard())
 
+
 # ============================================================
 #                    MESSAGE HANDLER (کامل)
 # ============================================================
@@ -2220,7 +2254,7 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """پردازش پیام‌های متنی - کامل و بدون خطا"""
     user_id = str(update.effective_user.id)
-    message = update.message.text
+    message_text = update.message.text
     is_admin_flag = is_admin(user_id)
 
     # ====== ارسال همگانی (ادمین) ======
@@ -2245,7 +2279,7 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     try:
                         await update.get_bot().send_message(
                             chat_id=int(user.get('telegram_id')),
-                            text=f"📢 **پیام همگانی**\n\n{message}",
+                            text=f"📢 **پیام همگانی**\n\n{message_text}",
                             parse_mode=ParseMode.MARKDOWN
                         )
                         success_count += 1
@@ -2271,7 +2305,7 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             try:
                 await update.get_bot().send_message(
                     chat_id=CHANNEL_ID,
-                    text=f"📢 **پیام از ادمین**\n\n{message}",
+                    text=f"📢 **پیام از ادمین**\n\n{message_text}",
                     parse_mode=ParseMode.MARKDOWN
                 )
                 await update.message.reply_text(f"✅ پیام به کانال {CHANNEL_ID} ارسال شد!", reply_markup=admin_keyboard())
@@ -2336,7 +2370,7 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     text=f"🎫 **تیکت جدید**\n\n"
                          f"👤 کاربر: {update.effective_user.first_name}\n"
                          f"🆔 آیدی: {user_id}\n"
-                         f"📝 پیام:\n{message}\n\n"
+                         f"📝 پیام:\n{message_text}\n\n"
                          f"📅 زمان: {get_persian_time()}"
                 )
             except:
@@ -2353,7 +2387,7 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     # ====== دریافت تحلیل خودکار ======
-    coin = message.upper()
+    coin = message_text.upper()
     if validate_coin(coin):
         await update.message.reply_text(f"⏳ در حال تحلیل {coin}...", reply_markup=user_keyboard())
 
@@ -2415,6 +2449,22 @@ async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("📸 تصویر دریافت شد!", reply_markup=user_keyboard())
 
 # ============================================================
+#                    ERROR HANDLER
+# ============================================================
+
+async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Log Errors caused by Updates."""
+    logger.error(msg="Exception while handling an update:", exc_info=context.error)
+    
+    try:
+        if update and hasattr(update, 'effective_message') and update.effective_message:
+            await update.effective_message.reply_text(
+                "❌ متأسفانه خطایی رخ داد. لطفاً دوباره تلاش کنید."
+            )
+    except:
+        pass
+
+# ============================================================
 #                    MAIN HANDLER CLASS (کامل)
 # ============================================================
 
@@ -2428,22 +2478,48 @@ class BotHandlers:
     def _setup_handlers(self):
         """تنظیم هندلرها - کامل و بدون خطا"""
         if not BOT_TOKEN:
+            logger.error("❌ Cannot setup handlers: BOT_TOKEN is empty")
             return
 
-        self.application = Application.builder().token(BOT_TOKEN).build()
+        try:
+            # Build application with or without proxy
+            if PROXY_URL:
+                logger.info(f"🔧 Building application with proxy: {PROXY_URL}")
+                from telegram.request import HTTPXRequest
+                request = HTTPXRequest(
+                    proxy_url=PROXY_URL,
+                    read_timeout=30,
+                    write_timeout=30,
+                    connect_timeout=30,
+                    pool_timeout=30
+                )
+                self.application = Application.builder().token(BOT_TOKEN).request(request).build()
+            else:
+                logger.info("🔧 Building application without proxy")
+                self.application = Application.builder().token(BOT_TOKEN).build()
 
-        # ====== Command Handlers ======
-        self._add_command_handlers()
+            # ====== Command Handlers ======
+            self._add_command_handlers()
 
-        # ====== Callback Handler ======
-        self.application.add_handler(CallbackQueryHandler(callback_handler))
+            # ====== Callback Handler ======
+            self.application.add_handler(CallbackQueryHandler(callback_handler))
 
-        # ====== Message Handlers ======
-        self.application.add_handler(MessageHandler(filters.PHOTO, photo_handler))
-        self.application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, message_handler))
+            # ====== Message Handlers ======
+            self.application.add_handler(MessageHandler(filters.PHOTO, photo_handler))
+            self.application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, message_handler))
 
-        # ====== Conversation Handler (کامل) ======
-        self._add_conversation_handler()
+            # ====== Error Handler ======
+            self.application.add_error_handler(error_handler)
+
+            # ====== Conversation Handler ======
+            self._add_conversation_handler()
+
+            logger.info("✅ All handlers registered successfully")
+
+        except Exception as e:
+            logger.error(f"❌ Failed to setup handlers: {e}")
+            traceback.print_exc()
+            self.application = None
 
     def _add_command_handlers(self):
         """افزودن هندلرهای دستورات"""
@@ -2462,6 +2538,8 @@ class BotHandlers:
 
         for cmd, handler in commands:
             self.application.add_handler(CommandHandler(cmd, handler))
+        
+        logger.info(f"✅ Added {len(commands)} command handlers")
 
     def _add_conversation_handler(self):
         """افزودن هندلر گفتگو"""
@@ -2469,7 +2547,6 @@ class BotHandlers:
             entry_points=[
                 CommandHandler("signal", signal_command),
                 CallbackQueryHandler(callback_handler, pattern="^analysis$"),
-                CallbackQueryHandler(callback_handler, pattern="^signal$"),
                 CallbackQueryHandler(callback_handler, pattern="^signal_buy$"),
                 CallbackQueryHandler(callback_handler, pattern="^signal_sell$"),
             ],
@@ -2624,6 +2701,7 @@ class BotHandlers:
             name="main_conversation"
         )
         self.application.add_handler(conv_handler)
+        logger.info("✅ Conversation handler added")
 
     def get_application(self):
         return self.application
@@ -2638,13 +2716,23 @@ def get_handlers():
     return bot_handlers
 
 def get_application():
-    return bot_handlers.get_application() if bot_handlers else None
+    if bot_handlers:
+        app = bot_handlers.get_application()
+        if app:
+            logger.info("✅ Application returned successfully")
+        else:
+            logger.warning("⚠️ Application is None - bot not found in fallback mode")
+        return app
+    logger.error("❌ bot_handlers not initialized")
+    return None
 
 def check_handlers():
     app = get_application()
     return {
         "bot_handlers": "✅ OK" if bot_handlers else "❌ FAILED",
-        "application": "✅ OK" if app else "❌ FAILED"
+        "application": "✅ OK" if app else "❌ FAILED",
+        "bot_token": "✅ Set" if BOT_TOKEN else "❌ Missing",
+        "proxy": "✅ Set" if PROXY_URL else "⚠️ Not set"
     }
 
 def get_bot_token():
@@ -2652,3 +2740,7 @@ def get_bot_token():
 
 def get_admin_ids():
     return ADMIN_IDS
+
+# Print status on import
+status = check_handlers()
+logger.info(f"📊 Part9 Status: {status}")
