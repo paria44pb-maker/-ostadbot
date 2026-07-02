@@ -31,17 +31,14 @@ import string
 import hashlib
 import warnings
 import re
-import logging
-import traceback
 from datetime import datetime, timedelta
-from typing import Optional, Dict, Any, List, Tuple, Union, Callable, Coroutine
+from typing import Optional, Dict, Any, List, Tuple, Union
 from enum import Enum
 from dataclasses import dataclass, field
 from collections import defaultdict, OrderedDict
-from functools import wraps, lru_cache
+from functools import wraps
 from contextlib import contextmanager, asynccontextmanager
 from concurrent.futures import ThreadPoolExecutor, as_completed
-import aiohttp
 
 # ============================================================
 #                    غیرفعال کردن اخطارها
