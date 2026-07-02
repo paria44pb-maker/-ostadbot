@@ -3,3 +3,6 @@ python = "3.11"
 
 [env]
 PYTHONUNBUFFERED = "1"
+
+[tasks]
+install = "pip install -r requirements.txt"
