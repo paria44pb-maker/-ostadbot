@@ -1,141 +1,194 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-
-"""
-CryptoPulse AI Bot - Safe 15 Parts Loader
-Production-safe dynamic module loader
-"""
-
-import importlib
-import traceback
+import os
+import sys
 import asyncio
-import uvicorn
+import logging
+import importlib
+from pathlib import Path
 from datetime import datetime
+from typing import Dict
+
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+
+sys.path.insert(0, str(Path(__file__).parent))
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(levelname)s - %(message)s"
+)
+logger = logging.getLogger("CryptoPulse")
+
+app = FastAPI(
+    title="CryptoPulse AI Bot v3.5",
+    version="3.5.0"
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # ============================================================
-#                    لیست پارت‌ها
+# Module Manager FIXED
 # ============================================================
 
-PARTS = [
-    "part1",
-    "part2",
-    "part3",
-    "part4",
-    "part5",
-    "part6",
-    "part7",
-    "part8",
-    "part9",
-    "part10",
-    "part11",
-    "part12",
-    "part13",
-    "part14",
-    "part15"
-]
+class ModuleManager:
+    def __init__(self):
+        self.modules: Dict[str, str] = {}
+        self.task = None
+        self.bot_task = None
+        self.running = False
+        self.start_time = datetime.utcnow()
 
-loaded_modules = {}
+        self.parts = {
+            1: ("part1", "Database & Models"),
+            2: ("part2", "Config & Settings"),
+            3: ("part3", "i18n & Languages"),
+            4: ("part4", "Utils & Helpers"),
+            5: ("part5", "Exchange & Market"),
+            6: ("part6", "AI & ML"),
+            7: ("part7", "Technical Analysis"),
+            8: ("part8", "Signals"),
+            9: ("part9", "Risk Management"),
+            10: ("part10", "Trading Engine"),
+            11: ("part11", "Payments"),
+            12: ("part12", "Media"),
+            13: ("part13", "Notifications"),
+            14: ("part14", "Telegram Bot"),
+            15: ("part15", "Monitor"),
+        }
 
-# ============================================================
-#                    SAFE LOADER
-# ============================================================
+    async def start_all(self):
+        if self.running:
+            logger.warning("Already running")
+            return
 
-def load_part(module_name: str):
-    try:
-        module = importlib.import_module(module_name)
-        loaded_modules[module_name] = module
-        print(f"✅ Loaded: {module_name}")
-        return module
-    except Exception as e:
-        print(f"❌ Failed: {module_name}")
-        print(traceback.format_exc())
-        return None
+        self.running = True
+        logger.info("🚀 Starting CryptoPulse modules...")
 
+        # Load parts
+        for i in range(1, 16):
+            await self.load_part(i)
 
-def load_all_parts():
-    print("\n🚀 Loading 15 Parts...\n")
+        # Load bot ONLY ONCE
+        await self.load_bot()
 
-    for part in PARTS:
-        load_part(part)
+        logger.info("✅ All modules loaded")
 
-    print("\n" + "=" * 50)
-    print(f"✅ Loaded modules: {len(loaded_modules)}/{len(PARTS)}")
-    print("=" * 50 + "\n")
+    async def load_part(self, i: int):
+        name, desc = self.parts[i]
+        try:
+            module = importlib.import_module(name)
 
-# ============================================================
-#                    FASTAPI (optional part13)
-# ============================================================
+            if hasattr(module, "start"):
+                res = module.start()
+                if asyncio.iscoroutine(res):
+                    await res
 
-def start_api():
-    try:
-        part13 = loaded_modules.get("part13")
+            elif hasattr(module, "init"):
+                res = module.init()
+                if asyncio.iscoroutine(res):
+                    await res
 
-        if part13 and hasattr(part13, "app"):
-            print("🌐 Starting FastAPI from part13...")
-            uvicorn.run(part13.app, host="0.0.0.0", port=8080)
-        else:
-            print("⚠️ FastAPI app not found in part13")
+            self.modules[name] = f"✅ {desc}"
+            logger.info(f"[OK] {name}")
 
-    except Exception as e:
-        print(f"❌ API Error: {e}")
+        except ModuleNotFoundError:
+            self.modules[name] = f"⚠️ missing"
+            logger.warning(f"[MISS] {name}")
 
-# ============================================================
-#                    TELEGRAM BOT (part9)
-# ============================================================
+        except Exception as e:
+            self.modules[name] = f"❌ error: {str(e)[:50]}"
+            logger.error(f"[ERR] {name} -> {e}")
 
-async def start_bot():
-    try:
-        part9 = loaded_modules.get("part9")
+        await asyncio.sleep(0.03)
 
-        if part9 and hasattr(part9, "get_application"):
-            app = part9.get_application()
+    async def load_bot(self):
+        try:
+            bot = importlib.import_module("bot")
 
-            if app:
-                await app.initialize()
-                await app.start()
-                await app.updater.start_polling()
-                print("🤖 Telegram bot started successfully!")
+            # prevent double run
+            if self.bot_task and not self.bot_task.done():
                 return
 
-        print("⚠️ Bot not found in part9 fallback mode")
+            if hasattr(bot, "main"):
+                self.bot_task = asyncio.create_task(bot.main())
+            elif hasattr(bot, "start"):
+                self.bot_task = asyncio.create_task(bot.start())
+            elif hasattr(bot, "run"):
+                self.bot_task = asyncio.create_task(bot.run())
 
-    except Exception as e:
-        print(f"❌ Bot Error: {e}")
-        traceback.print_exc()
+            self.modules["bot"] = "✅ running"
 
-# ============================================================
-#                    MAIN
-# ============================================================
+        except Exception as e:
+            self.modules["bot"] = f"❌ {str(e)[:50]}"
+            logger.error(f"BOT ERROR: {e}")
 
-async def main():
-    print("🚀 CryptoPulse AI Bot Starting...")
-    print(f"⏰ {datetime.now()}\n")
+    def status(self):
+        return {
+            "uptime": (datetime.utcnow() - self.start_time).total_seconds(),
+            "modules": self.modules,
+            "running": self.running
+        }
 
-    # 1. Load all modules
-    load_all_parts()
-
-    # 2. Start bot + API together
-    bot_task = asyncio.create_task(start_bot())
-
-    # API in background thread (safe)
-    import threading
-    api_thread = threading.Thread(target=start_api, daemon=True)
-    api_thread.start()
-
-    # 3. Keep alive
-    await bot_task
-    await asyncio.Event().wait()
-
+manager = ModuleManager()
 
 # ============================================================
-#                    RUN
+# FASTAPI EVENTS (FIXED)
+# ============================================================
+
+@app.on_event("startup")
+async def startup():
+    if manager.task is None:
+        manager.task = asyncio.create_task(manager.start_all())
+
+# ============================================================
+# ROUTES
+# ============================================================
+
+@app.get("/")
+async def root():
+    return {
+        "bot": "CryptoPulse v3.5",
+        "status": "online",
+        "uptime": manager.status()["uptime"]
+    }
+
+@app.get("/health")
+async def health():
+    ok = sum("✅" in v for v in manager.modules.values())
+
+    return {
+        "status": "healthy" if ok > 12 else "degraded",
+        "loaded": ok,
+        "total": 16
+    }
+
+@app.get("/status")
+async def status():
+    return manager.status()
+
+@app.get("/restart")
+async def restart():
+    manager.running = False
+    manager.modules.clear()
+    manager.task = asyncio.create_task(manager.start_all())
+    return {"status": "restarting"}
+
+# ============================================================
+# RUN (Railway compatible)
 # ============================================================
 
 if __name__ == "__main__":
-    try:
-        asyncio.run(main())
-    except KeyboardInterrupt:
-        print("\n🛑 Stopped manually")
-    except Exception as e:
-        print(f"❌ Fatal Error: {e}")
-        traceback.print_exc()
+    import uvicorn
+
+    port = int(os.getenv("PORT", 8080))
+
+    uvicorn.run(
+        "main:app",
+        host="0.0.0.0",
+        port=port,
+        log_level="info"
+    )
