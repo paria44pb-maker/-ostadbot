@@ -6,11 +6,22 @@ CryptoPulse AI Bot - Safe 15 Parts Loader
 Production-safe dynamic module loader
 """
 
+import os
+import sys
 import importlib
 import traceback
 import asyncio
 import uvicorn
+import threading
 from datetime import datetime
+
+# ============================================================
+#                    FIX ENV (Railway)
+# ============================================================
+
+if "Telegram _bot_token" in os.environ:
+    os.environ["BOT_TOKEN"] = os.environ["Telegram _bot_token"]
+    print("🔧 Mapped Telegram _bot_token → BOT_TOKEN")
 
 # ============================================================
 #                    لیست پارت‌ها
@@ -53,6 +64,14 @@ def load_part(module_name: str):
 
 
 def load_all_parts():
+    # Check token before loading
+    token = os.environ.get("BOT_TOKEN", "")
+    if not token:
+        print("❌ BOT_TOKEN not set in environment!")
+        print("💡 Set it in Railway: Variables > BOT_TOKEN")
+    else:
+        print(f"✅ BOT_TOKEN found: {token[:8]}...")
+
     print("\n🚀 Loading 15 Parts...\n")
 
     for part in PARTS:
@@ -61,6 +80,7 @@ def load_all_parts():
     print("\n" + "=" * 50)
     print(f"✅ Loaded modules: {len(loaded_modules)}/{len(PARTS)}")
     print("=" * 50 + "\n")
+
 
 # ============================================================
 #                    FASTAPI (optional part13)
@@ -78,6 +98,7 @@ def start_api():
 
     except Exception as e:
         print(f"❌ API Error: {e}")
+
 
 # ============================================================
 #                    TELEGRAM BOT (part9)
@@ -98,10 +119,15 @@ async def start_bot():
                 return
 
         print("⚠️ Bot not found in part9 fallback mode")
+        print("💡 Possible reasons:")
+        print("   1. BOT_TOKEN env var is empty or wrong name")
+        print("   2. python-telegram-bot not installed")
+        print("   3. safe_import failed for dependencies (bot2-bot8)")
 
     except Exception as e:
         print(f"❌ Bot Error: {e}")
         traceback.print_exc()
+
 
 # ============================================================
 #                    MAIN
@@ -118,7 +144,6 @@ async def main():
     bot_task = asyncio.create_task(start_bot())
 
     # API in background thread (safe)
-    import threading
     api_thread = threading.Thread(target=start_api, daemon=True)
     api_thread.start()
 
