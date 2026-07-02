@@ -2,9 +2,10 @@
 # -*- coding: utf-8 -*-
 
 """
-CryptoPulse AI Bot v3.0 - Market & Exchange Module
-ماژول اتصال به صرافی CoinEx، دریافت قیمت‌ها، سفارشات، تاریخچه
-پشتیبانی کامل از تمام ارزها با تحلیل تکنیکال پیشرفته
+CryptoPulse AI Bot v3.5 - Market & Exchange Module (Platinum Edition)
+ماژول اتصال به صرافی‌ها، دریافت قیمت‌ها، سفارشات، تاریخچه
+تحلیل تکنیکال پیشرفته با ۵۰+ اندیکاتور حرفه‌ای
+پشتیبانی کامل از تمام ارزها با هوش مصنوعی ترکیبی
 """
 
 import os
@@ -13,103 +14,261 @@ import json
 import time
 import hmac
 import hashlib
-import base64
 import asyncio
-import aiohttp
+import logging
 from datetime import datetime, timedelta
-from typing import Optional, Dict, Any, List, Tuple, Union
+from typing import Optional, Dict, Any, List, Tuple, Union, Set
 from dataclasses import dataclass, field
 from enum import Enum
-from collections import defaultdict, deque
+from decimal import Decimal, ROUND_DOWN, ROUND_UP, getcontext
+from pathlib import Path
+from cachetools import TTLCache
+import aiohttp
 import pandas as pd
 import numpy as np
-from decimal import Decimal, ROUND_DOWN, ROUND_UP
+from dotenv import load_dotenv
 
-# ==================== تنظیمات صرافی ====================
+# بارگذاری متغیرهای محیطی
+load_dotenv()
+
+# تنظیم دقت اعشار برای محاسبات مالی
+getcontext().prec = 28
+
+# تنظیم لاگر بدون خروجی اضافی
+logging.basicConfig(
+    level=logging.ERROR,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[logging.NullHandler()]
+)
+logger = logging.getLogger(__name__)
+
+# ============================================================
+# ENUMS & CONSTANTS
+# ============================================================
 
 class ExchangeType(Enum):
+    """انواع صرافی‌های پشتیبانی شده"""
     COINEX = "coinex"
     BINANCE = "binance"
     KUCOIN = "kucoin"
     BYBIT = "bybit"
     OKX = "okx"
+    MEXC = "mexc"
+    GATE = "gate"
+    BITGET = "bitget"
 
 class OrderSide(Enum):
+    """جهت سفارش"""
     BUY = "buy"
     SELL = "sell"
 
 class OrderType(Enum):
+    """انواع سفارش"""
     MARKET = "market"
     LIMIT = "limit"
     STOP_LOSS = "stop_loss"
     TAKE_PROFIT = "take_profit"
+    STOP_LIMIT = "stop_limit"
+    TRAILING_STOP = "trailing_stop"
+    OCO = "oco"
 
 class OrderStatus(Enum):
+    """وضعیت سفارش"""
     PENDING = "pending"
     OPEN = "open"
+    PARTIALLY_FILLED = "partially_filled"
     FILLED = "filled"
     CANCELLED = "cancelled"
     FAILED = "failed"
     EXPIRED = "expired"
 
-@dataclass
+class TimeFrame(Enum):
+    """تایم‌فریم‌های استاندارد"""
+    M1 = "1min"
+    M5 = "5min"
+    M15 = "15min"
+    M30 = "30min"
+    H1 = "1hour"
+    H4 = "4hour"
+    H12 = "12hour"
+    D1 = "1day"
+    W1 = "1week"
+    MN1 = "1month"
+
+class MarketType(Enum):
+    """نوع بازار"""
+    SPOT = "spot"
+    FUTURES = "futures"
+    MARGIN = "margin"
+
+# ============================================================
+# DATA CLASSES
+# ============================================================
+
+@dataclass(frozen=True)
 class MarketData:
+    """داده‌های بازار (غیرقابل تغییر)"""
     symbol: str
-    price: float
-    change_24h: float
-    volume_24h: float
-    high_24h: float
-    low_24h: float
-    open_24h: float
-    close_24h: float
-    bid: float
-    ask: float
-    spread: float
+    price: Decimal
+    change_24h: Decimal
+    volume_24h: Decimal
+    high_24h: Decimal
+    low_24h: Decimal
+    open_24h: Decimal
+    close_24h: Decimal
+    bid: Decimal
+    ask: Decimal
+    spread: Decimal = field(init=False)
     timestamp: datetime
+    
+    def __post_init__(self):
+        object.__setattr__(self, 'spread', self.ask - self.bid)
 
-@dataclass
+@dataclass(frozen=True)
 class OrderBook:
+    """کتاب سفارشات"""
     symbol: str
-    bids: List[Tuple[float, float]]
-    asks: List[Tuple[float, float]]
+    bids: Tuple[Tuple[Decimal, Decimal], ...]
+    asks: Tuple[Tuple[Decimal, Decimal], ...]
     timestamp: datetime
+    spread: Decimal = field(init=False)
+    
+    def __post_init__(self):
+        if self.bids and self.asks:
+            best_bid = self.bids[0][0]
+            best_ask = self.asks[0][0]
+            object.__setattr__(self, 'spread', best_ask - best_bid)
+        else:
+            object.__setattr__(self, 'spread', Decimal('0'))
 
-@dataclass
+@dataclass(frozen=True)
 class OrderResult:
+    """نتیجه سفارش"""
     order_id: str
     symbol: str
     side: OrderSide
     type: OrderType
-    price: float
-    amount: float
-    filled: float
+    price: Decimal
+    amount: Decimal
+    filled: Decimal
     status: OrderStatus
-    fee: float
+    fee: Decimal
     fee_currency: str
     timestamp: datetime
+    average_price: Decimal = Decimal('0')
 
-# ==================== کلاس اصلی CoinEx ====================
+@dataclass(frozen=True)
+class TechnicalIndicators:
+    """اندیکاتورهای تکنیکال"""
+    timestamp: datetime
+    rsi: float
+    rsi_7: float
+    rsi_21: float
+    macd: float
+    macd_signal: float
+    macd_histogram: float
+    sma_7: float
+    sma_25: float
+    sma_50: float
+    sma_200: float
+    ema_9: float
+    ema_21: float
+    ema_50: float
+    ema_200: float
+    bb_upper: float
+    bb_middle: float
+    bb_lower: float
+    bb_position: float
+    stoch_k: float
+    stoch_d: float
+    mfi: float
+    adx: float
+    plus_di: float
+    minus_di: float
+    atr: float
+    cci: float
+    williams_r: float
+    obv: float
+    vwap: float
+    supertrend: float
+    supertrend_direction: int
 
-class CoinExExchange:
-    """اتصال به صرافی CoinEx با پشتیبانی کامل"""
+# ============================================================
+# EXCHANGE BASE
+# ============================================================
+
+class BaseExchange:
+    """کلاس پایه برای تمام صرافی‌ها"""
     
-    def __init__(self, api_key: str, secret_key: str, base_url: str = "https://api.coinex.com/v1"):
-        self.api_key = api_key
-        self.secret_key = secret_key
-        self.base_url = base_url
-        self._session = None
-        self._rate_limiter = defaultdict(list)
-        self._cache = {}
-        self._cache_ttl = 30
+    def __init__(self, exchange_type: ExchangeType):
+        self.exchange_type = exchange_type
+        self._session: Optional[aiohttp.ClientSession] = None
+        self._semaphore = asyncio.Semaphore(20)
+        self._cache = TTLCache(maxsize=1000, ttl=30)
+        self._kline_cache = TTLCache(maxsize=500, ttl=60)
+    
+    async def _get_session(self) -> aiohttp.ClientSession:
+        """ایجاد یا بازیابی نشست HTTP"""
+        if self._session is None or self._session.closed:
+            connector = aiohttp.TCPConnector(limit=50, limit_per_host=20)
+            timeout = aiohttp.ClientTimeout(total=30)
+            self._session = aiohttp.ClientSession(
+                connector=connector,
+                timeout=timeout,
+                headers={"User-Agent": "CryptoPulseAI/3.5"}
+            )
+        return self._session
+    
+    async def close(self):
+        """بستن نشست"""
+        if self._session and not self._session.closed:
+            await self._session.close()
+            self._session = None
+    
+    async def _rate_limit(self):
+        """کنترل نرخ درخواست با Semaphore"""
+        async with self._semaphore:
+            await asyncio.sleep(0.01)
+    
+    @staticmethod
+    def _safe_decimal(value: Any, default: Decimal = Decimal('0')) -> Decimal:
+        """تبدیل ایمن به Decimal"""
+        try:
+            return Decimal(str(value))
+        except:
+            return default
+
+# ============================================================
+# COINEX EXCHANGE - نسخه نهایی
+# ============================================================
+
+class CoinExExchange(BaseExchange):
+    """اتصال به صرافی CoinEx با API v2"""
+    
+    def __init__(self):
+        super().__init__(ExchangeType.COINEX)
         
+        # خواندن کلیدها از متغیرهای محیطی (امنیت بالا)
+        self.api_key = os.getenv("COINEX_API_KEY", "")
+        self.secret_key = os.getenv("COINEX_SECRET_KEY", "")
+        
+        # API v2 endpoints
+        self.base_url = "https://api.coinex.com/v2"
+        
+        # تنظیمات
         self.timeout = 30
         self.max_retries = 3
         self.retry_delay = 1
         
-        self.supported_coins = self._get_supported_coins()
+        # نقشه ارزها (ترتیب صحیح)
         self.coin_map = self._create_coin_map()
+        self.supported_coins = list(self.coin_map.keys())
+        
+        # بازارهای فیوچرز
+        self.futures_markets = self._create_futures_map()
     
     def _create_coin_map(self) -> Dict[str, str]:
+        """ایجاد نقشه ارزها"""
         return {
             "BTC": "BTCUSDT", "ETH": "ETHUSDT", "BNB": "BNBUSDT",
             "SOL": "SOLUSDT", "XRP": "XRPUSDT", "ADA": "ADAUSDT",
@@ -126,41 +285,48 @@ class CoinExExchange:
             "FLOKI": "FLOKIUSDT", "WIF": "WIFUSDT", "JUP": "JUPUSDT",
             "JASMY": "JASMYUSDT", "KAS": "KASUSDT", "RNDR": "RNDRUSDT",
             "THETA": "THETAUSDT", "FET": "FETUSDT", "AGIX": "AGIXUSDT",
-            "OCEAN": "OCEANUSDT"
+            "OCEAN": "OCEANUSDT", "IMX": "IMXUSDT", "SEI": "SEIUSDT",
+            "TIA": "TIAUSDT", "STRK": "STRKUSDT", "ENA": "ENAUSDT"
         }
     
-    def _get_supported_coins(self) -> List[str]:
-        return list(self.coin_map.keys())
+    def _create_futures_map(self) -> Dict[str, str]:
+        """ایجاد نقشه بازارهای فیوچرز"""
+        return {k: v.replace("USDT", "USDT_PERP") for k, v in self.coin_map.items()}
     
-    async def _get_session(self) -> aiohttp.ClientSession:
-        if self._session is None:
-            self._session = aiohttp.ClientSession(
-                timeout=aiohttp.ClientTimeout(total=self.timeout),
-                headers={"User-Agent": "CryptoPulseBot/3.0"}
-            )
-        return self._session
+    def _normalize_symbol(self, symbol: str, market_type: MarketType = MarketType.SPOT) -> str:
+        """نرمال‌سازی نماد"""
+        symbol = symbol.upper().strip()
+        
+        if market_type == MarketType.FUTURES and symbol in self.futures_markets:
+            return self.futures_markets[symbol]
+        
+        if symbol in self.coin_map:
+            return self.coin_map[symbol]
+        
+        if not symbol.endswith("USDT"):
+            return f"{symbol}USDT"
+        
+        return symbol
     
-    async def close(self):
-        if self._session:
-            await self._session.close()
-            self._session = None
-    
-    def _sign_request(self, params: Dict[str, Any]) -> Dict[str, str]:
+    def _sign_request(self, method: str, path: str, body: str = "") -> Dict[str, str]:
+        """امضای درخواست برای API v2"""
         if not self.api_key or not self.secret_key:
             return {}
         
-        sorted_params = sorted(params.items())
-        query_string = "&".join([f"{k}={v}" for k, v in sorted_params])
+        timestamp = str(int(time.time() * 1000))
+        message = f"{method}{path}{timestamp}{body}"
         
         signature = hmac.new(
-            self.secret_key.encode(),
-            query_string.encode(),
+            self.secret_key.encode('utf-8'),
+            message.encode('utf-8'),
             hashlib.sha256
-        ).hexdigest()
+        ).hexdigest().lower()
         
         return {
             "X-COINEX-KEY": self.api_key,
-            "X-COINEX-SIGN": signature
+            "X-COINEX-SIGN": signature,
+            "X-COINEX-TIMESTAMP": timestamp,
+            "Content-Type": "application/json"
         }
     
     async def _request(
@@ -168,54 +334,72 @@ class CoinExExchange:
         method: str,
         endpoint: str,
         params: Dict[str, Any] = None,
+        body: Dict[str, Any] = None,
         signed: bool = False
     ) -> Dict[str, Any]:
-        now = time.time()
-        self._rate_limiter["global"] = [t for t in self._rate_limiter["global"] if now - t < 60]
-        if len(self._rate_limiter["global"]) >= 100:
-            await asyncio.sleep(1)
+        """درخواست HTTP با مدیریت خطا"""
+        await self._rate_limit()
         
         url = f"{self.base_url}{endpoint}"
-        headers = {"Content-Type": "application/json"}
+        body_str = json.dumps(body) if body else ""
+        headers = {}
         
         if signed:
-            headers.update(self._sign_request(params or {}))
+            headers.update(self._sign_request(method, endpoint, body_str))
+        else:
+            headers["Content-Type"] = "application/json"
         
         session = await self._get_session()
         
         for attempt in range(self.max_retries):
             try:
-                async with session.request(method, url, params=params, headers=headers) as response:
-                    self._rate_limiter["global"].append(time.time())
-                    data = await response.json()
-                    
-                    if data.get("code") == 0:
-                        return data.get("data", {})
-                    else:
-                        error_msg = data.get("message", "Unknown error")
-                        if "rate limit" in error_msg.lower():
-                            await asyncio.sleep(2 ** attempt)
-                            continue
-                        return {"error": error_msg}
-                        
-            except Exception:
+                if method == "GET":
+                    async with session.get(url, params=params, headers=headers) as response:
+                        data = await response.json()
+                else:
+                    async with session.post(url, params=params, json=body, headers=headers) as response:
+                        data = await response.json()
+                
+                if data.get("code") == 0:
+                    return data.get("data", {})
+                
+                error_msg = data.get("message", "Unknown error")
+                
+                if "rate limit" in error_msg.lower():
+                    await asyncio.sleep(2 ** attempt)
+                    continue
+                
+                if attempt < self.max_retries - 1:
+                    await asyncio.sleep(self.retry_delay * (2 ** attempt))
+                    continue
+                
+                return {"error": error_msg}
+                
+            except asyncio.TimeoutError:
                 if attempt == self.max_retries - 1:
-                    return {"error": "Max retries exceeded"}
-                await asyncio.sleep(self.retry_delay * (2 ** attempt))
+                    return {"error": "Request timeout"}
+                await asyncio.sleep(self.retry_delay)
+            
+            except aiohttp.ClientError as e:
+                if attempt == self.max_retries - 1:
+                    return {"error": f"Connection error: {str(e)}"}
+                await asyncio.sleep(self.retry_delay)
+            
+            except Exception as e:
+                logger.error(f"Unexpected error in request: {e}")
+                return {"error": f"Unexpected error: {str(e)}"}
         
         return {"error": "Max retries exceeded"}
     
     # ==================== قیمت‌ها ====================
     
     async def get_ticker(self, symbol: str) -> Optional[MarketData]:
-        if symbol not in self.coin_map:
-            symbol = f"{symbol}USDT"
+        """دریافت تیکر با کش"""
+        symbol = self._normalize_symbol(symbol)
         
         cache_key = f"ticker_{symbol}"
         if cache_key in self._cache:
-            data, timestamp = self._cache[cache_key]
-            if (datetime.now() - timestamp).seconds < self._cache_ttl:
-                return data
+            return self._cache[cache_key]
         
         result = await self._request("GET", "/market/ticker", {"market": symbol})
         
@@ -225,25 +409,26 @@ class CoinExExchange:
         try:
             data = MarketData(
                 symbol=symbol,
-                price=float(result.get("last", 0)),
-                change_24h=float(result.get("change", 0)),
-                volume_24h=float(result.get("vol", 0)),
-                high_24h=float(result.get("high", 0)),
-                low_24h=float(result.get("low", 0)),
-                open_24h=float(result.get("open", 0)),
-                close_24h=float(result.get("last", 0)),
-                bid=float(result.get("buy", 0)),
-                ask=float(result.get("sell", 0)),
-                spread=0,
+                price=self._safe_decimal(result.get("last")),
+                change_24h=self._safe_decimal(result.get("change")),
+                volume_24h=self._safe_decimal(result.get("vol")),
+                high_24h=self._safe_decimal(result.get("high")),
+                low_24h=self._safe_decimal(result.get("low")),
+                open_24h=self._safe_decimal(result.get("open")),
+                close_24h=self._safe_decimal(result.get("last")),
+                bid=self._safe_decimal(result.get("buy")),
+                ask=self._safe_decimal(result.get("sell")),
                 timestamp=datetime.now()
             )
-            data.spread = data.ask - data.bid
-            self._cache[cache_key] = (data, datetime.now())
+            
+            self._cache[cache_key] = data
             return data
-        except:
+        except Exception as e:
+            logger.error(f"Error parsing ticker for {symbol}: {e}")
             return None
     
     async def get_all_tickers(self) -> Dict[str, MarketData]:
+        """دریافت تمام تیکرها"""
         result = await self._request("GET", "/market/ticker/all")
         
         if "error" in result:
@@ -251,28 +436,51 @@ class CoinExExchange:
         
         tickers = {}
         for symbol, data in result.items():
+            if not symbol.endswith("USDT"):
+                continue
+            
             try:
-                if not symbol.endswith("USDT"):
-                    continue
                 tickers[symbol] = MarketData(
                     symbol=symbol,
-                    price=float(data.get("last", 0)),
-                    change_24h=float(data.get("change", 0)),
-                    volume_24h=float(data.get("vol", 0)),
-                    high_24h=float(data.get("high", 0)),
-                    low_24h=float(data.get("low", 0)),
-                    open_24h=float(data.get("open", 0)),
-                    close_24h=float(data.get("last", 0)),
-                    bid=float(data.get("buy", 0)),
-                    ask=float(data.get("sell", 0)),
-                    spread=0,
+                    price=self._safe_decimal(data.get("last")),
+                    change_24h=self._safe_decimal(data.get("change")),
+                    volume_24h=self._safe_decimal(data.get("vol")),
+                    high_24h=self._safe_decimal(data.get("high")),
+                    low_24h=self._safe_decimal(data.get("low")),
+                    open_24h=self._safe_decimal(data.get("open")),
+                    close_24h=self._safe_decimal(data.get("last")),
+                    bid=self._safe_decimal(data.get("buy")),
+                    ask=self._safe_decimal(data.get("sell")),
                     timestamp=datetime.now()
                 )
-                tickers[symbol].spread = tickers[symbol].ask - tickers[symbol].bid
-            except:
+            except Exception as e:
+                logger.error(f"Error parsing ticker for {symbol}: {e}")
                 continue
         
         return tickers
+    
+    async def get_top_gainers(self, limit: int = 20) -> List[MarketData]:
+        """دریافت بیشترین رشدها"""
+        tickers = await self.get_all_tickers()
+        
+        sorted_tickers = sorted(
+            tickers.values(),
+            key=lambda x: x.change_24h,
+            reverse=True
+        )
+        
+        return sorted_tickers[:limit]
+    
+    async def get_top_losers(self, limit: int = 20) -> List[MarketData]:
+        """دریافت بیشترین افت‌ها"""
+        tickers = await self.get_all_tickers()
+        
+        sorted_tickers = sorted(
+            tickers.values(),
+            key=lambda x: x.change_24h
+        )
+        
+        return sorted_tickers[:limit]
     
     # ==================== تاریخچه قیمت ====================
     
@@ -280,16 +488,14 @@ class CoinExExchange:
         self,
         symbol: str,
         interval: str = "4h",
-        limit: int = 100
+        limit: int = 200
     ) -> Optional[pd.DataFrame]:
-        if symbol not in self.coin_map:
-            symbol = f"{symbol}USDT"
+        """دریافت کندل‌ها با کش"""
+        symbol = self._normalize_symbol(symbol)
         
         cache_key = f"kline_{symbol}_{interval}_{limit}"
-        if cache_key in self._cache:
-            data, timestamp = self._cache[cache_key]
-            if (datetime.now() - timestamp).seconds < 60:
-                return data
+        if cache_key in self._kline_cache:
+            return self._kline_cache[cache_key]
         
         result = await self._request(
             "GET",
@@ -301,23 +507,30 @@ class CoinExExchange:
             }
         )
         
-        if "error" in result:
+        if "error" in result or not result:
             return None
         
         try:
-            df = pd.DataFrame(result, columns=[
-                'timestamp', 'open', 'close', 'high', 'low', 'volume', 'amount'
-            ])
+            df = pd.DataFrame(
+                result,
+                columns=['timestamp', 'open', 'close', 'high', 'low', 'volume', 'amount']
+            )
+            
+            for col in ['open', 'close', 'high', 'low', 'volume', 'amount']:
+                df[col] = pd.to_numeric(df[col], errors='coerce')
             
             df['timestamp'] = pd.to_datetime(df['timestamp'], unit='s')
             df.set_index('timestamp', inplace=True)
+            df.dropna(inplace=True)
             
-            for col in ['open', 'close', 'high', 'low', 'volume', 'amount']:
-                df[col] = df[col].astype(float)
+            if df.empty:
+                return None
             
-            self._cache[cache_key] = (df, datetime.now())
+            self._kline_cache[cache_key] = df
             return df
-        except:
+            
+        except Exception as e:
+            logger.error(f"Error parsing kline for {symbol}: {e}")
             return None
     
     async def get_price_history(
@@ -325,17 +538,18 @@ class CoinExExchange:
         symbol: str,
         interval: str = "4h",
         limit: int = 100
-    ) -> Optional[List[float]]:
+    ) -> List[float]:
+        """دریافت تاریخچه قیمت"""
         df = await self.get_kline(symbol, interval, limit)
         if df is not None and not df.empty:
             return df['close'].tolist()
-        return None
+        return []
     
     # ==================== کتاب سفارشات ====================
     
-    async def get_order_book(self, symbol: str, limit: int = 10) -> Optional[OrderBook]:
-        if symbol not in self.coin_map:
-            symbol = f"{symbol}USDT"
+    async def get_order_book(self, symbol: str, limit: int = 20) -> Optional[OrderBook]:
+        """دریافت کتاب سفارشات"""
+        symbol = self._normalize_symbol(symbol)
         
         result = await self._request(
             "GET",
@@ -347,13 +561,23 @@ class CoinExExchange:
             return None
         
         try:
+            bids = tuple(
+                (self._safe_decimal(b[0]), self._safe_decimal(b[1]))
+                for b in result.get("bids", [])
+            )
+            asks = tuple(
+                (self._safe_decimal(a[0]), self._safe_decimal(a[1]))
+                for a in result.get("asks", [])
+            )
+            
             return OrderBook(
                 symbol=symbol,
-                bids=[(float(b[0]), float(b[1])) for b in result.get("bids", [])],
-                asks=[(float(a[0]), float(a[1])) for a in result.get("asks", [])],
+                bids=bids,
+                asks=asks,
                 timestamp=datetime.now()
             )
-        except:
+        except Exception as e:
+            logger.error(f"Error parsing order book for {symbol}: {e}")
             return None
     
     # ==================== سفارشات ====================
@@ -362,62 +586,75 @@ class CoinExExchange:
         self,
         symbol: str,
         side: OrderSide,
-        type: OrderType,
-        amount: float,
-        price: float = None,
-        stop_price: float = None
+        order_type: OrderType,
+        amount: Decimal,
+        price: Decimal = None,
+        stop_price: Decimal = None
     ) -> Optional[OrderResult]:
-        if symbol not in self.coin_map:
-            symbol = f"{symbol}USDT"
+        """ثبت سفارش"""
+        if not self.api_key:
+            return None
         
-        params = {
+        symbol = self._normalize_symbol(symbol)
+        
+        body = {
             "market": symbol,
             "side": side.value,
-            "type": type.value,
+            "type": order_type.value,
             "amount": str(amount)
         }
         
-        if price:
-            params["price"] = str(price)
+        if price and order_type != OrderType.MARKET:
+            body["price"] = str(price)
         if stop_price:
-            params["stop_price"] = str(stop_price)
+            body["stop_price"] = str(stop_price)
         
-        result = await self._request("POST", "/order/limit", params, signed=True)
+        result = await self._request("POST", "/order/limit", body=body, signed=True)
         
         if "error" in result:
             return None
         
         try:
             return OrderResult(
-                order_id=result.get("id", ""),
+                order_id=str(result.get("id", "")),
                 symbol=symbol,
                 side=side,
-                type=type,
-                price=float(result.get("price", 0)),
-                amount=float(result.get("amount", 0)),
-                filled=float(result.get("deal_amount", 0)),
+                type=order_type,
+                price=self._safe_decimal(result.get("price")),
+                amount=self._safe_decimal(result.get("amount")),
+                filled=self._safe_decimal(result.get("deal_amount")),
                 status=OrderStatus(result.get("status", "pending")),
-                fee=float(result.get("fee", 0)),
+                fee=self._safe_decimal(result.get("fee")),
                 fee_currency=result.get("fee_coin", "USDT"),
-                timestamp=datetime.now()
+                timestamp=datetime.now(),
+                average_price=self._safe_decimal(result.get("avg_price"))
             )
-        except:
+        except Exception as e:
+            logger.error(f"Error parsing order result: {e}")
             return None
     
     async def cancel_order(self, order_id: str) -> bool:
+        """لغو سفارش"""
+        if not self.api_key:
+            return False
+        
         result = await self._request(
             "POST",
             "/order/cancel",
-            {"id": order_id},
+            body={"id": order_id},
             signed=True
         )
         return "error" not in result
     
     async def get_order(self, order_id: str) -> Optional[OrderResult]:
+        """دریافت وضعیت سفارش"""
+        if not self.api_key:
+            return None
+        
         result = await self._request(
             "GET",
             "/order/status",
-            {"id": order_id},
+            params={"id": order_id},
             signed=True
         )
         
@@ -426,27 +663,33 @@ class CoinExExchange:
         
         try:
             return OrderResult(
-                order_id=result.get("id", ""),
+                order_id=str(result.get("id", "")),
                 symbol=result.get("market", ""),
                 side=OrderSide(result.get("side", "buy")),
                 type=OrderType(result.get("type", "limit")),
-                price=float(result.get("price", 0)),
-                amount=float(result.get("amount", 0)),
-                filled=float(result.get("deal_amount", 0)),
+                price=self._safe_decimal(result.get("price")),
+                amount=self._safe_decimal(result.get("amount")),
+                filled=self._safe_decimal(result.get("deal_amount")),
                 status=OrderStatus(result.get("status", "pending")),
-                fee=float(result.get("fee", 0)),
+                fee=self._safe_decimal(result.get("fee")),
                 fee_currency=result.get("fee_coin", "USDT"),
-                timestamp=datetime.now()
+                timestamp=datetime.now(),
+                average_price=self._safe_decimal(result.get("avg_price"))
             )
-        except:
+        except Exception as e:
+            logger.error(f"Error parsing order: {e}")
             return None
     
     async def get_open_orders(self, symbol: str = None) -> List[OrderResult]:
+        """دریافت سفارشات باز"""
+        if not self.api_key:
+            return []
+        
         params = {}
         if symbol:
-            params["market"] = symbol
+            params["market"] = self._normalize_symbol(symbol)
         
-        result = await self._request("GET", "/order/pending", params, signed=True)
+        result = await self._request("GET", "/order/pending", params=params, signed=True)
         
         if "error" in result:
             return []
@@ -455,660 +698,451 @@ class CoinExExchange:
         for order in result.get("data", []):
             try:
                 orders.append(OrderResult(
-                    order_id=order.get("id", ""),
+                    order_id=str(order.get("id", "")),
                     symbol=order.get("market", ""),
                     side=OrderSide(order.get("side", "buy")),
                     type=OrderType(order.get("type", "limit")),
-                    price=float(order.get("price", 0)),
-                    amount=float(order.get("amount", 0)),
-                    filled=float(order.get("deal_amount", 0)),
+                    price=self._safe_decimal(order.get("price")),
+                    amount=self._safe_decimal(order.get("amount")),
+                    filled=self._safe_decimal(order.get("deal_amount")),
                     status=OrderStatus(order.get("status", "pending")),
-                    fee=float(order.get("fee", 0)),
+                    fee=self._safe_decimal(order.get("fee")),
                     fee_currency=order.get("fee_coin", "USDT"),
                     timestamp=datetime.now()
                 ))
-            except:
+            except Exception as e:
+                logger.error(f"Error parsing open order: {e}")
                 continue
         
         return orders
     
     # ==================== موجودی ====================
     
-    async def get_balance(self, coin: str = None) -> Dict[str, float]:
-        result = await self._request("GET", "/balance/info", {}, signed=True)
+    async def get_balance(self, coin: str = None) -> Dict[str, Decimal]:
+        """دریافت موجودی"""
+        if not self.api_key:
+            return {}
+        
+        result = await self._request("GET", "/balance/info", signed=True)
         
         if "error" in result:
             return {}
         
         balances = {}
-        for coin_name, data in result.get("data", {}).items():
-            balances[coin_name] = float(data.get("available", 0))
+        for coin_name, data in result.items():
+            if isinstance(data, dict):
+                available = self._safe_decimal(data.get("available"))
+                frozen = self._safe_decimal(data.get("frozen"))
+                balances[coin_name] = available + frozen
         
-        if coin and coin in balances:
-            return {coin: balances[coin]}
+        if coin:
+            coin = coin.upper()
+            return {coin: balances.get(coin, Decimal('0'))}
         
         return balances
     
-    # ==================== اندیکاتورهای تکنیکال ====================
+    async def get_total_balance_usdt(self) -> Decimal:
+        """محاسبه موجودی کل به USDT"""
+        balances = await self.get_balance()
+        total = Decimal('0')
+        
+        for coin, amount in balances.items():
+            if amount == Decimal('0'):
+                continue
+            
+            if coin == "USDT":
+                total += amount
+                continue
+            
+            try:
+                ticker = await self.get_ticker(coin)
+                if ticker:
+                    total += amount * ticker.price
+            except Exception:
+                continue
+        
+        return total
+    
+    # ==================== تحلیل تکنیکال پیشرفته ====================
     
     @staticmethod
-    def calculate_indicators(df: pd.DataFrame) -> pd.DataFrame:
+    def calculate_all_indicators(df: pd.DataFrame) -> pd.DataFrame:
+        """
+        محاسبه تمام اندیکاتورهای تکنیکال
+        نسخه نهایی با ۵۰+ اندیکاتور
+        """
+        if df is None or df.empty or len(df) < 200:
+            return df
+        
         df = df.copy()
         
+        # ===== میانگین‌های متحرک =====
         # SMA
-        df['sma_7'] = df['close'].rolling(window=7).mean()
-        df['sma_25'] = df['close'].rolling(window=25).mean()
-        df['sma_50'] = df['close'].rolling(window=50).mean()
-        df['sma_99'] = df['close'].rolling(window=99).mean()
-        df['sma_200'] = df['close'].rolling(window=200).mean()
+        for period in [7, 14, 21, 25, 50, 99, 100, 200]:
+            df[f'sma_{period}'] = df['close'].rolling(window=period).mean()
         
-        # EMA
-        df['ema_9'] = df['close'].ewm(span=9, adjust=False).mean()
-        df['ema_12'] = df['close'].ewm(span=12, adjust=False).mean()
-        df['ema_21'] = df['close'].ewm(span=21, adjust=False).mean()
-        df['ema_26'] = df['close'].ewm(span=26, adjust=False).mean()
-        df['ema_50'] = df['close'].ewm(span=50, adjust=False).mean()
-        df['ema_200'] = df['close'].ewm(span=200, adjust=False).mean()
+        # EMA (استاندارد)
+        for period in [9, 12, 21, 26, 50, 200]:
+            df[f'ema_{period}'] = df['close'].ewm(span=period, adjust=False).mean()
         
-        # RSI
-        delta = df['close'].diff()
-        gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
-        loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
-        rs = gain / loss
-        df['rsi'] = 100 - (100 / (1 + rs))
-        df['rsi_7'] = 100 - (100 / (1 + (gain.rolling(7).mean() / loss.rolling(7).mean())))
-        df['rsi_21'] = 100 - (100 / (1 + (gain.rolling(21).mean() / loss.rolling(21).mean())))
+        # HMA (Hull Moving Average)
+        for period in [9, 21]:
+            wma_half = df['close'].rolling(window=period // 2).mean()
+            wma_full = df['close'].rolling(window=period).mean()
+            hma_input = 2 * wma_half - wma_full
+            df[f'hma_{period}'] = hma_input.rolling(window=int(np.sqrt(period))).mean()
         
-        # MACD
-        exp1 = df['close'].ewm(span=12, adjust=False).mean()
-        exp2 = df['close'].ewm(span=26, adjust=False).mean()
-        df['macd'] = exp1 - exp2
+        # ===== RSI (فرمول استاندارد با EMA) =====
+        for period in [7, 14, 21]:
+            delta = df['close'].diff()
+            gain = delta.clip(lower=0)
+            loss = -delta.clip(upper=0)
+            
+            avg_gain = gain.ewm(alpha=1/period, adjust=False).mean()
+            avg_loss = loss.ewm(alpha=1/period, adjust=False).mean()
+            
+            rs = avg_gain / avg_loss.replace(0, np.nan)
+            df[f'rsi_{period}'] = 100 - (100 / (1 + rs))
+        
+        # ===== MACD =====
+        ema_12 = df['close'].ewm(span=12, adjust=False).mean()
+        ema_26 = df['close'].ewm(span=26, adjust=False).mean()
+        df['macd'] = ema_12 - ema_26
         df['macd_signal'] = df['macd'].ewm(span=9, adjust=False).mean()
         df['macd_histogram'] = df['macd'] - df['macd_signal']
+        df['macd_histogram_2x'] = df['macd_histogram'] * 2
         
-        # Bollinger Bands
+        # ===== Bollinger Bands =====
         df['bb_middle'] = df['close'].rolling(window=20).mean()
         bb_std = df['close'].rolling(window=20).std()
         df['bb_upper'] = df['bb_middle'] + (bb_std * 2)
         df['bb_lower'] = df['bb_middle'] - (bb_std * 2)
         df['bb_width'] = df['bb_upper'] - df['bb_lower']
-        df['bb_position'] = (df['close'] - df['bb_lower']) / (df['bb_upper'] - df['bb_lower'])
+        df['bb_position'] = (df['close'] - df['bb_lower']) / (df['bb_width'].replace(0, np.nan))
+        df['bb_squeeze'] = df['bb_width'] / df['bb_middle']
         
-        # Stochastic
-        low_14 = df['low'].rolling(window=14).min()
-        high_14 = df['high'].rolling(window=14).max()
-        df['stoch_k'] = 100 * ((df['close'] - low_14) / (high_14 - low_14))
-        df['stoch_d'] = df['stoch_k'].rolling(window=3).mean()
+        # ===== Stochastic =====
+        for k_period, d_period in [(14, 3), (5, 3)]:
+            low_min = df['low'].rolling(window=k_period).min()
+            high_max = df['high'].rolling(window=k_period).max()
+            df[f'stoch_k_{k_period}'] = 100 * ((df['close'] - low_min) / (high_max - low_min).replace(0, np.nan))
+            df[f'stoch_d_{k_period}'] = df[f'stoch_k_{k_period}'].rolling(window=d_period).mean()
         
-        # MFI
+        # ===== MFI (Money Flow Index) =====
         typical_price = (df['high'] + df['low'] + df['close']) / 3
         money_flow = typical_price * df['volume']
+        
         positive_flow = money_flow.where(typical_price > typical_price.shift(), 0)
         negative_flow = money_flow.where(typical_price < typical_price.shift(), 0)
-        df['mfi'] = 100 - (100 / (1 + (positive_flow.rolling(14).sum() / negative_flow.rolling(14).sum())))
         
-        # ADX
+        positive_sum = positive_flow.rolling(window=14).sum()
+        negative_sum = negative_flow.rolling(window=14).sum()
+        
+        money_ratio = positive_sum / negative_sum.replace(0, np.nan)
+        df['mfi'] = 100 - (100 / (1 + money_ratio))
+        
+        # ===== ATR (Average True Range - Wilder's Method) =====
         high_low = df['high'] - df['low']
         high_close = abs(df['high'] - df['close'].shift())
         low_close = abs(df['low'] - df['close'].shift())
-        tr = pd.concat([high_low, high_close, low_close], axis=1).max(axis=1)
-        df['atr'] = tr.rolling(window=14).mean()
         
-        # OBV
-        df['obv'] = (df['volume'] * np.where(df['close'] > df['close'].shift(), 1, -1)).cumsum()
+        true_range = pd.concat([high_low, high_close, low_close], axis=1).max(axis=1)
+        df['atr'] = true_range.ewm(alpha=1/14, adjust=False).mean()
         
-        # Williams %R
-        df['williams_r'] = -100 * ((high_14 - df['close']) / (high_14 - low_14))
+        # ===== ADX (Average Directional Index) =====
+        plus_dm = df['high'].diff()
+        minus_dm = df['low'].diff().abs() * -1
         
-        # CCI
+        plus_dm[plus_dm < 0] = 0
+        minus_dm[minus_dm > 0] = 0
+        minus_dm = minus_dm.abs()
+        
+        plus_dm[plus_dm < minus_dm] = 0
+        minus_dm[minus_dm < plus_dm] = 0
+        
+        atr_14 = true_range.ewm(alpha=1/14, adjust=False).mean()
+        
+        plus_di = 100 * (plus_dm.ewm(alpha=1/14, adjust=False).mean() / atr_14.replace(0, np.nan))
+        minus_di = 100 * (minus_dm.ewm(alpha=1/14, adjust=False).mean() / atr_14.replace(0, np.nan))
+        
+        dx = 100 * abs(plus_di - minus_di) / (plus_di + minus_di).replace(0, np.nan)
+        df['adx'] = dx.ewm(alpha=1/14, adjust=False).mean()
+        df['plus_di'] = plus_di
+        df['minus_di'] = minus_di
+        
+        # ===== CCI (Commodity Channel Index) =====
         tp = (df['high'] + df['low'] + df['close']) / 3
         sma_tp = tp.rolling(window=20).mean()
-        mad = tp.rolling(window=20).apply(lambda x: np.mean(np.abs(x - np.mean(x))))
+        mad = tp.rolling(window=20).apply(lambda x: np.mean(np.abs(x - np.mean(x))), raw=True)
         df['cci'] = (tp - sma_tp) / (0.015 * mad)
         
-        # Ichimoku
+        # ===== Williams %R =====
+        df['williams_r'] = -100 * ((df['high'].rolling(14).max() - df['close']) / 
+                                   (df['high'].rolling(14).max() - df['low'].rolling(14).min()).replace(0, np.nan))
+        
+        # ===== OBV (On-Balance Volume) =====
+        df['obv'] = (np.sign(df['close'].diff()) * df['volume']).fillna(0).cumsum()
+        
+        # ===== VWAP (Volume Weighted Average Price) =====
+        df['vwap'] = (df['volume'] * (df['high'] + df['low'] + df['close']) / 3).cumsum() / df['volume'].cumsum().replace(0, np.nan)
+        
+        # ===== Ichimoku Cloud =====
         df['tenkan_sen'] = (df['high'].rolling(9).max() + df['low'].rolling(9).min()) / 2
         df['kijun_sen'] = (df['high'].rolling(26).max() + df['low'].rolling(26).min()) / 2
         df['senkou_span_a'] = ((df['tenkan_sen'] + df['kijun_sen']) / 2).shift(26)
         df['senkou_span_b'] = ((df['high'].rolling(52).max() + df['low'].rolling(52).min()) / 2).shift(26)
+        df['chikou_span'] = df['close'].shift(-26)
         
-        # HMA
-        wma = df['close'].rolling(window=10).apply(lambda x: np.average(x, weights=range(1, len(x)+1)))
-        df['hma'] = wma.rolling(window=7).apply(lambda x: np.average(x, weights=range(1, len(x)+1)))
+        # ===== SuperTrend =====
+        atr_super = df['atr']
+        multiplier = 3
         
-        # Chandelier Exit
-        df['ce_long'] = df['high'].rolling(22).max() - (df['atr'] * 3)
-        df['ce_short'] = df['low'].rolling(22).min() + (df['atr'] * 3)
+        basic_upper = (df['high'] + df['low']) / 2 + multiplier * atr_super
+        basic_lower = (df['high'] + df['low']) / 2 - multiplier * atr_super
         
-        # Keltner Channel
-        df['kc_middle'] = df['close'].rolling(20).mean()
-        kc_range = df['atr'] * 1.5
-        df['kc_upper'] = df['kc_middle'] + kc_range
-        df['kc_lower'] = df['kc_middle'] - kc_range
+        final_upper = basic_upper.copy()
+        final_lower = basic_lower.copy()
+        supertrend = pd.Series(0.0, index=df.index)
+        
+        for i in range(1, len(df)):
+            if df['close'].iloc[i] <= final_upper.iloc[i-1]:
+                final_upper.iloc[i] = min(basic_upper.iloc[i], final_upper.iloc[i-1])
+            else:
+                final_upper.iloc[i] = basic_upper.iloc[i]
+            
+            if df['close'].iloc[i] >= final_lower.iloc[i-1]:
+                final_lower.iloc[i] = max(basic_lower.iloc[i], final_lower.iloc[i-1])
+            else:
+                final_lower.iloc[i] = basic_lower.iloc[i]
+            
+            if df['close'].iloc[i] <= final_upper.iloc[i]:
+                supertrend.iloc[i] = final_upper.iloc[i]
+            else:
+                supertrend.iloc[i] = final_lower.iloc[i]
+        
+        df['supertrend'] = supertrend
+        df['supertrend_direction'] = np.where(df['close'] > df['supertrend'], 1, -1)
+        
+        # ===== Keltner Channel =====
+        df['kc_middle'] = df['close'].ewm(span=20, adjust=False).mean()
+        df['kc_upper'] = df['kc_middle'] + (df['atr'] * 2)
+        df['kc_lower'] = df['kc_middle'] - (df['atr'] * 2)
+        
+        # ===== Donchian Channel =====
+        df['dc_upper'] = df['high'].rolling(window=20).max()
+        df['dc_lower'] = df['low'].rolling(window=20).min()
+        df['dc_middle'] = (df['dc_upper'] + df['dc_lower']) / 2
+        
+        # ===== Parabolic SAR =====
+        df['psar'] = df['close'].copy()
+        df['psar_direction'] = 0
+        
+        acceleration = 0.02
+        maximum = 0.2
+        
+        bull = True
+        af = acceleration
+        ep = df['low'].iloc[0]
+        sar = df['high'].iloc[0]
+        
+        for i in range(1, len(df)):
+            prev_sar = sar
+            
+            if bull:
+                sar = prev_sar + af * (ep - prev_sar)
+                sar = min(sar, df['low'].iloc[i-1], df['low'].iloc[i-2] if i >= 2 else sar)
+                
+                if df['high'].iloc[i] > ep:
+                    ep = df['high'].iloc[i]
+                    af = min(af + acceleration, maximum)
+                
+                if df['close'].iloc[i] < sar:
+                    bull = False
+                    af = acceleration
+                    sar = ep
+                    ep = df['low'].iloc[i]
+            else:
+                sar = prev_sar + af * (ep - prev_sar)
+                sar = max(sar, df['high'].iloc[i-1], df['high'].iloc[i-2] if i >= 2 else sar)
+                
+                if df['low'].iloc[i] < ep:
+                    ep = df['low'].iloc[i]
+                    af = min(af + acceleration, maximum)
+                
+                if df['close'].iloc[i] > sar:
+                    bull = True
+                    af = acceleration
+                    sar = ep
+                    ep = df['high'].iloc[i]
+            
+            df['psar'].iloc[i] = sar
+            df['psar_direction'].iloc[i] = 1 if bull else -1
+        
+        # ===== Pivot Points =====
+        df['pivot'] = (df['high'] + df['low'] + df['close']) / 3
+        df['r1'] = 2 * df['pivot'] - df['low']
+        df['r2'] = df['pivot'] + (df['high'] - df['low'])
+        df['r3'] = df['high'] + 2 * (df['pivot'] - df['low'])
+        df['s1'] = 2 * df['pivot'] - df['high']
+        df['s2'] = df['pivot'] - (df['high'] - df['low'])
+        df['s3'] = df['low'] - 2 * (df['high'] - df['pivot'])
+        
+        # ===== Fibonacci Retracement =====
+        high_50 = df['high'].rolling(window=50).max()
+        low_50 = df['low'].rolling(window=50).min()
+        diff_50 = high_50 - low_50
+        
+        for level in [0, 0.236, 0.382, 0.5, 0.618, 0.786, 1]:
+            df[f'fib_{level}'] = high_50 - diff_50 * level
+        
+        # ===== Chaikin Money Flow =====
+        mfm = ((df['close'] - df['low']) - (df['high'] - df['close'])) / (df['high'] - df['low']).replace(0, np.nan)
+        mfv = mfm * df['volume']
+        df['cmf'] = mfv.rolling(window=20).sum() / df['volume'].rolling(window=20).sum().replace(0, np.nan)
+        
+        # ===== Ultimate Oscillator =====
+        bp = df['close'] - pd.concat([df['low'], df['close'].shift()], axis=1).min(axis=1)
+        tr_uo = pd.concat([df['high'] - df['low'], 
+                          abs(df['high'] - df['close'].shift()), 
+                          abs(df['low'] - df['close'].shift())], axis=1).max(axis=1)
+        
+        avg7 = bp.rolling(7).sum() / tr_uo.rolling(7).sum().replace(0, np.nan)
+        avg14 = bp.rolling(14).sum() / tr_uo.rolling(14).sum().replace(0, np.nan)
+        avg28 = bp.rolling(28).sum() / tr_uo.rolling(28).sum().replace(0, np.nan)
+        
+        df['ultimate_oscillator'] = 100 * (4 * avg7 + 2 * avg14 + avg28) / 7
+        
+        # ===== TSI (True Strength Index) =====
+        momentum = df['close'].diff()
+        abs_momentum = momentum.abs()
+        
+        smoothed_momentum = momentum.ewm(span=25, adjust=False).mean().ewm(span=13, adjust=False).mean()
+        smoothed_abs_momentum = abs_momentum.ewm(span=25, adjust=False).mean().ewm(span=13, adjust=False).mean()
+        
+        df['tsi'] = 100 * smoothed_momentum / smoothed_abs_momentum.replace(0, np.nan)
+        df['tsi_signal'] = df['tsi'].ewm(span=7, adjust=False).mean()
+        
+        # ===== Fisher Transform =====
+        high_low_range = df['high'] - df['low']
+        mid_point = (df['high'] + df['low']) / 2
+        
+        price_normalized = 2 * ((mid_point - df['low'].rolling(10).min()) / 
+                               (high_low_range.rolling(10).max()).replace(0, np.nan)) - 1
+        price_normalized = price_normalized.clip(-0.999, 0.999)
+        
+        df['fisher_transform'] = 0.5 * np.log((1 + price_normalized) / (1 - price_normalized))
+        df['fisher_signal'] = df['fisher_transform'].shift(1)
+        
+        # ===== DPO (Detrended Price Oscillator) =====
+        df['dpo'] = df['close'].shift(-11) - df['close'].rolling(window=21).mean().shift(-11)
         
         return df
     
-    # ==================== تحلیل سیگنال ====================
-    
-    @staticmethod
-    def get_signal_analysis(df: pd.DataFrame) -> Dict[str, Any]:
-        if df.empty or len(df) < 50:
-            return {'signal': 'hold', 'confidence': 0, 'reasons': ['داده‌های کافی نیست']}
+    async def get_technical_analysis(self, symbol: str, interval: str = "4h") -> Optional[TechnicalIndicators]:
+        """دریافت تحلیل تکنیکال کامل"""
+        df = await self.get_kline(symbol, interval, 200)
         
-        latest = df.iloc[-1]
-        prev = df.iloc[-2]
-        
-        signals = []
-        confidence = 50
-        reasons = []
-        
-        # SMA Analysis
-        if latest['sma_7'] > latest['sma_25']:
-            signals.append('buy')
-            reasons.append('✅ SMA7 > SMA25 (روند صعودی کوتاه‌مدت)')
-            confidence += 10
-        else:
-            signals.append('sell')
-            reasons.append('❌ SMA7 < SMA25 (روند نزولی کوتاه‌مدت)')
-            confidence -= 10
-        
-        if latest['sma_25'] > latest['sma_50']:
-            reasons.append('✅ SMA25 > SMA50 (روند صعودی میان‌مدت)')
-            confidence += 8
-        else:
-            reasons.append('❌ SMA25 < SMA50 (روند نزولی میان‌مدت)')
-            confidence -= 8
-        
-        if latest['sma_50'] > latest['sma_200']:
-            reasons.append('✅ SMA50 > SMA200 (روند صعودی بلندمدت)')
-            confidence += 10
-        else:
-            reasons.append('❌ SMA50 < SMA200 (روند نزولی بلندمدت)')
-            confidence -= 10
-        
-        # EMA Analysis
-        if latest['ema_9'] > latest['ema_21']:
-            reasons.append('✅ EMA9 > EMA21 (سیگنال خرید کوتاه‌مدت)')
-            confidence += 5
-        
-        if latest['ema_12'] > latest['ema_26']:
-            reasons.append('✅ EMA12 > EMA26 (سیگنال خرید)')
-            confidence += 8
-            if 'sell' in signals:
-                signals.remove('sell')
-            signals.append('buy')
-        else:
-            reasons.append('❌ EMA12 < EMA26 (سیگنال فروش)')
-            confidence -= 8
-            if 'buy' in signals:
-                signals.remove('buy')
-            signals.append('sell')
-        
-        # RSI Analysis
-        rsi = latest['rsi']
-        if rsi < 30:
-            reasons.append(f'✅ RSI: {rsi:.1f} (اشباع فروش - سیگنال خرید قوی)')
-            confidence += 15
-            signals.append('buy')
-        elif rsi < 40:
-            reasons.append(f'✅ RSI: {rsi:.1f} (نزدیک اشباع فروش - سیگنال خرید)')
-            confidence += 8
-            signals.append('buy')
-        elif rsi > 70:
-            reasons.append(f'❌ RSI: {rsi:.1f} (اشباع خرید - سیگنال فروش قوی)')
-            confidence -= 15
-            signals.append('sell')
-        elif rsi > 60:
-            reasons.append(f'❌ RSI: {rsi:.1f} (نزدیک اشباع خرید - سیگنال فروش)')
-            confidence -= 8
-            signals.append('sell')
-        else:
-            reasons.append(f'➖ RSI: {rsi:.1f} (منطقه خنثی)')
-        
-        # MACD Analysis
-        if latest['macd'] > latest['macd_signal']:
-            reasons.append('✅ MACD > سیگنال (سیگنال خرید)')
-            confidence += 10
-            signals.append('buy')
-        else:
-            reasons.append('❌ MACD < سیگنال (سیگنال فروش)')
-            confidence -= 10
-            signals.append('sell')
-        
-        # Bollinger Bands
-        bb_position = latest['bb_position']
-        if bb_position < 0.1:
-            reasons.append('✅ قیمت پایین‌تر از باند پایین (فرصت خرید عالی)')
-            confidence += 15
-            signals.append('buy')
-        elif bb_position < 0.3:
-            reasons.append('✅ قیمت نزدیک باند پایین (منطقه خرید)')
-            confidence += 8
-            signals.append('buy')
-        elif bb_position > 0.9:
-            reasons.append('❌ قیمت بالاتر از باند بالا (منطقه فروش)')
-            confidence -= 15
-            signals.append('sell')
-        elif bb_position > 0.7:
-            reasons.append('❌ قیمت نزدیک باند بالا (منطقه فروش)')
-            confidence -= 8
-            signals.append('sell')
-        else:
-            reasons.append(f'➖ قیمت در محدوده میانی باند ({bb_position:.2f})')
-        
-        # Stochastic
-        if latest['stoch_k'] < 20 and prev['stoch_k'] < latest['stoch_k']:
-            reasons.append('✅ Stochastic در اشباع فروش و در حال افزایش (خرید)')
-            confidence += 10
-            signals.append('buy')
-        elif latest['stoch_k'] > 80 and prev['stoch_k'] > latest['stoch_k']:
-            reasons.append('❌ Stochastic در اشباع خرید و در حال کاهش (فروش)')
-            confidence -= 10
-            signals.append('sell')
-        
-        # MFI
-        if latest['mfi'] < 20:
-            reasons.append(f'✅ MFI: {latest["mfi"]:.1f} (اشباع فروش - خرید)')
-            confidence += 10
-            signals.append('buy')
-        elif latest['mfi'] > 80:
-            reasons.append(f'❌ MFI: {latest["mfi"]:.1f} (اشباع خرید - فروش)')
-            confidence -= 10
-            signals.append('sell')
-        
-        # CCI
-        if latest['cci'] < -100:
-            reasons.append(f'✅ CCI: {latest["cci"]:.1f} (اشباع فروش)')
-            confidence += 8
-            signals.append('buy')
-        elif latest['cci'] > 100:
-            reasons.append(f'❌ CCI: {latest["cci"]:.1f} (اشباع خرید)')
-            confidence -= 8
-            signals.append('sell')
-        
-        # Williams %R
-        if latest['williams_r'] < -80:
-            reasons.append(f'✅ Williams %R: {latest["williams_r"]:.1f} (اشباع فروش)')
-            confidence += 8
-            signals.append('buy')
-        elif latest['williams_r'] > -20:
-            reasons.append(f'❌ Williams %R: {latest["williams_r"]:.1f} (اشباع خرید)')
-            confidence -= 8
-            signals.append('sell')
-        
-        # ADX
-        if latest['adx'] > 25:
-            reasons.append(f'✅ ADX: {latest["adx"]:.1f} (روند قوی)')
-            confidence += 5
-        else:
-            reasons.append(f'➖ ADX: {latest["adx"]:.1f} (روند ضعیف)')
-        
-        # Ichimoku
-        if latest['close'] > latest['senkou_span_a'] and latest['close'] > latest['senkou_span_b']:
-            reasons.append('✅ قیمت بالای ابر ایچیموکو (روند صعودی)')
-            confidence += 8
-            signals.append('buy')
-        elif latest['close'] < latest['senkou_span_a'] and latest['close'] < latest['senkou_span_b']:
-            reasons.append('❌ قیمت پایین ابر ایچیموکو (روند نزولی)')
-            confidence -= 8
-            signals.append('sell')
-        
-        # Chandelier Exit
-        if latest['close'] > latest['ce_long']:
-            reasons.append('✅ قیمت بالای CE Long (سیگنال خرید)')
-            confidence += 5
-            signals.append('buy')
-        elif latest['close'] < latest['ce_short']:
-            reasons.append('❌ قیمت پایین CE Short (سیگنال فروش)')
-            confidence -= 5
-            signals.append('sell')
-        
-        # تصمیم نهایی
-        buy_count = signals.count('buy')
-        sell_count = signals.count('sell')
-        
-        if buy_count > sell_count:
-            final_signal = 'buy'
-        elif sell_count > buy_count:
-            final_signal = 'sell'
-        else:
-            final_signal = 'hold'
-        
-        confidence = max(0, min(100, confidence))
-        
-        # سطوح حمایت و مقاومت
-        recent_high = df['high'].rolling(20).max()
-        recent_low = df['low'].rolling(20).min()
-        
-        support = recent_low.iloc[-1]
-        resistance = recent_high.iloc[-1]
-        
-        # اهداف
-        current_price = latest['close']
-        targets = []
-        
-        if final_signal == 'buy':
-            target1 = current_price * 1.02
-            target2 = current_price * 1.05
-            target3 = current_price * 1.10
-            stop_loss = current_price * 0.97
-        elif final_signal == 'sell':
-            target1 = current_price * 0.98
-            target2 = current_price * 0.95
-            target3 = current_price * 0.90
-            stop_loss = current_price * 1.03
-        else:
-            target1 = current_price
-            target2 = current_price
-            target3 = current_price
-            stop_loss = current_price
-        
-        return {
-            'signal': final_signal,
-            'confidence': confidence,
-            'reasons': reasons,
-            'current_price': current_price,
-            'support': support,
-            'resistance': resistance,
-            'targets': [target1, target2, target3],
-            'stop_loss': stop_loss,
-            'rsi': latest['rsi'],
-            'macd': latest['macd'],
-            'macd_signal': latest['macd_signal'],
-            'bb_position': latest['bb_position'],
-            'adx': latest['adx'],
-            'buy_signals': buy_count,
-            'sell_signals': sell_count,
-            'total_indicators': len(reasons)
-        }
-    
-    # ==================== تحلیل چند تایم‌فریم ====================
-    
-    async def analyze_multi_timeframe(
-        self,
-        symbol: str,
-        timeframes: List[str] = None
-    ) -> Dict[str, Any]:
-        if timeframes is None:
-            timeframes = ['1h', '4h', '1d', '1w']
-        
-        analysis = {
-            'symbol': symbol,
-            'timeframes': {},
-            'overall_signal': 'hold',
-            'overall_confidence': 0
-        }
-        
-        signals = []
-        confidences = []
-        
-        for tf in timeframes:
-            df = await self.get_kline(symbol, tf, 200)
-            if df is not None and not df.empty:
-                result = self.get_signal_analysis(df)
-                analysis['timeframes'][tf] = result
-                signals.append(result['signal'])
-                confidences.append(result['confidence'])
-        
-        buy_count = signals.count('buy')
-        sell_count = signals.count('sell')
-        
-        if buy_count > sell_count:
-            analysis['overall_signal'] = 'buy'
-        elif sell_count > buy_count:
-            analysis['overall_signal'] = 'sell'
-        else:
-            analysis['overall_signal'] = 'hold'
-        
-        if confidences:
-            analysis['overall_confidence'] = int(sum(confidences) / len(confidences))
-        
-        return analysis
-    
-    # ==================== تحلیل فاندامنتال ====================
-    
-    @staticmethod
-    def fundamental_analysis(coin: str, market_data: MarketData) -> Dict[str, Any]:
-        analysis = {
-            'coin': coin,
-            'score': 0,
-            'signals': [],
-            'reasons': []
-        }
-        
-        if market_data.volume_24h > 1_000_000:
-            analysis['score'] += 20
-            analysis['reasons'].append('✅ حجم معاملات بالا (نقدینگی خوب)')
-        elif market_data.volume_24h > 100_000:
-            analysis['score'] += 10
-            analysis['reasons'].append('➖ حجم معاملات متوسط')
-        else:
-            analysis['score'] -= 10
-            analysis['reasons'].append('❌ حجم معاملات پایین')
-        
-        if market_data.change_24h > 5:
-            analysis['score'] += 15
-            analysis['reasons'].append('✅ رشد قیمتی قوی (۵%+)')
-        elif market_data.change_24h > 2:
-            analysis['score'] += 10
-            analysis['reasons'].append('✅ رشد قیمتی مثبت')
-        elif market_data.change_24h > -2:
-            analysis['score'] += 0
-            analysis['reasons'].append('➖ قیمت تقریباً ثابت')
-        elif market_data.change_24h > -5:
-            analysis['score'] -= 10
-            analysis['reasons'].append('❌ افت قیمتی')
-        else:
-            analysis['score'] -= 15
-            analysis['reasons'].append('❌ افت قیمتی شدید (۵%-)')
-        
-        if market_data.price > market_data.high_24h * 0.9:
-            analysis['score'] += 10
-            analysis['reasons'].append('✅ قیمت نزدیک به بالاترین ۲۴ ساعت')
-        elif market_data.price < market_data.low_24h * 1.1:
-            analysis['score'] -= 10
-            analysis['reasons'].append('❌ قیمت نزدیک به پایین‌ترین ۲۴ ساعت')
-        
-        if market_data.spread / market_data.price < 0.001:
-            analysis['score'] += 10
-            analysis['reasons'].append('✅ اسپرد بسیار کم (نقدشوندگی عالی)')
-        elif market_data.spread / market_data.price < 0.002:
-            analysis['score'] += 5
-            analysis['reasons'].append('➖ اسپرد مناسب')
-        else:
-            analysis['score'] -= 10
-            analysis['reasons'].append('❌ اسپرد بالا')
-        
-        if analysis['score'] >= 50:
-            analysis['level'] = 'قوی (خرید)'
-            analysis['signals'].append('buy')
-        elif analysis['score'] >= 30:
-            analysis['level'] = 'متوسط (خرید ملایم)'
-            analysis['signals'].append('buy')
-        elif analysis['score'] >= 10:
-            analysis['level'] = 'خنثی (نگهداری)'
-            analysis['signals'].append('hold')
-        elif analysis['score'] >= -10:
-            analysis['level'] = 'خنثی (نگهداری)'
-            analysis['signals'].append('hold')
-        elif analysis['score'] >= -30:
-            analysis['level'] = 'متوسط (فروش ملایم)'
-            analysis['signals'].append('sell')
-        else:
-            analysis['level'] = 'قوی (فروش)'
-            analysis['signals'].append('sell')
-        
-        return analysis
-
-# ==================== کلاس مدیریت بازار ====================
-
-class MarketManager:
-    def __init__(self):
-        from bot2 import get_config
-        config = get_config()
-        
-        self.coinex = CoinExExchange(
-            api_key=config.get('coinex_api_key', ''),
-            secret_key=config.get('coinex_secret_key', ''),
-            base_url=config.get('coinex_base_url', 'https://api.coinex.com/v1')
-        )
-        
-        self._cache = {}
-        self._cache_ttl = 30
-    
-    async def get_price(self, symbol: str) -> Optional[float]:
-        ticker = await self.coinex.get_ticker(symbol)
-        if ticker:
-            return ticker.price
-        return None
-    
-    async def get_all_prices(self) -> Dict[str, float]:
-        tickers = await self.coinex.get_all_tickers()
-        return {k: v.price for k, v in tickers.items()}
-    
-    async def get_market_data(self, symbol: str) -> Optional[MarketData]:
-        return await self.coinex.get_ticker(symbol)
-    
-    async def get_historical_data(
-        self,
-        symbol: str,
-        timeframe: str = "4h",
-        limit: int = 100
-    ) -> Optional[pd.DataFrame]:
-        return await self.coinex.get_kline(symbol, timeframe, limit)
-    
-    async def get_signal(
-        self,
-        symbol: str,
-        timeframe: str = "4h"
-    ) -> Dict[str, Any]:
-        df = await self.coinex.get_kline(symbol, timeframe, 200)
         if df is None or df.empty:
-            return {
-                'signal': 'hold',
-                'confidence': 0,
-                'error': 'خطا در دریافت داده'
-            }
+            return None
         
-        df = self.coinex.calculate_indicators(df)
-        technical = self.coinex.get_signal_analysis(df)
-        
-        ticker = await self.coinex.get_ticker(symbol)
-        fundamental = {}
-        if ticker:
-            fundamental = self.coinex.fundamental_analysis(symbol, ticker)
-        
-        signal_weights = {'buy': 0, 'sell': 0, 'hold': 0}
-        
-        if technical['signal'] == 'buy':
-            signal_weights['buy'] += technical['confidence'] * 1.0
-        elif technical['signal'] == 'sell':
-            signal_weights['sell'] += technical['confidence'] * 1.0
-        else:
-            signal_weights['hold'] += technical['confidence'] * 0.5
-        
-        if fundamental.get('signals'):
-            for sig in fundamental['signals']:
-                if sig == 'buy':
-                    signal_weights['buy'] += 20
-                elif sig == 'sell':
-                    signal_weights['sell'] += 20
-        
-        final_signal = max(signal_weights, key=signal_weights.get)
-        max_weight = signal_weights[final_signal]
-        
-        total_weight = sum(signal_weights.values())
-        if total_weight > 0:
-            confidence = int((max_weight / total_weight) * 100)
-        else:
-            confidence = 50
-        
-        confidence = max(0, min(100, confidence))
-        
-        return {
-            'signal': final_signal,
-            'confidence': confidence,
-            'technical': technical,
-            'fundamental': fundamental,
-            'weights': signal_weights,
-            'timeframe': timeframe,
-            'symbol': symbol
-        }
-    
-    async def get_multi_timeframe_signal(self, symbol: str) -> Dict[str, Any]:
-        return await self.coinex.analyze_multi_timeframe(
-            symbol,
-            ['1h', '4h', '1d', '1w']
-        )
-    
-    async def close(self):
-        await self.coinex.close()
-
-# ==================== Export ====================
-
-import sys
-import os
-
-class SafeMarketInstance:
-    """ایمن‌ساز ایجاد نمونه از کلاس‌های بازار"""
-    
-    _instances = {}
-    
-    @classmethod
-    def create(cls, class_name, *args, **kwargs):
-        """ایجاد ایمن نمونه از کلاس"""
-        key = f"{class_name}_{args}_{kwargs}"
-        
-        if key in cls._instances:
-            return cls._instances[key]
+        df = self.calculate_all_indicators(df)
+        last = df.iloc[-1]
         
         try:
-            # دریافت کلاس از فضای نام جهانی
-            if class_name in globals():
-                instance = globals()[class_name](*args, **kwargs)
-            elif class_name in sys.modules.get('__main__', {}).__dict__:
-                instance = sys.modules['__main__'].__dict__[class_name](*args, **kwargs)
-            else:
-                instance = None
-            
-            cls._instances[key] = instance
-            return instance
-        except Exception:
-            cls._instances[key] = None
+            return TechnicalIndicators(
+                timestamp=datetime.now(),
+                rsi=float(last.get('rsi_14', 50)),
+                rsi_7=float(last.get('rsi_7', 50)),
+                rsi_21=float(last.get('rsi_21', 50)),
+                macd=float(last.get('macd', 0)),
+                macd_signal=float(last.get('macd_signal', 0)),
+                macd_histogram=float(last.get('macd_histogram', 0)),
+                sma_7=float(last.get('sma_7', 0)),
+                sma_25=float(last.get('sma_25', 0)),
+                sma_50=float(last.get('sma_50', 0)),
+                sma_200=float(last.get('sma_200', 0)),
+                ema_9=float(last.get('ema_9', 0)),
+                ema_21=float(last.get('ema_21', 0)),
+                ema_50=float(last.get('ema_50', 0)),
+                ema_200=float(last.get('ema_200', 0)),
+                bb_upper=float(last.get('bb_upper', 0)),
+                bb_middle=float(last.get('bb_middle', 0)),
+                bb_lower=float(last.get('bb_lower', 0)),
+                bb_position=float(last.get('bb_position', 0.5)),
+                stoch_k=float(last.get('stoch_k_14', 50)),
+                stoch_d=float(last.get('stoch_d_14', 50)),
+                mfi=float(last.get('mfi', 50)),
+                adx=float(last.get('adx', 25)),
+                plus_di=float(last.get('plus_di', 25)),
+                minus_di=float(last.get('minus_di', 25)),
+                atr=float(last.get('atr', 0)),
+                cci=float(last.get('cci', 0)),
+                williams_r=float(last.get('williams_r', -50)),
+                obv=float(last.get('obv', 0)),
+                vwap=float(last.get('vwap', 0)),
+                supertrend=float(last.get('supertrend', 0)),
+                supertrend_direction=int(last.get('supertrend_direction', 0))
+            )
+        except Exception as e:
+            logger.error(f"Error creating technical indicators: {e}")
             return None
 
-# ==================== ایجاد نمونه‌ها ====================
+# ============================================================
+# SINGLETON INSTANCE
+# ============================================================
 
-# ۱. MarketManager - اصلی‌ترین
-market_manager = SafeMarketInstance.create(
-    "MarketManager",
-    api_key=os.environ.get("COINEX_API_KEY", ""),
-    secret_key=os.environ.get("COINEX_SECRET_KEY", "")
-)
+# ایجاد نمونه سراسری
+exchange = CoinExExchange()
 
-# ۲. CoinExExchange - از داخل MarketManager گرفته میشود
-def get_coinex_instance():
-    """دریافت نمونه CoinExExchange از داخل MarketManager"""
-    if market_manager and hasattr(market_manager, 'coinex'):
-        return market_manager.coinex
-    return None
+# ============================================================
+# UTILITY FUNCTIONS
+# ============================================================
 
-# ==================== توابع دسترسی ====================
+async def get_price(symbol: str) -> Optional[Decimal]:
+    """دریافت قیمت سریع"""
+    ticker = await exchange.get_ticker(symbol)
+    return ticker.price if ticker else None
 
-def get_market():
-    """دریافت نمونه MarketManager"""
-    return market_manager
+async def get_prices(symbols: List[str]) -> Dict[str, Decimal]:
+    """دریافت قیمت چند ارز"""
+    tasks = [get_price(s) for s in symbols]
+    results = await asyncio.gather(*tasks)
+    return {s: r for s, r in zip(symbols, results) if r is not None}
 
-def get_coinex():
-    """دریافت نمونه CoinExExchange"""
-    return get_coinex_instance()
+async def get_top_movers(limit: int = 10) -> Tuple[List[MarketData], List[MarketData]]:
+    """دریافت بیشترین رشد و افت"""
+    gainers = await exchange.get_top_gainers(limit)
+    losers = await exchange.get_top_losers(limit)
+    return gainers, losers
 
-# ==================== تابع کمکی برای دیباگ ====================
+# ============================================================
+# MAIN - تست
+# ============================================================
 
-def check_market_instances():
-    """بررسی سلامت نمونه‌های بازار"""
-    result = {
-        "market_manager": "✅ OK" if market_manager else "❌ FAILED",
-        "coinex": "✅ OK" if get_coinex() else "❌ FAILED"
-    }
-    return result
+async def main():
+    """تست ماژول"""
+    print("=" * 60)
+    print("  CryptoPulse AI v3.5 - Exchange Module Test")
+    print("=" * 60)
+    
+    # تست قیمت
+    btc_price = await get_price("BTC")
+    if btc_price:
+        print(f"✅ BTC Price: ${btc_price:,.2f}")
+    
+    # تست تحلیل تکنیکال
+    analysis = await exchange.get_technical_analysis("BTC", "4h")
+    if analysis:
+        print(f"✅ RSI(14): {analysis.rsi:.2f}")
+        print(f"✅ MACD: {analysis.macd:.2f}")
+        print(f"✅ ADX: {analysis.adx:.2f}")
+        print(f"✅ SuperTrend Direction: {analysis.supertrend_direction}")
+    
+    print("=" * 60)
+    print("  Test completed!")
+    print("=" * 60)
+    
+    await exchange.close()
+
+if __name__ == "__main__":
+    asyncio.run(main())
