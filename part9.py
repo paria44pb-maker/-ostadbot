@@ -483,7 +483,7 @@ class SafeImporter:
     _cache: Dict[str, Any] = {}
     _lock = threading.RLock()
     _import_order = [
-        "bot3", "bot5", "bot2", "bot4", "bot6", "bot7", "bot8",
+        "Part3", "part5", "part2", "part4", "part6", "part7", "part8",
         "part16", "part17", "part18", "part5", "part1", "part2",
         "part3", "part4", "part6", "part7", "part8", "part10",
         "part11", "part12", "part13", "part14", "part15"
