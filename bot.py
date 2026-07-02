@@ -3,7 +3,7 @@
 
 """
 CryptoPulse AI Bot - Safe 15 Parts Loader
-Production-safe dynamic module loader
+Production-safe dynamic module loader with Webhook support
 """
 
 import os
@@ -14,6 +14,8 @@ import asyncio
 import uvicorn
 import threading
 from datetime import datetime
+from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
 
 # ============================================================
 #                    FIX ENV (Railway)
@@ -24,25 +26,29 @@ if "Telegram _bot_token" in os.environ:
     print("🔧 Mapped Telegram _bot_token → BOT_TOKEN")
 
 # ============================================================
+#                    FASTAPI APP
+# ============================================================
+
+api_app = FastAPI(title="CryptoPulse Webhook")
+
+api_app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Store bot application
+telegram_app = None
+
+# ============================================================
 #                    لیست پارت‌ها
 # ============================================================
 
 PARTS = [
-    "part1",
-    "part2",
-    "part3",
-    "part4",
-    "part5",
-    "part6",
-    "part7",
-    "part8",
-    "part9",
-    "part10",
-    "part11",
-    "part12",
-    "part13",
-    "part14",
-    "part15"
+    "part1", "part2", "part3", "part4", "part5",
+    "part6", "part7", "part8", "part9", "part10",
+    "part11", "part12", "part13", "part14", "part15"
 ]
 
 loaded_modules = {}
@@ -64,7 +70,6 @@ def load_part(module_name: str):
 
 
 def load_all_parts():
-    # Check token before loading
     token = os.environ.get("BOT_TOKEN", "")
     if not token:
         print("❌ BOT_TOKEN not set in environment!")
@@ -83,28 +88,12 @@ def load_all_parts():
 
 
 # ============================================================
-#                    FASTAPI (optional part13)
-# ============================================================
-
-def start_api():
-    try:
-        part13 = loaded_modules.get("part13")
-
-        if part13 and hasattr(part13, "app"):
-            print("🌐 Starting FastAPI from part13...")
-            uvicorn.run(part13.app, host="0.0.0.0", port=8080)
-        else:
-            print("⚠️ FastAPI app not found in part13")
-
-    except Exception as e:
-        print(f"❌ API Error: {e}")
-
-
-# ============================================================
-#                    TELEGRAM BOT (part9)
+#                    TELEGRAM BOT (WEBHOOK MODE)
 # ============================================================
 
 async def start_bot():
+    global telegram_app
+
     try:
         part9 = loaded_modules.get("part9")
 
@@ -112,21 +101,81 @@ async def start_bot():
             app = part9.get_application()
 
             if app:
-                await app.initialize()
-                await app.start()
-                await app.updater.start_polling()
-                print("🤖 Telegram bot started successfully!")
+                # Get Railway URL
+                railway_url = os.environ.get("RAILWAY_PUBLIC_DOMAIN", "")
+                port = int(os.environ.get("PORT", "8080"))
+
+                if not railway_url:
+                    # Try to construct from Railway env
+                    railway_url = os.environ.get("RAILWAY_STATIC_URL", "")
+
+                if railway_url:
+                    webhook_url = f"https://{railway_url}/webhook"
+                    print(f"🔗 Setting webhook: {webhook_url}")
+
+                    await app.initialize()
+                    await app.start()
+
+                    # Set webhook
+                    await app.bot.set_webhook(url=webhook_url)
+
+                    # Store for FastAPI
+                    telegram_app = app
+
+                    print(f"🤖 Bot started with webhook on port {port}!")
+                else:
+                    print("⚠️ No Railway URL found, falling back to polling...")
+                    await app.initialize()
+                    await app.start()
+                    await app.updater.start_polling()
+                    print("🤖 Bot started with polling!")
                 return
 
         print("⚠️ Bot not found in part9 fallback mode")
-        print("💡 Possible reasons:")
-        print("   1. BOT_TOKEN env var is empty or wrong name")
-        print("   2. python-telegram-bot not installed")
-        print("   3. safe_import failed for dependencies (bot2-bot8)")
+        print("💡 Check BOT_TOKEN in Railway Variables")
 
     except Exception as e:
         print(f"❌ Bot Error: {e}")
         traceback.print_exc()
+
+
+# ============================================================
+#                    FASTAPI ROUTES
+# ============================================================
+
+@api_app.get("/")
+async def root():
+    return {
+        "bot": "CryptoPulse v3.5",
+        "status": "online",
+        "mode": "webhook" if telegram_app else "offline",
+        "uptime": str(datetime.now())
+    }
+
+@api_app.get("/health")
+async def health():
+    ok = len(loaded_modules)
+    return {
+        "status": "healthy" if ok >= 9 else "degraded",
+        "loaded": ok,
+        "total": len(PARTS)
+    }
+
+@api_app.post("/webhook")
+async def webhook(request: Request):
+    """Receive Telegram updates via webhook"""
+    global telegram_app
+
+    if telegram_app:
+        try:
+            data = await request.json()
+            await telegram_app.update_queue.put(data)
+            return {"status": "ok"}
+        except Exception as e:
+            print(f"❌ Webhook error: {e}")
+            return {"status": "error", "message": str(e)}
+
+    return {"status": "error", "message": "Bot not initialized"}
 
 
 # ============================================================
@@ -140,16 +189,17 @@ async def main():
     # 1. Load all modules
     load_all_parts()
 
-    # 2. Start bot + API together
-    bot_task = asyncio.create_task(start_bot())
-
-    # API in background thread (safe)
-    api_thread = threading.Thread(target=start_api, daemon=True)
-    api_thread.start()
+    # 2. Start bot
+    await start_bot()
 
     # 3. Keep alive
-    await bot_task
     await asyncio.Event().wait()
+
+
+def run_fastapi():
+    port = int(os.environ.get("PORT", "8080"))
+    print(f"🌐 Starting FastAPI on port {port}...")
+    uvicorn.run(api_app, host="0.0.0.0", port=port, log_level="info")
 
 
 # ============================================================
@@ -157,6 +207,11 @@ async def main():
 # ============================================================
 
 if __name__ == "__main__":
+    # Start FastAPI in a thread
+    api_thread = threading.Thread(target=run_fastapi, daemon=True)
+    api_thread.start()
+
+    # Start bot in async
     try:
         asyncio.run(main())
     except KeyboardInterrupt:
