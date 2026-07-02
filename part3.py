@@ -2,967 +2,967 @@
 # -*- coding: utf-8 -*-
 
 """
-CryptoPulse AI Bot v3.0 - Database Module (Financial-Grade v3.7)
-ماژول دیتابیس با استانداردهای مالی صرافی - نسخه نهایی
-نسخه: 3.7 - تمام ریسک‌های حیاتی برطرف شد
-
-اصلاحات بحرانی این نسخه:
-✅ ۱. TypeDecorator ایمپورت شد
-✅ ۲. SQLite: BEGIN IMMEDIATE برای قفل‌گذاری واقعی
-✅ ۳. Session: DTO conversion قبل از خروج از context
-✅ ۴. حذف constraint مالی total = amount * price
-✅ ۵. get_or_create_user با INSERT ON CONFLICT (upsert واقعی)
-✅ ۶. JSONType با lazy init (تشخیص در runtime)
-✅ ۷. رفع double-sign bug در close_trade
-✅ ۸. referral_code با INSERT ON CONFLICT
-✅ ۹. Decimal default با lambda
-✅ ۱۰. to_dict با identity hash + depth key
+╔══════════════════════════════════════════════════════════════╗
+║                                                              ║
+║   🗄️  CryptoPulse AI Bot v3.0 - Database & Repository Layer ║
+║   ────────────────────────────────────────────────────────   ║
+║   💾 SQLite + SQLAlchemy  |  🔄 Repository Pattern           ║
+║   👤 Users  |  💰 Payments  |  🚨 Signals  |  📊 Stats       ║
+║                                                              ║
+╚══════════════════════════════════════════════════════════════╝
 """
 
 import os
-import sys
 import json
 import hashlib
 import logging
-import sqlite3
-from datetime import datetime, timedelta, timezone
-from typing import Optional, Dict, Any, List, Tuple, Union, Generator, Set
-from enum import Enum
+from datetime import datetime, timedelta
+from typing import Optional, Dict, Any, List, Tuple
 from contextlib import contextmanager
-from decimal import Decimal, ROUND_HALF_UP
-from functools import wraps
-import time
-import uuid as uuid_lib
-import importlib
-
-logger = logging.getLogger(__name__)
-
-# ==================== Timezone ====================
-
-try:
-    from zoneinfo import ZoneInfo
-    TEHRAN_TZ = ZoneInfo("Asia/Tehran")
-except ImportError:
-    TEHRAN_TZ = timezone(timedelta(hours=3, minutes=30))
-
-UTC_TZ = timezone.utc
-
-def utc_now() -> datetime:
-    return datetime.now(UTC_TZ)
-
-# ==================== SQLAlchemy Imports ====================
-
 from sqlalchemy import (
-    create_engine, Column, String, Integer, Float, DateTime,
-    Boolean, Text, ForeignKey,
-    Index, UniqueConstraint, CheckConstraint, func, desc,
-    MetaData, inspect, text, event,
-    Numeric
+    create_engine, Column, String, Integer, Float, Boolean,
+    DateTime, Text, ForeignKey, Index, func, desc, asc
 )
-from sqlalchemy.types import TypeDecorator  # ✅ اصلاح: ایمپورت فراموش‌شده
-from sqlalchemy.orm import (
-    sessionmaker, relationship, backref,
-    declarative_base, declared_attr, scoped_session,
-    class_mapper, selectinload
-)
-from sqlalchemy.pool import QueuePool, NullPool
-from sqlalchemy.exc import OperationalError, DisconnectionError, IntegrityError
+from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import sessionmaker, Session, relationship
+from sqlalchemy.pool import StaticPool
+from sqlalchemy.exc import SQLAlchemyError
 
-try:
-    from sqlalchemy.dialects.postgresql import JSONB, UUID, ARRAY
-    HAS_POSTGRES = True
-except ImportError:
-    JSONB = None
-    UUID = None
-    ARRAY = None
-    HAS_POSTGRES = False
+# ============================================================
+#                    LOGGING
+# ============================================================
 
-try:
-    from sqlalchemy.dialects.sqlite import JSON as SQLiteJSON
-    HAS_SQLITE_JSON = True
-except ImportError:
-    SQLiteJSON = None
-    HAS_SQLITE_JSON = False
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
+logger = logging.getLogger("Bot3-Database")
 
-# ==================== تنظیمات ====================
+# ============================================================
+#                    CONFIG
+# ============================================================
 
+DATABASE_URL = os.environ.get("DATABASE_URL", "sqlite:///bot.db")
+
+# Fix Railway Postgres URL if needed
+if DATABASE_URL and DATABASE_URL.startswith("postgres://"):
+    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
+
+logger.info(f"📊 Database: {DATABASE_URL[:30]}...")
+
+# ============================================================
+#                    SQLAlchemy Setup
+# ============================================================
+
+if "postgresql" in DATABASE_URL:
+    engine = create_engine(
+        DATABASE_URL,
+        pool_size=10,
+        max_overflow=20,
+        pool_pre_ping=True,
+        echo=False
+    )
+else:
+    # SQLite with thread-safe settings
+    engine = create_engine(
+        DATABASE_URL,
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+        echo=False
+    )
+
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
-MAX_RETRY_ATTEMPTS = 5
-RETRY_DELAY = 1
-DEFAULT_DB_DIR = "database"
-REFERRAL_CODE_MAX_RETRIES = 10
+# ============================================================
+#                    MODELS
+# ============================================================
 
-CONFIG_MODULE_NAME = "config"
+class User(Base):
+    """👤 مدل کاربر"""
+    __tablename__ = "users"
 
-ALLOWED_HASH_ALGORITHMS = {
-    "sha256": hashlib.sha256,
-    "sha512": hashlib.sha512,
-    "blake2b": hashlib.blake2b,
-}
-
-# ==================== Financial Service ====================
-
-class FinancialService:
-    """سرویس متمرکز مالی - تنها مرجع محاسبات پولی"""
-
-    DECIMAL_PRECISION = Decimal("0.00000001")
-    PERCENTAGE_PRECISION = Decimal("0.01")
-
-    @staticmethod
-    def to_decimal(value: Any) -> Decimal:
-        if isinstance(value, Decimal):
-            return value
-        if isinstance(value, (int, str)):
-            return Decimal(str(value))
-        if isinstance(value, float):
-            return Decimal(str(value))
-        raise ValueError(f"Cannot convert {type(value)} to Decimal")
-
-    @staticmethod
-    def multiply(a: Any, b: Any) -> Decimal:
-        return FinancialService.to_decimal(a) * FinancialService.to_decimal(b)
-
-    @staticmethod
-    def divide(a: Any, b: Any) -> Decimal:
-        b_dec = FinancialService.to_decimal(b)
-        if b_dec == 0:
-            return Decimal("0")
-        return FinancialService.to_decimal(a) / b_dec
-
-    @staticmethod
-    def add(a: Any, b: Any) -> Decimal:
-        return FinancialService.to_decimal(a) + FinancialService.to_decimal(b)
-
-    @staticmethod
-    def subtract(a: Any, b: Any) -> Decimal:
-        return FinancialService.to_decimal(a) - FinancialService.to_decimal(b)
-
-    @staticmethod
-    def calculate_profit(side: str, entry_price: Any, close_price: Any, amount: Any) -> Decimal:
-        entry = FinancialService.to_decimal(entry_price)
-        close = FinancialService.to_decimal(close_price)
-        amt = FinancialService.to_decimal(amount)
-        return (close - entry) * amt if side == 'buy' else (entry - close) * amt
-
-    @staticmethod
-    def calculate_profit_percentage(profit: Any, total: Any) -> Decimal:
-        total_dec = FinancialService.to_decimal(total)
-        if total_dec == 0:
-            return Decimal("0")
-        return (FinancialService.to_decimal(profit) / total_dec) * Decimal("100")
-
-    @staticmethod
-    def calculate_win_rate(wins: int, total: int) -> Decimal:
-        if total == 0:
-            return Decimal("0")
-        return (Decimal(str(wins)) / Decimal(str(total)) * Decimal("100")).quantize(
-            FinancialService.PERCENTAGE_PRECISION, rounding=ROUND_HALF_UP
-        )
-
-    @staticmethod
-    def calculate_total(amount: Any, price: Any) -> Decimal:
-        return FinancialService.multiply(amount, price)
-
-    @staticmethod
-    def validate_positive(value: Any, field_name: str = "value"):
-        v = FinancialService.to_decimal(value)
-        if v <= 0:
-            raise ValueError(f"{field_name} must be positive, got {v}")
-
-    @staticmethod
-    def validate_sufficient(balance: Any, required: Any):
-        bal = FinancialService.to_decimal(balance)
-        req = FinancialService.to_decimal(required)
-        if bal < req:
-            raise ValueError(f"Insufficient balance: {bal} < {req}")
-
-# ==================== JSON TypeDecorator ====================
-
-class UniversalJSON(TypeDecorator):
-    impl = Text
-    cache_ok = True
-
-    def process_bind_param(self, value, dialect):
-        if value is None:
-            return None
-        if isinstance(value, str):
-            try:
-                json.loads(value)
-                return value
-            except (json.JSONDecodeError, TypeError):
-                pass
-            return json.dumps(value, ensure_ascii=False)
-        return json.dumps(value, default=json_serializer, ensure_ascii=False)
-
-    def process_result_value(self, value, dialect):
-        if value is None:
-            return {}
-        if isinstance(value, dict):
-            return value
-        try:
-            result = json.loads(value)
-            return result if isinstance(result, dict) else {}
-        except (json.JSONDecodeError, TypeError):
-            return {}
-
-    def copy(self, **kw):
-        return UniversalJSON()
-
-# ✅ اصلاح: lazy init برای JSONType (تشخیص در runtime)
-_json_type_cache = None
-
-def get_json_type():
-    global _json_type_cache
-    if _json_type_cache is not None:
-        return _json_type_cache
-
-    config = _load_config()
-    db_type = config.get('database', {}).get('type', 'sqlite')
-    if db_type == 'postgresql' and JSONB is not None:
-        _json_type_cache = JSONB
-    elif db_type == 'sqlite' and SQLiteJSON is not None:
-        _json_type_cache = SQLiteJSON
-    else:
-        _json_type_cache = UniversalJSON
-    return _json_type_cache
-
-# ==================== توابع کمکی ====================
-
-def json_serializer(obj: Any) -> str:
-    if isinstance(obj, datetime):
-        return obj.isoformat()
-    if isinstance(obj, Enum):
-        return obj.value
-    if isinstance(obj, Decimal):
-        return str(obj)
-    if isinstance(obj, uuid_lib.UUID):
-        return str(obj)
-    raise TypeError(f"Object of type {type(obj)} is not JSON serializable")
-
-def generate_hash(data: str, algorithm: str = "sha256") -> str:
-    if algorithm not in ALLOWED_HASH_ALGORITHMS:
-        raise ValueError(f"Unsupported hash algorithm: {algorithm}")
-    return ALLOWED_HASH_ALGORITHMS[algorithm](data.encode("utf-8")).hexdigest()
-
-def generate_uuid() -> str:
-    return str(uuid_lib.uuid4())
-
-def generate_unique_id(prefix: str = "") -> str:
-    return f"{prefix}{uuid_lib.uuid4().hex}" if prefix else uuid_lib.uuid4().hex
-
-def ensure_dir(path: str) -> None:
-    if path and not os.path.exists(path):
-        os.makedirs(path, exist_ok=True)
-
-def ensure_parent_dir(file_path: str) -> None:
-    parent = os.path.dirname(os.path.abspath(file_path))
-    if parent:
-        ensure_dir(parent)
-
-def retry_on_db_error(max_attempts: int = MAX_RETRY_ATTEMPTS, delay: float = RETRY_DELAY):
-    if max_attempts < 1:
-        raise ValueError("max_attempts must be >= 1")
-    def decorator(func):
-        @wraps(func)
-        def wrapper(*args, **kwargs):
-            last_exception = None
-            for attempt in range(max_attempts):
-                try:
-                    return func(*args, **kwargs)
-                except (OperationalError, DisconnectionError) as e:
-                    last_exception = e
-                    if attempt < max_attempts - 1:
-                        wait_time = delay * (2 ** attempt)
-                        logger.warning(f"⚠️ تلاش {attempt + 1}/{max_attempts}: {e}")
-                        time.sleep(wait_time)
-                    else:
-                        logger.error(f"❌ تمام تلاش‌ها ناموفق")
-                except IntegrityError:
-                    raise
-                except Exception:
-                    raise
-            if last_exception:
-                raise last_exception
-        return wrapper
-    return decorator
-
-# ==================== مدیریت تنظیمات ====================
-
-_config_cache: Optional[Dict[str, Any]] = None
-
-def set_config(config: Dict[str, Any]) -> None:
-    global _config_cache
-    _config_cache = config
-
-def _load_config() -> Dict[str, Any]:
-    global _config_cache
-    if _config_cache is not None:
-        return _config_cache
-
-    if CONFIG_MODULE_NAME not in sys.modules:
-        try:
-            config_module = importlib.import_module(CONFIG_MODULE_NAME)
-        except ImportError:
-            config_module = None
-    else:
-        config_module = sys.modules.get(CONFIG_MODULE_NAME)
-
-    if config_module:
-        for getter_name in ['get_config', 'load_config', 'CONFIG', 'config']:
-            config_obj = getattr(config_module, getter_name, None)
-            if config_obj is not None:
-                try:
-                    _config_cache = config_obj() if callable(config_obj) else config_obj
-                    if isinstance(_config_cache, dict):
-                        return _config_cache
-                except Exception:
-                    pass
-
-    _config_cache = {
-        'database': {
-            'type': 'sqlite',
-            'path': f'{DEFAULT_DB_DIR}/cryptopulse.db',
-            'echo': False,
-            'pool_size': 10,
-        }
-    }
-    return _config_cache
-
-# ==================== Enums ====================
-
-class SignalType(str, Enum):
-    BUY = "buy"
-    SELL = "sell"
-
-class TradeSide(str, Enum):
-    BUY = "buy"
-    SELL = "sell"
-
-class PaymentStatus(str, Enum):
-    PENDING = "pending"
-    APPROVED = "approved"
-    REJECTED = "rejected"
-
-class PaymentType(str, Enum):
-    DEPOSIT = "deposit"
-    WITHDRAWAL = "withdrawal"
-    VIP_PURCHASE = "vip_purchase"
-    REFERRAL_REWARD = "referral_reward"
-
-# ==================== BaseModel ====================
-
-class BaseModel(Base):
-    __abstract__ = True
-
-    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
-    created_at = Column(DateTime(timezone=True), default=utc_now, nullable=False)
-    updated_at = Column(DateTime(timezone=True), default=utc_now, onupdate=utc_now)
-    is_deleted = Column(Boolean, default=False, nullable=False, index=True)
-    deleted_at = Column(DateTime(timezone=True), nullable=True)
-    version = Column(Integer, default=1, nullable=False)
-
-    __mapper_args__ = {"version_id_col": version}
-
-    def to_dict(self, include_relations: bool = False, depth: int = 0, max_depth: int = 2,
-                visited: Optional[Dict[int, int]] = None) -> Dict[str, Any]:
-        """
-        ✅ اصلاح: visited با ترکیب identity hash + depth key
-        """
-        if visited is None:
-            visited = {}
-
-        obj_id = id(self)
-        if obj_id in visited and visited[obj_id] <= depth:
-            return {"id": self.id, "_circular": True}
-        visited[obj_id] = depth
-
-        if depth > max_depth:
-            return {"id": self.id, "_truncated": True}
-
-        result = {}
-        for column in self.__table__.columns:
-            value = getattr(self, column.name)
-            if isinstance(value, datetime):
-                value = value.isoformat()
-            elif isinstance(value, Decimal):
-                value = str(value)
-            elif isinstance(value, Enum):
-                value = value.value
-            result[column.name] = value
-
-        if include_relations and depth < max_depth:
-            for rel in class_mapper(self.__class__).relationships:
-                try:
-                    related = getattr(self, rel.key)
-                    if related is not None:
-                        if isinstance(related, list):
-                            result[rel.key] = [
-                                item.to_dict(depth=depth+1, max_depth=max_depth, visited=visited)
-                                for item in related
-                                if not hasattr(item, 'is_deleted') or not item.is_deleted
-                            ]
-                        else:
-                            if not hasattr(related, 'is_deleted') or not related.is_deleted:
-                                result[rel.key] = related.to_dict(
-                                    depth=depth+1, max_depth=max_depth, visited=visited
-                                )
-                except Exception:
-                    result[rel.key] = None
-
-        return result
-
-    def to_json(self, include_relations: bool = False) -> str:
-        return json.dumps(self.to_dict(include_relations), default=json_serializer, ensure_ascii=False)
-
-    def update(self, data: Dict[str, Any]):
-        protected_fields = {"id", "created_at", "version"}
-        for key, value in data.items():
-            if key in protected_fields or not hasattr(self, key):
-                continue
-            column = self.__table__.columns.get(key)
-            if column is not None and isinstance(column.type, Numeric) and value is not None:
-                value = FinancialService.to_decimal(value)
-            setattr(self, key, value)
-        self.updated_at = utc_now()
-
-    def soft_delete(self):
-        self.is_deleted = True
-        self.deleted_at = utc_now()
-        self.updated_at = utc_now()
-
-# ==================== JSONType ====================
-
-JSONType = get_json_type()
-
-# ==================== مدل کاربر ====================
-
-class User(BaseModel):
-    __tablename__ = 'users'
-
-    telegram_id = Column(String(50), unique=True, nullable=False)
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    telegram_id = Column(String(50), unique=True, nullable=False, index=True)
     username = Column(String(100), nullable=True)
     first_name = Column(String(100), nullable=True)
     last_name = Column(String(100), nullable=True)
+    language = Column(String(10), default="fa")
+    phone = Column(String(20), nullable=True)
+    email = Column(String(100), nullable=True)
 
-    is_active = Column(Boolean, default=True, nullable=False)
-    is_banned = Column(Boolean, default=False, nullable=False)
-    is_admin = Column(Boolean, default=False, nullable=False)
-    is_vip = Column(Boolean, default=False, nullable=False)
+    # Wallet
+    balance = Column(Float, default=0.0)
+    total_deposited = Column(Float, default=0.0)
+    total_withdrawn = Column(Float, default=0.0)
+    total_profit = Column(Float, default=0.0)
 
-    vip_expire = Column(DateTime(timezone=True), nullable=True)
+    # Referral
+    referral_code = Column(String(20), unique=True, nullable=True)
+    referred_by = Column(String(50), nullable=True)
+    referral_count = Column(Integer, default=0)
+    referral_earnings = Column(Float, default=0.0)
 
-    # ✅ اصلاح: Decimal default با lambda
-    balance = Column(Numeric(20, 8), default=lambda: Decimal("0"), nullable=False)
-    total_deposited = Column(Numeric(20, 8), default=lambda: Decimal("0"), nullable=False)
-    total_withdrawn = Column(Numeric(20, 8), default=lambda: Decimal("0"), nullable=False)
-    total_profit = Column(Numeric(20, 8), default=lambda: Decimal("0"), nullable=False)
-    total_loss = Column(Numeric(20, 8), default=lambda: Decimal("0"), nullable=False)
+    # Trading
+    total_trades = Column(Integer, default=0)
+    successful_trades = Column(Integer, default=0)
+    failed_trades = Column(Integer, default=0)
+    win_rate = Column(Float, default=0.0)
 
-    referral_code = Column(String(32), unique=True, nullable=True)
-    referred_by = Column(Integer, ForeignKey('users.id'), nullable=True)
-    referral_count = Column(Integer, default=0, nullable=False)
-    referral_earnings = Column(Numeric(20, 8), default=lambda: Decimal("0"), nullable=False)
+    # VIP
+    is_vip = Column(Boolean, default=False)
+    is_premium = Column(Boolean, default=False)
+    vip_level = Column(Integer, default=0)
+    vip_plan = Column(String(50), nullable=True)
+    vip_expire = Column(DateTime, nullable=True)
+    vip_activated_at = Column(DateTime, nullable=True)
+    vip_trial_used = Column(Boolean, default=False)
 
-    preferences = Column(JSONType, default=dict)
-    language = Column(String(10), default='fa', nullable=False)
+    # Status
+    is_admin = Column(Boolean, default=False)
+    is_banned = Column(Boolean, default=False)
+    ban_reason = Column(Text, nullable=True)
+    is_active = Column(Boolean, default=True)
 
-    total_trades = Column(Integer, default=0, nullable=False)
-    successful_trades = Column(Integer, default=0, nullable=False)
-    failed_trades = Column(Integer, default=0, nullable=False)
-    win_rate = Column(Numeric(5, 2), default=lambda: Decimal("0"), nullable=False)
+    # Settings
+    notifications_enabled = Column(Boolean, default=True)
+    timeframe = Column(String(10), default="4h")
+    ai_enabled = Column(Boolean, default=True)
+    sound_alert = Column(Boolean, default=False)
+    night_mode = Column(Boolean, default=False)
 
-    registered_at = Column(DateTime(timezone=True), default=utc_now, nullable=False)
+    # Timestamps
+    registered_at = Column(DateTime, default=datetime.utcnow)
+    last_active = Column(DateTime, default=datetime.utcnow)
+    last_signal = Column(DateTime, nullable=True)
 
-    signals = relationship("Signal", back_populates="user", lazy="selectin")
-    trades = relationship("Trade", back_populates="user", lazy="selectin")
-    payments = relationship("Payment", back_populates="user", lazy="selectin")
+    # Relationships
+    payments = relationship("Payment", back_populates="user", lazy="dynamic")
+    signals = relationship("Signal", back_populates="user", lazy="dynamic")
 
-    referrer = relationship("User", remote_side="User.id", foreign_keys=[referred_by], back_populates="referrals")
-    referrals = relationship("User", back_populates="referrer", lazy="selectin")
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "telegram_id": self.telegram_id,
+            "username": self.username,
+            "first_name": self.first_name,
+            "last_name": self.last_name,
+            "language": self.language,
+            "phone": self.phone,
+            "email": self.email,
+            "balance": self.balance,
+            "total_deposited": self.total_deposited,
+            "total_withdrawn": self.total_withdrawn,
+            "total_profit": self.total_profit,
+            "referral_code": self.referral_code,
+            "referred_by": self.referred_by,
+            "referral_count": self.referral_count,
+            "referral_earnings": self.referral_earnings,
+            "total_trades": self.total_trades,
+            "successful_trades": self.successful_trades,
+            "failed_trades": self.failed_trades,
+            "win_rate": self.win_rate,
+            "is_vip": self.is_vip,
+            "is_premium": self.is_premium,
+            "vip_level": self.vip_level,
+            "vip_plan": self.vip_plan,
+            "vip_expire": self.vip_expire.isoformat() if self.vip_expire else None,
+            "vip_activated_at": self.vip_activated_at.isoformat() if self.vip_activated_at else None,
+            "vip_trial_used": self.vip_trial_used,
+            "is_admin": self.is_admin,
+            "is_banned": self.is_banned,
+            "ban_reason": self.ban_reason,
+            "is_active": self.is_active,
+            "notifications_enabled": self.notifications_enabled,
+            "timeframe": self.timeframe,
+            "ai_enabled": self.ai_enabled,
+            "sound_alert": self.sound_alert,
+            "night_mode": self.night_mode,
+            "registered_at": self.registered_at.isoformat() if self.registered_at else None,
+            "last_active": self.last_active.isoformat() if self.last_active else None,
+            "last_signal": self.last_signal.isoformat() if self.last_signal else None,
+        }
 
-    __table_args__ = (
-        Index('idx_user_telegram_id', 'telegram_id'),
-        Index('idx_user_is_deleted', 'is_deleted'),
-        CheckConstraint('balance >= 0', name='ck_user_balance_non_negative'),
-    )
 
-    def update_win_rate(self):
-        self.win_rate = FinancialService.calculate_win_rate(
-            self.successful_trades,
-            self.successful_trades + self.failed_trades
-        )
+class Payment(Base):
+    """💰 مدل پرداخت"""
+    __tablename__ = "payments"
 
-# ==================== مدل Trade ====================
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    payment_id = Column(String(50), unique=True, nullable=False, index=True)
+    user_id = Column(String(50), ForeignKey("users.telegram_id"), nullable=False, index=True)
+    amount = Column(Float, nullable=False)
+    currency = Column(String(10), default="IRT")
+    payment_type = Column(String(50), nullable=False)  # vip_monthly, vip_yearly, vip_lifetime, deposit
+    status = Column(String(20), default="pending")  # pending, completed, failed, rejected
+    transaction_id = Column(String(100), nullable=True)
+    receipt_file_id = Column(String(200), nullable=True)
+    admin_id = Column(String(50), nullable=True)  # Who confirmed
+    notes = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    confirmed_at = Column(DateTime, nullable=True)
 
-class Trade(BaseModel):
-    __tablename__ = 'trades'
-
-    trade_id = Column(String(36), unique=True, nullable=False, default=generate_uuid)
-    user_id = Column(Integer, ForeignKey('users.id'), nullable=False)
-    signal_id = Column(Integer, ForeignKey('signals.id'), nullable=True)
-
-    coin = Column(String(20), nullable=False)
-    side = Column(String(10), nullable=False)
-
-    amount = Column(Numeric(20, 8), nullable=False)
-    price = Column(Numeric(20, 8), nullable=False)
-    total = Column(Numeric(20, 8), nullable=False)
-    fee = Column(Numeric(20, 8), default=lambda: Decimal("0"), nullable=False)
-
-    is_open = Column(Boolean, default=True, nullable=False)
-    is_closed = Column(Boolean, default=False, nullable=False)
-
-    close_price = Column(Numeric(20, 8), nullable=True)
-    profit = Column(Numeric(20, 8), nullable=True)
-    profit_percentage = Column(Numeric(10, 2), nullable=True)
-
-    opened_at = Column(DateTime(timezone=True), default=utc_now, nullable=False)
-    closed_at = Column(DateTime(timezone=True), nullable=True)
-
-    user = relationship("User", back_populates="trades")
-    signal = relationship("Signal", back_populates="trades")
-
-    __table_args__ = (
-        Index('idx_trade_user_id', 'user_id'),
-        Index('idx_trade_is_open', 'is_open'),
-        CheckConstraint('amount > 0', name='ck_trade_amount_positive'),
-        CheckConstraint('price > 0', name='ck_trade_price_positive'),
-        # ❌ حذف constraint مالی total = amount * price
-    )
-
-    def calculate_profit(self, close_price: Decimal) -> Decimal:
-        if self.is_closed and self.profit is not None:
-            return self.profit
-
-        profit = FinancialService.calculate_profit(self.side, self.price, close_price, self.amount)
-        total = FinancialService.to_decimal(self.total)
-
-        self.profit = profit
-        self.profit_percentage = FinancialService.calculate_profit_percentage(profit, total)
-        self.close_price = FinancialService.to_decimal(close_price)
-        self.closed_at = utc_now()
-        self.is_open = False
-        self.is_closed = True
-
-        return profit
-
-# ==================== مدل Signal ====================
-
-class Signal(BaseModel):
-    __tablename__ = 'signals'
-
-    coin = Column(String(20), nullable=False)
-    signal_type = Column(String(20), nullable=False)
-
-    current_price = Column(Numeric(20, 8), nullable=False)
-    entry_price = Column(Numeric(20, 8), nullable=True)
-    stop_loss = Column(Numeric(20, 8), nullable=True)
-
-    indicators_json = Column(JSONType, default=dict)
-
-    confidence = Column(Integer, default=50, nullable=False)
-    is_active = Column(Boolean, default=True, nullable=False)
-    is_vip = Column(Boolean, default=False, nullable=False)
-
-    user_id = Column(Integer, ForeignKey('users.id'), nullable=True)
-
-    user = relationship("User", back_populates="signals")
-    trades = relationship("Trade", back_populates="signal", lazy="selectin")
-
-    __table_args__ = (
-        Index('idx_signal_coin', 'coin'),
-        CheckConstraint('confidence BETWEEN 0 AND 100', name='ck_signal_confidence_range'),
-    )
-
-# ==================== مدل Payment ====================
-
-class Payment(BaseModel):
-    __tablename__ = 'payments'
-
-    payment_id = Column(String(36), unique=True, nullable=False, default=generate_uuid)
-    user_id = Column(Integer, ForeignKey('users.id'), nullable=False)
-
-    amount = Column(Numeric(20, 8), nullable=False)
-    payment_type = Column(String(20), nullable=False)
-
-    status = Column(String(20), default='pending', nullable=False)
-
-    completed_at = Column(DateTime(timezone=True), nullable=True)
-
+    # Relationships
     user = relationship("User", back_populates="payments")
 
-    __table_args__ = (
-        Index('idx_payment_user_id', 'user_id'),
-        Index('idx_payment_status', 'status'),
-        CheckConstraint('amount > 0', name='ck_payment_amount_positive'),
-    )
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "payment_id": self.payment_id,
+            "user_id": self.user_id,
+            "amount": self.amount,
+            "currency": self.currency,
+            "payment_type": self.payment_type,
+            "status": self.status,
+            "transaction_id": self.transaction_id,
+            "receipt_file_id": self.receipt_file_id,
+            "admin_id": self.admin_id,
+            "notes": self.notes,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "confirmed_at": self.confirmed_at.isoformat() if self.confirmed_at else None,
+        }
 
-# ==================== DatabaseManager ====================
 
-class DatabaseManager:
-    """
-    مدیریت دیتابیس Financial-Grade
-    ✅ SQLite: BEGIN IMMEDIATE برای قفل‌گذاری واقعی
-    ✅ Session: DTO conversion قبل از خروج
-    """
+class Signal(Base):
+    """🚨 مدل سیگنال"""
+    __tablename__ = "signals"
 
-    def __init__(self, db_path: str = None, echo: bool = False):
-        self.db_path = db_path
-        self._echo = echo
-        self._engine = None
-        self._session_factory = None
-        self._scoped_session = None
-        self._initialize_engine()
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    signal_id = Column(String(50), unique=True, nullable=False, index=True)
+    user_id = Column(String(50), ForeignKey("users.telegram_id"), nullable=False, index=True)
+    coin = Column(String(20), nullable=False)
+    signal_type = Column(String(10), nullable=False)  # buy, sell, hold
+    confidence = Column(Float, default=50.0)
+    entry_price = Column(Float, nullable=True)
+    current_price = Column(Float, nullable=True)
+    exit_price = Column(Float, nullable=True)
+    stop_loss = Column(Float, nullable=True)
+    targets = Column(Text, nullable=True)  # JSON string
+    timeframe = Column(String(10), default="4h")
+    analysis = Column(Text, nullable=True)
+    result = Column(String(20), nullable=True)  # win, loss, pending
+    profit_loss = Column(Float, nullable=True)
+    risk_reward = Column(Float, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    closed_at = Column(DateTime, nullable=True)
 
-    def _initialize_engine(self):
-        config = _load_config()
-        db_config = config.get('database', {})
+    # Relationships
+    user = relationship("User", back_populates="signals")
 
-        if self.db_path is None:
-            db_type = db_config.get('type', 'sqlite')
-            if db_type == 'postgresql':
-                self.db_path = (
-                    f"postgresql://{db_config.get('user')}:{db_config.get('password')}"
-                    f"@{db_config.get('host')}:{db_config.get('port')}/{db_config.get('name')}"
-                )
-            else:
-                db_path = db_config.get('path', f'{DEFAULT_DB_DIR}/cryptopulse.db')
-                ensure_parent_dir(db_path)
-                self.db_path = f"sqlite:///{db_path}"
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "signal_id": self.signal_id,
+            "user_id": self.user_id,
+            "coin": self.coin,
+            "signal_type": self.signal_type,
+            "confidence": self.confidence,
+            "entry_price": self.entry_price,
+            "current_price": self.current_price,
+            "exit_price": self.exit_price,
+            "stop_loss": self.stop_loss,
+            "targets": self.targets,
+            "timeframe": self.timeframe,
+            "analysis": self.analysis,
+            "result": self.result,
+            "profit_loss": self.profit_loss,
+            "risk_reward": self.risk_reward,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "closed_at": self.closed_at.isoformat() if self.closed_at else None,
+        }
 
-        echo = self._echo or db_config.get('echo', False)
 
-        if 'sqlite' in self.db_path:
-            self._engine = create_engine(
-                self.db_path,
-                echo=echo,
-                connect_args={'check_same_thread': False, 'timeout': 10},
-                poolclass=NullPool,
-            )
-            # ✅ SQLite: تنظیم BEGIN IMMEDIATE برای قفل‌گذاری واقعی
-            @event.listens_for(self._engine, "connect")
-            def do_connect(dbapi_connection, connection_record):
-                dbapi_connection.execute("PRAGMA journal_mode=WAL")
-                dbapi_connection.execute("PRAGMA synchronous=NORMAL")
-        else:
-            self._engine = create_engine(
-                self.db_path,
-                echo=echo,
-                pool_size=min(db_config.get('pool_size', 10), 50),
-                max_overflow=20,
-                poolclass=QueuePool,
-            )
+class Backup(Base):
+    """💾 مدل بکاپ"""
+    __tablename__ = "backups"
 
-        self._session_factory = sessionmaker(
-            bind=self._engine,
-            autocommit=False,
-            autoflush=False,
-            expire_on_commit=False
-        )
-        self._scoped_session = scoped_session(self._session_factory)
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    name = Column(String(100), nullable=False)
+    path = Column(String(200), nullable=True)
+    size = Column(Integer, default=0)
+    checksum = Column(String(100), nullable=True)
+    type = Column(String(20), default="auto")  # auto, manual
+    status = Column(String(20), default="completed")
+    created_at = Column(DateTime, default=datetime.utcnow)
 
-    @contextmanager
-    def get_session(self, begin_immediate: bool = False) -> Generator:
-        """
-        ✅ اگر begin_immediate=True: از BEGIN IMMEDIATE استفاده کن
-        """
-        session = self._scoped_session()
-        if begin_immediate:
-            session.execute(text("BEGIN IMMEDIATE"))
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "name": self.name,
+            "path": self.path,
+            "size": self.size,
+            "checksum": self.checksum,
+            "type": self.type,
+            "status": self.status,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+        }
+
+
+# ============================================================
+#                    Create Tables
+# ============================================================
+
+def init_db():
+    """ایجاد جداول دیتابیس"""
+    try:
+        Base.metadata.create_all(bind=engine)
+        logger.info("✅ Database tables created successfully")
+    except Exception as e:
+        logger.error(f"❌ Failed to create tables: {e}")
+
+init_db()
+
+# ============================================================
+#                    REPOSITORIES
+# ============================================================
+
+class UserRepository:
+    """👤 Repository کاربران"""
+
+    def __init__(self):
+        self.session = SessionLocal()
+
+    def _new_session(self):
+        if not self.session or not self.session.is_active:
+            self.session = SessionLocal()
+        return self.session
+
+    def get_all(self) -> List[Dict]:
+        """دریافت همه کاربران"""
         try:
-            yield session
-            session.commit()
-        except Exception:
-            session.rollback()
-            raise
+            session = self._new_session()
+            users = session.query(User).order_by(desc(User.registered_at)).all()
+            return [u.to_dict() for u in users]
+        except Exception as e:
+            logger.error(f"get_all error: {e}")
+            return []
         finally:
             session.close()
 
-    def remove_session(self):
-        self._scoped_session.remove()
-
-    def create_all(self):
-        Base.metadata.create_all(bind=self._engine)
-        logger.info("✅ جداول ایجاد شدند")
-
-    # ==================== کاربر ====================
-
-    @retry_on_db_error()
-    def create_user(self, telegram_id: str, **kwargs) -> User:
-        """✅ ایجاد کاربر با INSERT ON CONFLICT"""
-        with self.get_session(begin_immediate=True) as session:
-            user = User(telegram_id=telegram_id, **kwargs)
-            user.referral_code = self._generate_unique_referral_code(session)
-            session.add(user)
-            session.flush()
-            return self._to_user_dto(user)
-
-    @retry_on_db_error()
-    def get_user(self, telegram_id: str) -> Optional[Dict]:
-        """✅ برگرداندن DTO به جای ORM object"""
-        with self.get_session() as session:
-            user = session.query(User).options(
-                selectinload(User.trades),
-                selectinload(User.payments),
-            ).filter(
-                User.telegram_id == telegram_id,
-                User.is_deleted == False
-            ).first()
-            return self._to_user_dto(user) if user else None
-
-    @retry_on_db_error()
-    def get_or_create_user(self, telegram_id: str, **kwargs) -> Dict:
-        """
-        ✅ اصلاح: upsert واقعی با INSERT ON CONFLICT
-        """
-        with self.get_session(begin_immediate=True) as session:
-            # تلاش برای insert با ON CONFLICT
-            referral_code = self._generate_unique_referral_code(session)
-            stmt = User.__table__.insert().values(
-                telegram_id=telegram_id,
-                referral_code=referral_code,
-                registered_at=utc_now(),
-                **{k: v for k, v in kwargs.items() if hasattr(User, k)}
-            ).on_conflict_do_nothing(index_elements=['telegram_id'])
-            session.execute(stmt)
-            session.flush()
-
-            # حالا حتماً وجود دارد
-            user = session.query(User).options(
-                selectinload(User.trades),
-                selectinload(User.payments),
-            ).filter(
-                User.telegram_id == telegram_id,
-                User.is_deleted == False
-            ).first()
-            return self._to_user_dto(user)
-
-    @retry_on_db_error()
-    def update_user(self, telegram_id: str, data: Dict[str, Any]) -> Optional[Dict]:
-        """
-        ✅ SQLite: BEGIN IMMEDIATE برای قفل‌گذاری واقعی
-        """
-        with self.get_session(begin_immediate=True) as session:
-            user = session.query(User).filter(
-                User.telegram_id == telegram_id,
-                User.is_deleted == False
-            ).first()
-            if user:
-                user.update(data)
-                session.flush()
-                return self._to_user_dto(user)
+    def get_by_telegram_id(self, telegram_id: str) -> Optional[Dict]:
+        """دریافت کاربر با آیدی تلگرام"""
+        try:
+            session = self._new_session()
+            user = session.query(User).filter(User.telegram_id == str(telegram_id)).first()
+            return user.to_dict() if user else None
+        except Exception as e:
+            logger.error(f"get_by_telegram_id error: {e}")
             return None
+        finally:
+            session.close()
 
-    # ==================== معامله ====================
+    def get_by_id(self, user_id: int) -> Optional[Dict]:
+        """دریافت کاربر با ID"""
+        try:
+            session = self._new_session()
+            user = session.query(User).filter(User.id == user_id).first()
+            return user.to_dict() if user else None
+        except Exception as e:
+            logger.error(f"get_by_id error: {e}")
+            return None
+        finally:
+            session.close()
 
-    @retry_on_db_error()
-    def create_trade(self, user_id: int, coin: str, side: str, amount: Decimal, price: Decimal, **kwargs) -> Dict:
-        """
-        ✅ SQLite: BEGIN IMMEDIATE برای قفل‌گذاری
-        """
-        amount_dec = FinancialService.to_decimal(amount)
-        price_dec = FinancialService.to_decimal(price)
-        total_dec = FinancialService.calculate_total(amount_dec, price_dec)
+    def get_vip_users(self) -> List[Dict]:
+        """دریافت کاربران VIP"""
+        try:
+            session = self._new_session()
+            users = session.query(User).filter(User.is_vip == True).all()
+            return [u.to_dict() for u in users]
+        except Exception as e:
+            logger.error(f"get_vip_users error: {e}")
+            return []
+        finally:
+            session.close()
 
-        FinancialService.validate_positive(amount_dec, "amount")
-        FinancialService.validate_positive(price_dec, "price")
+    def create(self, **kwargs) -> Optional[Dict]:
+        """ایجاد کاربر جدید"""
+        try:
+            session = self._new_session()
 
-        with self.get_session(begin_immediate=True) as session:
-            user = session.query(User).filter(
-                User.id == user_id,
-                User.is_deleted == False
+            # Check if exists
+            existing = session.query(User).filter(
+                User.telegram_id == str(kwargs.get("telegram_id"))
             ).first()
+            if existing:
+                return existing.to_dict()
 
+            # Generate referral code if not provided
+            if "referral_code" not in kwargs:
+                import random
+                import string
+                while True:
+                    code = ''.join(random.choices(string.ascii_uppercase + string.digits, k=8))
+                    if not session.query(User).filter(User.referral_code == code).first():
+                        break
+                kwargs["referral_code"] = code
+
+            user = User(**kwargs)
+            session.add(user)
+            session.commit()
+            session.refresh(user)
+            logger.info(f"✅ User created: {kwargs.get('telegram_id')}")
+            return user.to_dict()
+        except Exception as e:
+            session.rollback()
+            logger.error(f"create error: {e}")
+            return None
+        finally:
+            session.close()
+
+    def update(self, telegram_id: str, **kwargs) -> Optional[Dict]:
+        """آپدیت کاربر"""
+        try:
+            session = self._new_session()
+            user = session.query(User).filter(User.telegram_id == str(telegram_id)).first()
             if not user:
-                raise ValueError(f"User {user_id} not found")
-
-            if side == 'buy':
-                FinancialService.validate_sufficient(user.balance, total_dec)
-
-            trade = Trade(
-                user_id=user_id,
-                coin=coin,
-                side=side,
-                amount=amount_dec,
-                price=price_dec,
-                total=total_dec,
-                **kwargs
-            )
-            session.add(trade)
-            session.flush()
-            return trade.to_dict()
-
-    @retry_on_db_error()
-    def close_trade(self, trade_id: str, close_price: Decimal, reason: str = 'manual') -> Optional[Dict]:
-        """
-        ✅ اصلاح: رفع double-sign bug
-        profit signed است - مستقیماً به balance اضافه/کسر می‌شود
-        """
-        close_price_dec = FinancialService.to_decimal(close_price)
-
-        with self.get_session(begin_immediate=True) as session:
-            trade = session.query(Trade).filter(
-                Trade.trade_id == trade_id,
-                Trade.is_open == True,
-                Trade.is_deleted == False
-            ).first()
-
-            if not trade:
+                logger.warning(f"User not found for update: {telegram_id}")
                 return None
 
-            profit = trade.calculate_profit(close_price_dec)
-            trade.close_reason = reason
+            for key, value in kwargs.items():
+                if hasattr(user, key):
+                    setattr(user, key, value)
 
-            user = session.query(User).filter(User.id == trade.user_id).first()
-            if user:
-                # ✅ اصلاح: profit signed است - مستقیماً اضافه می‌شود
-                user.balance = FinancialService.add(user.balance, profit)
-                if profit > 0:
-                    user.total_profit = FinancialService.add(user.total_profit, profit)
-                    user.successful_trades += 1
-                elif profit < 0:
-                    user.total_loss = FinancialService.add(user.total_loss, abs(profit))
-                    user.failed_trades += 1
-                user.total_trades += 1
-                user.update_win_rate()
+            # Update last_active
+            user.last_active = datetime.utcnow()
 
-            session.flush()
-            return trade.to_dict()
-
-    # ==================== پرداخت ====================
-
-    @retry_on_db_error()
-    def approve_payment(self, payment_id: str, note: str = None) -> Optional[Dict]:
-        with self.get_session(begin_immediate=True) as session:
-            payment = session.query(Payment).filter(
-                Payment.payment_id == payment_id,
-                Payment.is_deleted == False
-            ).first()
-
-            if not payment or payment.status != 'pending':
-                return payment.to_dict() if payment else None
-
-            payment.status = 'approved'
-            payment.completed_at = utc_now()
-            if note:
-                payment.admin_note = note
-
-            if payment.payment_type == 'deposit':
-                user = session.query(User).filter(User.id == payment.user_id).first()
-                if user:
-                    user.balance = FinancialService.add(user.balance, payment.amount)
-                    user.total_deposited = FinancialService.add(user.total_deposited, payment.amount)
-
-            session.flush()
-            return payment.to_dict()
-
-    # ==================== DTO Converters ====================
-
-    def _to_user_dto(self, user: User) -> Dict:
-        """تبدیل User به DTO برای خروج امن از Session"""
-        return {
-            'id': user.id,
-            'telegram_id': user.telegram_id,
-            'username': user.username,
-            'first_name': user.first_name,
-            'last_name': user.last_name,
-            'is_active': user.is_active,
-            'is_vip': user.is_vip,
-            'balance': str(user.balance),
-            'total_deposited': str(user.total_deposited),
-            'total_profit': str(user.total_profit),
-            'total_loss': str(user.total_loss),
-            'total_trades': user.total_trades,
-            'successful_trades': user.successful_trades,
-            'failed_trades': user.failed_trades,
-            'win_rate': str(user.win_rate),
-            'referral_code': user.referral_code,
-            'referral_count': user.referral_count,
-            'registered_at': user.registered_at.isoformat() if user.registered_at else None,
-            'trades': [self._to_trade_dto(t) for t in user.trades] if user.trades else [],
-            'payments': [self._to_payment_dto(p) for p in user.payments] if user.payments else [],
-        }
-
-    def _to_trade_dto(self, trade: Trade) -> Dict:
-        return {
-            'id': trade.id,
-            'trade_id': trade.trade_id,
-            'coin': trade.coin,
-            'side': trade.side,
-            'amount': str(trade.amount),
-            'price': str(trade.price),
-            'total': str(trade.total),
-            'is_open': trade.is_open,
-            'profit': str(trade.profit) if trade.profit else None,
-            'opened_at': trade.opened_at.isoformat() if trade.opened_at else None,
-            'closed_at': trade.closed_at.isoformat() if trade.closed_at else None,
-        }
-
-    def _to_payment_dto(self, payment: Payment) -> Dict:
-        return {
-            'id': payment.id,
-            'payment_id': payment.payment_id,
-            'amount': str(payment.amount),
-            'payment_type': payment.payment_type,
-            'status': payment.status,
-            'completed_at': payment.completed_at.isoformat() if payment.completed_at else None,
-        }
-
-    # ==================== کمکی ====================
-
-    def _generate_unique_referral_code(self, session) -> str:
-        for _ in range(REFERRAL_CODE_MAX_RETRIES):
-            code = generate_unique_id("REF")
-            if not session.query(User).filter(User.referral_code == code).first():
-                return code
-        raise RuntimeError("Unable to generate unique referral code")
-
-    def backup_database(self, backup_path: str = None) -> bool:
-        config = _load_config()
-        db_config = config.get('database', {})
-        if db_config.get('type') != 'sqlite':
-            return False
-
-        db_path = db_config.get('path', f'{DEFAULT_DB_DIR}/cryptopulse.db')
-        if not backup_path:
-            backup_path = f"backups/backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}.db"
-
-        ensure_parent_dir(backup_path)
-        try:
-            with sqlite3.connect(db_path) as conn:
-                conn.execute("PRAGMA wal_checkpoint(FULL)")
-            with sqlite3.connect(db_path) as src, sqlite3.connect(backup_path) as dst:
-                src.backup(dst)
-            logger.info(f"💾 نسخه پشتیبان: {backup_path}")
-            return True
+            session.commit()
+            session.refresh(user)
+            logger.info(f"✅ User updated: {telegram_id}")
+            return user.to_dict()
         except Exception as e:
-            logger.error(f"❌ خطای backup: {e}")
+            session.rollback()
+            logger.error(f"update error: {e}")
+            return None
+        finally:
+            session.close()
+
+    def ban_user(self, telegram_id: str, reason: str = None) -> bool:
+        """بن کردن کاربر"""
+        return self.update(telegram_id, is_banned=True, ban_reason=reason) is not None
+
+    def unban_user(self, telegram_id: str) -> bool:
+        """آنبن کردن کاربر"""
+        return self.update(telegram_id, is_banned=False, ban_reason=None) is not None
+
+    def make_admin(self, telegram_id: str) -> bool:
+        """ادمین کردن کاربر"""
+        return self.update(telegram_id, is_admin=True) is not None
+
+    def delete(self, telegram_id: str) -> bool:
+        """حذف کاربر"""
+        try:
+            session = self._new_session()
+            user = session.query(User).filter(User.telegram_id == str(telegram_id)).first()
+            if user:
+                session.delete(user)
+                session.commit()
+                logger.info(f"🗑️ User deleted: {telegram_id}")
+                return True
             return False
+        except Exception as e:
+            session.rollback()
+            logger.error(f"delete error: {e}")
+            return False
+        finally:
+            session.close()
 
-    def close(self):
-        self.remove_session()
+    def count(self) -> int:
+        """تعداد کل کاربران"""
+        try:
+            session = self._new_session()
+            return session.query(User).count()
+        except Exception as e:
+            logger.error(f"count error: {e}")
+            return 0
+        finally:
+            session.close()
 
-    def dispose_engine(self):
-        self.remove_session()
-        self._engine.dispose()
+    def count_vip(self) -> int:
+        """تعداد کاربران VIP"""
+        try:
+            session = self._new_session()
+            return session.query(User).filter(User.is_vip == True).count()
+        except Exception as e:
+            logger.error(f"count_vip error: {e}")
+            return 0
+        finally:
+            session.close()
 
-# ==================== نمونه‌سازی ====================
 
-db = None
+class PaymentRepository:
+    """💰 Repository پرداخت‌ها"""
 
-def init_database(db_path: str = None, echo: bool = False) -> DatabaseManager:
-    global db
-    ensure_dir(DEFAULT_DB_DIR)
-    db = DatabaseManager(db_path=db_path, echo=echo)
-    db.create_all()
-    return db
+    def __init__(self):
+        self.session = SessionLocal()
 
-def get_db() -> Optional[DatabaseManager]:
-    return db
+    def _new_session(self):
+        if not self.session or not self.session.is_active:
+            self.session = SessionLocal()
+        return self.session
 
-def shutdown_database():
-    global db
-    if db is not None:
-        db.dispose_engine()
-        db = None
+    def get_all(self) -> List[Dict]:
+        """دریافت همه پرداخت‌ها"""
+        try:
+            session = self._new_session()
+            payments = session.query(Payment).order_by(desc(Payment.created_at)).all()
+            return [p.to_dict() for p in payments]
+        except Exception as e:
+            logger.error(f"get_all error: {e}")
+            return []
+        finally:
+            session.close()
+
+    def get_pending_payments(self) -> List[Dict]:
+        """دریافت پرداخت‌های در انتظار"""
+        try:
+            session = self._new_session()
+            payments = session.query(Payment).filter(
+                Payment.status == "pending"
+            ).order_by(desc(Payment.created_at)).all()
+            return [p.to_dict() for p in payments]
+        except Exception as e:
+            logger.error(f"get_pending_payments error: {e}")
+            return []
+        finally:
+            session.close()
+
+    def get_by_id(self, payment_id: str) -> Optional[Dict]:
+        """دریافت پرداخت با شناسه"""
+        try:
+            session = self._new_session()
+            payment = session.query(Payment).filter(Payment.payment_id == str(payment_id)).first()
+            return payment.to_dict() if payment else None
+        except Exception as e:
+            logger.error(f"get_by_id error: {e}")
+            return None
+        finally:
+            session.close()
+
+    def get_user_payments(self, user_id: str) -> List[Dict]:
+        """دریافت پرداخت‌های یک کاربر"""
+        try:
+            session = self._new_session()
+            payments = session.query(Payment).filter(
+                Payment.user_id == str(user_id)
+            ).order_by(desc(Payment.created_at)).all()
+            return [p.to_dict() for p in payments]
+        except Exception as e:
+            logger.error(f"get_user_payments error: {e}")
+            return []
+        finally:
+            session.close()
+
+    def create(self, **kwargs) -> Optional[Dict]:
+        """ایجاد پرداخت جدید"""
+        try:
+            session = self._new_session()
+
+            # Generate payment_id
+            import random
+            import string
+            while True:
+                pid = "PAY-" + ''.join(random.choices(string.ascii_uppercase + string.digits, k=8))
+                if not session.query(Payment).filter(Payment.payment_id == pid).first():
+                    break
+
+            kwargs["payment_id"] = pid
+            kwargs.setdefault("status", "pending")
+            kwargs.setdefault("currency", "IRT")
+
+            payment = Payment(**kwargs)
+            session.add(payment)
+            session.commit()
+            session.refresh(payment)
+            logger.info(f"✅ Payment created: {pid}")
+            return payment.to_dict()
+        except Exception as e:
+            session.rollback()
+            logger.error(f"create error: {e}")
+            return None
+        finally:
+            session.close()
+
+    def confirm_payment(self, payment_id: str, admin_id: str = None) -> bool:
+        """تایید پرداخت"""
+        try:
+            session = self._new_session()
+            payment = session.query(Payment).filter(Payment.payment_id == str(payment_id)).first()
+            if payment:
+                payment.status = "completed"
+                payment.admin_id = admin_id
+                payment.confirmed_at = datetime.utcnow()
+                session.commit()
+                logger.info(f"✅ Payment confirmed: {payment_id}")
+                return True
+            return False
+        except Exception as e:
+            session.rollback()
+            logger.error(f"confirm_payment error: {e}")
+            return False
+        finally:
+            session.close()
+
+    def reject_payment(self, payment_id: str, reason: str = None) -> bool:
+        """رد پرداخت"""
+        try:
+            session = self._new_session()
+            payment = session.query(Payment).filter(Payment.payment_id == str(payment_id)).first()
+            if payment:
+                payment.status = "rejected"
+                payment.notes = reason
+                session.commit()
+                logger.info(f"❌ Payment rejected: {payment_id}")
+                return True
+            return False
+        except Exception as e:
+            session.rollback()
+            logger.error(f"reject_payment error: {e}")
+            return False
+        finally:
+            session.close()
+
+    def get_total_revenue(self) -> float:
+        """درآمد کل"""
+        try:
+            session = self._new_session()
+            result = session.query(func.sum(Payment.amount)).filter(
+                Payment.status == "completed"
+            ).scalar()
+            return result or 0.0
+        except Exception as e:
+            logger.error(f"get_total_revenue error: {e}")
+            return 0.0
+        finally:
+            session.close()
+
+
+class SignalRepository:
+    """🚨 Repository سیگنال‌ها"""
+
+    def __init__(self):
+        self.session = SessionLocal()
+
+    def _new_session(self):
+        if not self.session or not self.session.is_active:
+            self.session = SessionLocal()
+        return self.session
+
+    def get_all(self) -> List[Dict]:
+        """دریافت همه سیگنال‌ها"""
+        try:
+            session = self._new_session()
+            signals = session.query(Signal).order_by(desc(Signal.created_at)).all()
+            return [s.to_dict() for s in signals]
+        except Exception as e:
+            logger.error(f"get_all error: {e}")
+            return []
+        finally:
+            session.close()
+
+    def get_by_signal_id(self, signal_id: str) -> Optional[Dict]:
+        """دریافت سیگنال با شناسه"""
+        try:
+            session = self._new_session()
+            signal = session.query(Signal).filter(Signal.signal_id == str(signal_id)).first()
+            return signal.to_dict() if signal else None
+        except Exception as e:
+            logger.error(f"get_by_signal_id error: {e}")
+            return None
+        finally:
+            session.close()
+
+    def create(self, **kwargs) -> Optional[Dict]:
+        """ایجاد سیگنال جدید"""
+        try:
+            session = self._new_session()
+
+            # Generate signal_id
+            import random
+            import string
+            while True:
+                sid = "SIG-" + ''.join(random.choices(string.ascii_uppercase + string.digits, k=8))
+                if not session.query(Signal).filter(Signal.signal_id == sid).first():
+                    break
+
+            kwargs["signal_id"] = sid
+
+            signal = Signal(**kwargs)
+            session.add(signal)
+            session.commit()
+            session.refresh(signal)
+            logger.info(f"✅ Signal created: {sid}")
+            return signal.to_dict()
+        except Exception as e:
+            session.rollback()
+            logger.error(f"create error: {e}")
+            return None
+        finally:
+            session.close()
+
+    def update_result(self, signal_id: str, result: str, exit_price: float = None) -> bool:
+        """آپدیت نتیجه سیگنال"""
+        try:
+            session = self._new_session()
+            signal = session.query(Signal).filter(Signal.signal_id == str(signal_id)).first()
+            if signal:
+                signal.result = result
+                signal.closed_at = datetime.utcnow()
+                if exit_price and signal.entry_price:
+                    signal.exit_price = exit_price
+                    if result == "win":
+                        signal.profit_loss = exit_price - signal.entry_price
+                    elif result == "loss":
+                        signal.profit_loss = signal.entry_price - exit_price
+                session.commit()
+                logger.info(f"✅ Signal result updated: {signal_id} -> {result}")
+                return True
+            return False
+        except Exception as e:
+            session.rollback()
+            logger.error(f"update_result error: {e}")
+            return False
+        finally:
+            session.close()
+
+    def count(self) -> int:
+        """تعداد کل سیگنال‌ها"""
+        try:
+            session = self._new_session()
+            return session.query(Signal).count()
+        except Exception as e:
+            logger.error(f"count error: {e}")
+            return 0
+        finally:
+            session.close()
+
+
+# ============================================================
+#                    DATABASE MANAGER
+# ============================================================
+
+class DatabaseManager:
+    """🗄️ مدیریت کلی دیتابیس"""
+
+    def __init__(self):
+        self.user_repo = UserRepository()
+        self.payment_repo = PaymentRepository()
+        self.signal_repo = SignalRepository()
+
+    def get_stats(self) -> Dict[str, Any]:
+        """دریافت آمار کلی"""
+        try:
+            session = SessionLocal()
+            total_users = session.query(User).count()
+            vip_users = session.query(User).filter(User.is_vip == True).count()
+            active_users = session.query(User).filter(User.is_active == True).count()
+            banned_users = session.query(User).filter(User.is_banned == True).count()
+            total_signals = session.query(Signal).count()
+            total_revenue = session.query(func.sum(Payment.amount)).filter(
+                Payment.status == "completed"
+            ).scalar() or 0.0
+            pending_payments = session.query(Payment).filter(
+                Payment.status == "pending"
+            ).count()
+            completed_payments = session.query(Payment).filter(
+                Payment.status == "completed"
+            ).count()
+            failed_payments = session.query(Payment).filter(
+                Payment.status.in_(["failed", "rejected"])
+            ).count()
+
+            # Today
+            today = datetime.utcnow().date()
+            today_users = session.query(User).filter(
+                func.date(User.registered_at) == today
+            ).count()
+            today_revenue = session.query(func.sum(Payment.amount)).filter(
+                Payment.status == "completed",
+                func.date(Payment.confirmed_at) == today
+            ).scalar() or 0.0
+
+            # This week
+            week_ago = datetime.utcnow() - timedelta(days=7)
+            week_users = session.query(User).filter(
+                User.registered_at >= week_ago
+            ).count()
+            week_revenue = session.query(func.sum(Payment.amount)).filter(
+                Payment.status == "completed",
+                Payment.confirmed_at >= week_ago
+            ).scalar() or 0.0
+
+            # This month
+            month_ago = datetime.utcnow() - timedelta(days=30)
+            month_users = session.query(User).filter(
+                User.registered_at >= month_ago
+            ).count()
+            month_revenue = session.query(func.sum(Payment.amount)).filter(
+                Payment.status == "completed",
+                Payment.confirmed_at >= month_ago
+            ).scalar() or 0.0
+
+            # VIP stats
+            active_vip = session.query(User).filter(
+                User.is_vip == True,
+                User.vip_expire >= datetime.utcnow()
+            ).count()
+            pending_vip = session.query(Payment).filter(
+                Payment.payment_type.like("%vip%"),
+                Payment.status == "pending"
+            ).count()
+            vip_revenue = session.query(func.sum(Payment.amount)).filter(
+                Payment.payment_type.like("%vip%"),
+                Payment.status == "completed"
+            ).scalar() or 0.0
+            vip_monthly_revenue = session.query(func.sum(Payment.amount)).filter(
+                Payment.payment_type.like("%vip%"),
+                Payment.status == "completed",
+                Payment.confirmed_at >= month_ago
+            ).scalar() or 0.0
+            trial_active = session.query(User).filter(
+                User.vip_trial_used == True
+            ).count()
+
+            # Conversion rate
+            conversion_rate = (vip_users / total_users * 100) if total_users > 0 else 0
+
+            return {
+                "users": total_users,
+                "vip_users": vip_users,
+                "active_users": active_users,
+                "banned_users": banned_users,
+                "signals": total_signals,
+                "total_revenue": total_revenue,
+                "pending_payments": pending_payments,
+                "completed_payments": completed_payments,
+                "failed_payments": failed_payments,
+                "today_users": today_users,
+                "today_revenue": today_revenue,
+                "week_users": week_users,
+                "week_revenue": week_revenue,
+                "month_users": month_users,
+                "month_revenue": month_revenue,
+                "active_vip": active_vip,
+                "pending_vip": pending_vip,
+                "vip_revenue": vip_revenue,
+                "vip_monthly_revenue": vip_monthly_revenue,
+                "trial_active": trial_active,
+                "vip_conversion_rate": round(conversion_rate, 1),
+                "payments": completed_payments,
+            }
+        except Exception as e:
+            logger.error(f"get_stats error: {e}")
+            return {}
+        finally:
+            session.close()
+
+    def backup(self) -> Dict:
+        """ایجاد بکاپ از دیتابیس"""
+        try:
+            import shutil
+            import os
+
+            backup_dir = "backups"
+            os.makedirs(backup_dir, exist_ok=True)
+
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            backup_name = f"backup_{timestamp}.db"
+            backup_path = os.path.join(backup_dir, backup_name)
+
+            # For SQLite
+            if "sqlite" in DATABASE_URL:
+                db_path = DATABASE_URL.replace("sqlite:///", "")
+                if os.path.exists(db_path):
+                    shutil.copy2(db_path, backup_path)
+                    size = os.path.getsize(backup_path)
+
+                    # Calculate checksum
+                    with open(backup_path, "rb") as f:
+                        checksum = hashlib.md5(f.read()).hexdigest()
+
+                    # Save to database
+                    session = SessionLocal()
+                    backup_record = Backup(
+                        name=backup_name,
+                        path=backup_path,
+                        size=size,
+                        checksum=checksum,
+                        type="manual"
+                    )
+                    session.add(backup_record)
+                    session.commit()
+                    session.close()
+
+                    logger.info(f"✅ Backup created: {backup_name}")
+                    return {
+                        "success": True,
+                        "name": backup_name,
+                        "path": backup_path,
+                        "size": size,
+                        "checksum": checksum
+                    }
+
+            return {"success": False, "error": "Not SQLite"}
+        except Exception as e:
+            logger.error(f"backup error: {e}")
+            return {"success": False, "error": str(e)}
+
+    def get_backups_list(self) -> List[Dict]:
+        """لیست بکاپ‌ها"""
+        try:
+            session = SessionLocal()
+            backups = session.query(Backup).order_by(desc(Backup.created_at)).all()
+            return [b.to_dict() for b in backups]
+        except Exception as e:
+            logger.error(f"get_backups_list error: {e}")
+            return []
+        finally:
+            session.close()
+
+
+# ============================================================
+#                    SINGLETON INSTANCES
+# ============================================================
+
+_user_repo_instance = None
+_payment_repo_instance = None
+_signal_repo_instance = None
+_db_manager_instance = None
+
+
+def get_user_repo() -> UserRepository:
+    global _user_repo_instance
+    if _user_repo_instance is None:
+        _user_repo_instance = UserRepository()
+    return _user_repo_instance
+
+
+def get_payment_repo() -> PaymentRepository:
+    global _payment_repo_instance
+    if _payment_repo_instance is None:
+        _payment_repo_instance = PaymentRepository()
+    return _payment_repo_instance
+
+
+def get_signal_repo() -> SignalRepository:
+    global _signal_repo_instance
+    if _signal_repo_instance is None:
+        _signal_repo_instance = SignalRepository()
+    return _signal_repo_instance
+
+
+def get_db_manager() -> DatabaseManager:
+    global _db_manager_instance
+    if _db_manager_instance is None:
+        _db_manager_instance = DatabaseManager()
+    return _db_manager_instance
+
+
+# For backward compatibility with part9
+db_manager = DatabaseManager()
+
+# ============================================================
+#                    EXPORT CHECK
+# ============================================================
+
+logger.info("✅ bot3.py loaded successfully")
+logger.info(f"   📊 Users: {get_user_repo().count()}")
+logger.info(f"   💰 Revenue: {get_payment_repo().get_total_revenue():,.0f} Toman")
+logger.info(f"   🚨 Signals: {get_signal_repo().count()}")
