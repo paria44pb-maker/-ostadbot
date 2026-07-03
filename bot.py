@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-CryptoPulse AI v9.0 — bot.py — 18 Parts Creator — Polling Mode
+CryptoPulse AI v9.0 — bot.py — 18 Parts Creator — DEBUG MODE
 """
 import os, sys, time, asyncio, threading, traceback, warnings, importlib, signal
 from datetime import datetime
 
 warnings.filterwarnings("ignore")
+import logging
 for name in ['telegram','httpx','httpcore','urllib3','asyncio','aiohttp','uvicorn','fastapi']:
-    import logging
     logging.getLogger(name).setLevel(logging.CRITICAL)
 
 # Fix tokens
@@ -56,90 +56,37 @@ async def health():
 async def full_status():
     return {"bot_ready":bot_ready,"uptime":(datetime.now()-startup_time).total_seconds(),"modules":status,"token":"✅" if BOT_TOKEN else "❌","creator":CREATOR_NAME}
 
-@api_app.post("/webhook")
-async def webhook(request: Request):
-    global telegram_app
-    if not bot_ready or not telegram_app:
-        return JSONResponse(status_code=503,content={"status":"not_ready"})
-    try:
-        data = await request.json()
-        await telegram_app.update_queue.put(data)
-        return {"status":"ok"}
-    except:
-        return JSONResponse(status_code=500,content={"status":"error"})
-
 # ============================================================
-#                    CREATE MISSING PARTS
-# ============================================================
-def create_missing_parts():
-    """Create missing part files with start() function"""
-    parts = {
-        "part1.py": "def start(): return True\n",
-        "part2.py": "def start(): return True\n",
-        "part3.py": "def start(): return True\n",
-        "part4.py": "def start(): return True\n",
-        "part6.py": "def start(): return True\n",
-        "part7.py": "def start(): return True\n",
-        "part8.py": "def start(): return True\n",
-        "part10.py": "def start(): return True\n",
-        "part11.py": "def start(): return True\n",
-        "part12.py": "def start(): return True\n",
-        "part13.py": "def start(): return True\n",
-        "part14.py": "def start(): return True\n",
-        "part15.py": "def start(): return True\n",
-    }
-    for filename, content in parts.items():
-        if not os.path.exists(filename):
-            try:
-                with open(filename, 'w') as f:
-                    f.write(content)
-            except:
-                pass
-
-# Create missing parts before loading
-create_missing_parts()
-
-# ============================================================
-#                    18 PARTS
+#                    18 PARTS - DEBUG MODE
 # ============================================================
 PARTS = [
-    (1,"part1","Database"),
-    (2,"part2","Config"),
-    (3,"part3","Languages"),
-    (4,"part4","Utilities"),
-    (5,"part5","Exchange"),
-    (6,"part6","AI Engine"),
-    (7,"part7","Technical"),
-    (8,"part8","Signals"),
-    (9,"part9","Handlers"),
-    (10,"part10","Trading"),
-    (11,"part11","Payments"),
-    (12,"part12","Media"),
-    (13,"part13","Notifications"),
-    (14,"part14","Monitoring"),
-    (15,"part15","Backup"),
-    (16,"part16","Intelligence"),
-    (17,"part17","Advanced"),
-    (18,"part18","God Mode"),
+    (1,"part1"),(2,"part2"),(3,"part3"),(4,"part4"),(5,"part5"),
+    (6,"part6"),(7,"part7"),(8,"part8"),(9,"part9"),(10,"part10"),
+    (11,"part11"),(12,"part12"),(13,"part13"),(14,"part14"),(15,"part15"),
+    (16,"part16"),(17,"part17"),(18,"part18"),
 ]
 
 def load_parts():
-    print("\n📦 Loading 18 Parts:\n")
-    for pid, name, desc in PARTS:
+    print("\n📦 Loading 18 Parts — DEBUG MODE:\n")
+    for pid, name in PARTS:
         try:
             mod = importlib.import_module(name)
             loaded[name] = mod
-            if hasattr(mod,"start"):
+            if hasattr(mod, "start"):
                 try:
                     result = mod.start()
-                    if callable(result): result()
-                except: pass
-            status[name] = f"✅ {desc}"
-            print(f"   ✅ Part {pid:2d} — {desc}")
+                    if callable(result):
+                        result()
+                except Exception as e:
+                    print(f"   ⚠️ Part {pid:2d} — start() error: {e}")
+            status[name] = "✅"
+            print(f"   ✅ Part {pid:2d} — Loaded")
         except Exception as e:
-            status[name] = f"⚠️ {desc}"
-            print(f"   ⚠️ Part {pid:2d} — {desc}")
+            status[name] = f"⚠️ {str(e)[:50]}"
+            print(f"   ❌ Part {pid:2d} — FAILED: {e}")
+            traceback.print_exc()
         time.sleep(0.02)
+    
     ok = sum(1 for v in status.values() if "✅" in str(v))
     print(f"\n   📊 Loaded: {ok}/{len(PARTS)}\n")
 
@@ -148,24 +95,37 @@ async def start_bot():
     if not BOT_TOKEN:
         print("❌ BOT_TOKEN not set!")
         return False
+    
     part9 = loaded.get("part9")
-    if not part9 or not hasattr(part9,"get_application"):
+    if not part9:
         print("❌ part9 not loaded!")
         return False
-    app = part9.get_application()
-    if not app:
-        print("❌ No application!")
+    
+    if not hasattr(part9, "get_application"):
+        print("❌ part9 has no get_application()!")
+        print(f"   Attributes: {[x for x in dir(part9) if not x.startswith('_')][:20]}")
         return False
-    print("🔄 Initializing...")
-    await app.initialize()
-    print("▶️  Starting...")
-    await app.start()
-    print("📡 Starting Polling...")
-    await app.updater.start_polling(drop_pending_updates=True)
-    print("📡 Polling Active!")
-    telegram_app = app
-    bot_ready = True
-    return True
+    
+    try:
+        app = part9.get_application()
+        if not app:
+            print("❌ get_application() returned None!")
+            return False
+        
+        print("🔄 Initializing...")
+        await app.initialize()
+        print("▶️  Starting...")
+        await app.start()
+        print("📡 Starting Polling...")
+        await app.updater.start_polling(drop_pending_updates=True)
+        print("📡 Polling Active!")
+        telegram_app = app
+        bot_ready = True
+        return True
+    except Exception as e:
+        print(f"❌ start_bot error: {e}")
+        traceback.print_exc()
+        return False
 
 def run_server():
     port = int(os.environ.get("PORT","8080"))
@@ -179,6 +139,7 @@ async def async_main():
 ╔══════════════════════════════════════════════════╗
 ║   🚀 CryptoPulse AI v9.0 — 18 PARTS            ║
 ║   👑 {CREATOR_NAME} — {CREATOR_TG}               ║
+║   🔍 DEBUG MODE                                ║
 ╚══════════════════════════════════════════════════╝
 ⏰ {startup_time.strftime('%Y-%m-%d %H:%M:%S')}
 🔑 Token: {'✅ ' + BOT_TOKEN[:10] + '...' if BOT_TOKEN else '❌ NOT SET!'}
@@ -187,9 +148,9 @@ async def async_main():
     await asyncio.sleep(3)
     load_parts()
     if BOT_TOKEN:
-        print("🤖 Starting Polling...")
+        print("🤖 Starting Bot...")
         if await start_bot():
-            print("✅ Bot is ONLINE — Polling Mode\n")
+            print("✅ Bot is ONLINE\n")
         else:
             print("⚠️  Bot failed\n")
     while True:
