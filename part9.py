@@ -1094,7 +1094,7 @@ def handle_errors(func):
 # ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
 
 class CryptoPulseKernel:
-    """Enterprise Application Kernel — 15 Layers / 200+ Modules"""
+    """Enterprise Application Kernel - 15 Layers / 200+ Modules"""
 
     def __init__(self):
         self._app:Optional[Application]=None
