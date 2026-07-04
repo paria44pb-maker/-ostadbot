@@ -8,10 +8,7 @@ from system.security import Security
 
 from infra.service_registry import ServiceRegistry
 
-# 🔌 NEW MODULES (CONNECTED)
-from telegram.bot_handler import TelegramBot
-from ai.groq_engine import GroqAI
-from signals.signal_engine import SignalEngine
+from coinex.engine import CoinExEngine  # ✅ اضافه شد
 
 
 class Runtime:
@@ -27,9 +24,14 @@ class Runtime:
         # =========================
         # 🔌 CORE MODULES
         # =========================
-        self.telegram = TelegramBot()
-        self.ai = GroqAI()
-        self.signal = SignalEngine()
+        self.telegram = None  # فعلاً بعداً وصل میشه
+        self.ai = None        # فعلاً بعداً وصل میشه
+        self.signal = None    # فعلاً بعداً وصل میشه
+
+        # =========================
+        # 💰 COINEX ENGINE
+        # =========================
+        self.coinex = CoinExEngine()
 
     async def initialize(self):
         """
@@ -42,14 +44,13 @@ class Runtime:
         # Register services globally
         ServiceRegistry.register("logger", self.logger)
         ServiceRegistry.register("health", Health)
-        ServiceRegistry.register("ai", self.ai)
-        ServiceRegistry.register("signal", self.signal)
+        ServiceRegistry.register("coinex", self.coinex)
 
         self.logger.info("📦 Services registered successfully")
 
     async def system_monitor(self):
         """
-        Background monitoring loop
+        Main monitoring loop
         """
         while self.running:
             status = Health.status()
@@ -60,15 +61,20 @@ class Runtime:
 
             await asyncio.sleep(5)
 
-    async def start_telegram(self):
+    async def market_monitor(self):
         """
-        Run telegram bot (blocking → run in thread)
+        💰 CoinEx live market signal loop
         """
-        self.logger.info("📡 Starting Telegram Bot...")
+        while self.running:
+            try:
+                signal = self.coinex.get_price_change_signal("BTCUSDT")
 
-        loop = asyncio.get_event_loop()
+                self.logger.info(f"💰 Market Signal: {signal}")
 
-        await loop.run_in_executor(None, self.telegram.run)
+            except Exception as e:
+                self.logger.error(f"⚠️ CoinEx error: {e}")
+
+            await asyncio.sleep(10)
 
     async def run(self):
         """
@@ -82,6 +88,6 @@ class Runtime:
         # 🔁 PARALLEL TASKS
         # =========================
         monitor_task = asyncio.create_task(self.system_monitor())
-        telegram_task = asyncio.create_task(self.start_telegram())
+        market_task = asyncio.create_task(self.market_monitor())
 
-        await asyncio.gather(monitor_task, telegram_task)
+        await asyncio.gather(monitor_task, market_task)
