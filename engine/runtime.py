@@ -8,7 +8,6 @@ from system.health import Health
 from infra.service_registry import ServiceRegistry
 
 from coinex.engine import CoinExEngine
-
 from engine.live_trader import LiveTrader
 
 
@@ -28,25 +27,24 @@ class Runtime:
         self.coinex = CoinExEngine()
 
         # =========================
-        # 🧠 LIVE TRADER ENGINE
+        # 🧠 TRADER (IMPORTANT FIX)
         # =========================
         self.trader = LiveTrader(balance=100)
 
     # =========================
-    # 🚀 INITIALIZATION
+    # 🚀 INIT
     # =========================
     async def initialize(self):
         self.logger.info("🚀 Initializing CryptoPulseAI Runtime...")
 
         await self.boot.start()
 
-        # Register global services
         ServiceRegistry.register("logger", self.logger)
         ServiceRegistry.register("health", Health)
         ServiceRegistry.register("coinex", self.coinex)
         ServiceRegistry.register("trader", self.trader)
 
-        self.logger.info("📦 All services registered")
+        self.logger.info("📦 Services registered")
 
     # =========================
     # 📊 SYSTEM MONITOR
@@ -62,45 +60,39 @@ class Runtime:
             await asyncio.sleep(5)
 
     # =========================
-    # 💰 MARKET WATCH (CoinEx)
+    # 💰 MARKET MONITOR
     # =========================
     async def market_monitor(self):
         while self.running:
-            try:
-                signal = self.coinex.get_price_change_signal("BTCUSDT")
-                self.logger.info(f"💰 CoinEx Signal: {signal}")
-
-            except Exception as e:
-                self.logger.error(f"⚠️ CoinEx Error: {e}")
+            signal = self.coinex.get_price_change_signal("BTCUSDT")
+            self.logger.info(f"💰 CoinEx Signal: {signal}")
 
             await asyncio.sleep(10)
 
     # =========================
-    # 🧠 LIVE TRADING ENGINE
+    # 🧠 TRADING LOOP WRAPPER
     # =========================
-    async def trading_loop(self):
+    async def trader_runner(self):
         """
-        Runs AI + TA + Risk + Execution system
+        Wrapper for LiveTrader.run()
         """
         await self.trader.run()
 
     # =========================
-    # 🔁 MAIN RUNNER
+    # 🔁 MAIN RUN
     # =========================
     async def run(self):
         await self.initialize()
 
-        self.logger.info("🔥 CryptoPulseAI SYSTEM IS LIVE")
+        self.logger.info("🔥 SYSTEM IS LIVE")
 
-        # =========================
-        # PARALLEL TASKS
-        # =========================
-        system_task = asyncio.create_task(self.system_monitor())
+        # ✅ درست و استاندارد (اینجا fix اصلیه)
+        monitor_task = asyncio.create_task(self.system_monitor())
         market_task = asyncio.create_task(self.market_monitor())
-        trader_task = asyncio.create_task(self.trading_loop())
+        trader_task = asyncio.create_task(self.trader_runner())
 
         await asyncio.gather(
-            system_task,
+            monitor_task,
             market_task,
             trader_task
         )
