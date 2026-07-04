@@ -2,12 +2,16 @@ import asyncio
 
 from core.logger import Logger
 from core.boot import Boot
-from core.config import Config
 
 from system.health import Health
 from system.security import Security
 
 from infra.service_registry import ServiceRegistry
+
+# 🔌 NEW MODULES (CONNECTED)
+from telegram.bot_handler import TelegramBot
+from ai.groq_engine import GroqAI
+from signals.signal_engine import SignalEngine
 
 
 class Runtime:
@@ -20,49 +24,64 @@ class Runtime:
         self.boot = Boot()
         self.running = True
 
+        # =========================
+        # 🔌 CORE MODULES
+        # =========================
+        self.telegram = TelegramBot()
+        self.ai = GroqAI()
+        self.signal = SignalEngine()
+
     async def initialize(self):
         """
         Initialize full system
         """
-        self.logger.info("🚀 Initializing Runtime Engine...")
+        self.logger.info("🚀 Initializing CryptoPulseAI Runtime...")
 
         await self.boot.start()
 
-        # register core services
+        # Register services globally
         ServiceRegistry.register("logger", self.logger)
         ServiceRegistry.register("health", Health)
+        ServiceRegistry.register("ai", self.ai)
+        ServiceRegistry.register("signal", self.signal)
 
-        self.logger.info("📦 Services registered")
+        self.logger.info("📦 Services registered successfully")
 
-    async def main_loop(self):
+    async def system_monitor(self):
         """
-        Main system loop (always running)
+        Background monitoring loop
         """
-        self.logger.info("🔁 System loop started")
-
         while self.running:
-            try:
-                status = Health.status()
+            status = Health.status()
 
-                self.logger.info(
-                    f"📊 CPU:{status['cpu']}% | RAM:{status['ram']}% | Uptime:{status['uptime_sec']}s"
-                )
+            self.logger.info(
+                f"📊 CPU:{status['cpu']}% | RAM:{status['ram']}% | Uptime:{status['uptime_sec']}s"
+            )
 
-                await asyncio.sleep(5)
+            await asyncio.sleep(5)
 
-            except Exception as e:
-                self.logger.error(f"⚠️ Runtime error: {e}")
-
-    async def shutdown(self):
+    async def start_telegram(self):
         """
-        Graceful shutdown
+        Run telegram bot (blocking → run in thread)
         """
-        self.logger.warning("🛑 Shutting down system...")
-        self.running = False
+        self.logger.info("📡 Starting Telegram Bot...")
+
+        loop = asyncio.get_event_loop()
+
+        await loop.run_in_executor(None, self.telegram.run)
 
     async def run(self):
         """
-        Entry point for full system
+        Main runtime entry point
         """
         await self.initialize()
-        await self.main_loop()
+
+        self.logger.info("🔥 System LIVE")
+
+        # =========================
+        # 🔁 PARALLEL TASKS
+        # =========================
+        monitor_task = asyncio.create_task(self.system_monitor())
+        telegram_task = asyncio.create_task(self.start_telegram())
+
+        await asyncio.gather(monitor_task, telegram_task)
